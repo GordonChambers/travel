@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Shenzhen — Where to Go</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    --views:#E8590C; --temple:#C2185B; --market:#F9A825; --museum:#6A1B9A;
+    --nature:#2E7D32; --harbour:#0277BD; --heritage:#5D4037; --food:#00838F; --themepark:#546E7A;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:238px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .panel h3+h3{margin-top:15px;padding-top:14px;border-top:1px solid var(--line)}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .key{display:flex;align-items:center;gap:8px;padding:3.5px 0;font-size:12.5px;color:#3c4553}
+  .swatch{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.45;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{width:21px;height:21px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:74vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+  .sheet-photo{width:100%;height:170px;object-fit:cover;display:block;background:#eef1f5;border-radius:20px 20px 0 0}
+  .sheet-photo.none{display:none}
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .grab{width:38px;height:4px;border-radius:2px;background:rgba(255,255,255,.85);
+    position:absolute;top:9px;left:50%;transform:translateX(-50%);z-index:2;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:2;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.4}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:208px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of Shenzhen places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Shenzhen — Where to Go</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note" id="panelNote">Google Maps has no usable navigation inside mainland China — use the <b>Amap</b> button for directions, or Baidu/Didi. Coordinates here are datum-corrected for this map.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grab"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <img class="sheet-photo" id="sPhoto" alt="">
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Amap
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Google
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {
+  views:    {label:"Views & peaks",     color:"#E8590C"},
+  temple:   {label:"Temples",           color:"#C2185B"},
+  market:   {label:"Markets & streets", color:"#F9A825"},
+  museum:   {label:"Museums & arts",    color:"#6A1B9A"},
+  nature:   {label:"Parks & beaches",   color:"#2E7D32"},
+  harbour:  {label:"Harbour & coast",   color:"#0277BD"},
+  heritage: {label:"Heritage",          color:"#5D4037"},
+  food:     {label:"Food & nightlife",  color:"#00838F"},
+  themepark:{label:"Theme parks",       color:"#546E7A"}
+};
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+const P = "https://lh3.googleusercontent.com/place-photos/";
+
+/* lat/lng below are GCJ-02 (as returned by Google inside China) and are
+   converted to WGS-84 at render time so they sit correctly on OSM tiles.
+   The raw GCJ values are kept for Amap links, which expect GCJ-02. */
+const PLACES = [
+{c:"views",n:"Ping An Finance Centre — Free Sky",zh:"平安金融中心 云际观光层",lat:22.533096,lng:114.055865,
+ m:"Futian · 4.6★ · 599m tall · ~¥190",d:"The world's highest sky-floor observation deck at 547m, on the 116th floor. On a clear day you can see across to the hills of Hong Kong. Book at least a day ahead; the tour and video are in Chinese.",
+ g:"https://maps.google.com/?cid=12486685500412839387",
+ p:P+"AG9NLjBzzniS-sBgA8-_MYlZpbhHAQG2c9qbIMA7VfPAuKkUK-vgznjguYMw49yKG_DTyXa4DD2e2uF_OMjS563ken4b2_oqlW-QKVnmoNC4ja98dmkcvRbOfjgmwtFBDLLvvGh6L6MwYq7IkQNum6k=s4800-w720-h425",a:"Suthar Shan"},
+
+{c:"views",n:"Wutong Mountain",zh:"梧桐山",lat:22.581611,lng:114.205166,
+ m:"Luohu · 4.4★ · 2.5h up · Free",d:"Shenzhen's highest peak (944m) and a serious staircase. From the top you see the whole city plus most of Hong Kong's ridgelines. Metro to Wutongshan South, exit D. Wild boar are common and mostly harmless.",
+ g:"https://maps.google.com/?cid=12488151309242335266",
+ p:P+"AG9NLjB9wim2D8POYKLjlv6yEJ_uvtG1rh96jDhb9iL0CXAYNr1SUqc5u0hG0Tdekqq1VxGF2KiJMfsA7ZfanEcJ3tzhq2i5iugxVu1WPH3p6mjb_WY6skKABb113EnCdXKshfuAabN873XIBFkn=s4800-w800-h600",a:"Mingle Lai"},
+
+{c:"views",n:"Bijiashan Park",zh:"笔架山公园",lat:22.564474,lng:114.081878,
+ m:"Futian · 4.4★ · Free",d:"A short climb to two peaks with a cyberpunk view over the Futian skyline — the best free alternative to paying for the tower. Metro Line 9 to Yinhu. Allow 20 extra minutes; the climb is longer than the map suggests.",
+ g:"https://maps.google.com/?cid=8800050761894141369",
+ p:P+"AG9NLjDcpJrJDJphXt5Rt5LewQ0yQL3o0IPcWk6ou7UKxSOQKqzKgkbiLMIZyC6bMK45KYzCpGyuMBzGRXfrfLx9ULMztgucaPbNLaTrBC-YscnwVzjWA9MlnyCNoXoH9YDwTgdeKI5bw_5TQvrnXQ=s4800-w800-h600",a:"Wen"},
+
+{c:"views",n:"Lianhuashan Park",zh:"莲花山公园",lat:22.554571,lng:114.057378,
+ m:"Futian · 4.4★ · Free",d:"150 hectares with the Deng Xiaoping statue at the summit, looking straight down the axis at the skyline he ordered built. The consensus best sunset spot in the city. Light show most evenings around 7pm.",
+ g:"https://maps.google.com/?cid=13079486485018847059",
+ p:P+"AG9NLjA-DKok4MhG_esXte8LDdSiozDEzE-IIN-lI_jCzHOYRV9-yYwr2UspRfWTN3baO5F-CJOsy9aZ0gxj4VXonnPmyt378Xtem5Ox06gCPj1dTQPqkN_vLdnSF_yEdyy6pr6okVJuDuGGMYOHa1QvC4VxxA=s4800-w800-h600",a:"Cristian Guerrero Aira"},
+
+{c:"temple",n:"Hongfa Temple",zh:"弘法寺",lat:22.577848,lng:114.181528,
+ m:"Luohu · 4.7★ · Free",d:"Only built in 1983, but a large and genuinely active Buddhist complex inside the botanical garden. Two ten-thousand-Buddha halls, and a free vegetarian meal served at the top. Highest-rated stop on this map.",
+ g:"https://maps.google.com/?cid=2586388344721345153",
+ p:P+"AG9NLjDGiOy4jK0r35KQb9rFSdkkp6fLdkRjNlXGPGC7VE3Yjz22w6vOoqflrLJ5qjDNO1vb5lTPKPUcMuNjkufu91cymEsh8oaPh_ePMUnGz4CuGli6rh4yUGUQ1zvB0PlIs8u7WAPNrlCbBYBZ6Zc=s4800-w800-h600",a:"Hugo But"},
+
+{c:"temple",n:"Chiwan Tianhou Temple",zh:"赤湾天后宫",lat:22.478574,lng:113.892402,
+ m:"Shekou · 4.6★ · Free",d:"A real Ming-era sea-goddess temple, not a replica — where Zheng He's fleets prayed before sailing. Quiet, beautifully maintained, and almost no foreign visitors. Pair it with Shekou.",
+ g:"https://maps.google.com/?cid=12955180051983885515",
+ p:P+"AG9NLjAQfTkJVcl2eLhOMRS7ry_ERVmlwj6nPO3mCM64fuQMbJn7TcHa_TwpUPGRT__mAGJ69boBfeJoCRxE_mqypDbLNpXf87WMw2QQLld2B4Yk4GXPM20usTbhfpWKDO7p0KFa5pknaP3jH_3d5g=s4800-w800-h600",a:"ting yi lin"},
+
+{c:"market",n:"Huaqiangbei",zh:"华强北",lat:22.5429237,lng:114.086058,
+ m:"Futian · 4.5★ · 10am–9pm",d:"The largest electronics market on earth — city blocks of towers stacked with components, phones, drones and parts. Overwhelming and unmissable. Bargain hard; the first price is never the price. Watch for fakes.",
+ g:"https://maps.google.com/?cid=14139619474292688199",
+ p:P+"AG9NLjAjna0yvBGDoOpvYGbo-Zp5sobcVp_DPezouq2nXRyXIhLfxTK2Wb9bh7VRDiET_gxMe-T_sAMdiCo6ZMPQhrfpto5HZ6hD_rDIQM6qxINHge7UuNggF8YZJTutfTe8cxy-bBILHi8X8nLelw=s4800-w800-h600",a:"siuki chan"},
+
+{c:"market",n:"Dongmen Pedestrian Street",zh:"东门步行街",lat:22.544241,lng:114.12091,
+ m:"Luohu · 4.5★",d:"Old Shenzhen at full volume — street food, cheap clothes, buskers and livestreamers. The raw counterpoint to Futian's malls. Garlic-grilled oysters for about a dollar each. Go hungry, go at night.",
+ g:"https://maps.google.com/?cid=16659254473705437272",
+ p:P+"AG9NLjCE8ZMAeSRBV5jhgkTwXxMfQ-wGEd7fgAeckpZiXZ6hpupsCjScV77vBSbKEq_w6kGoFQKfoQpm5Ch1luw4tuW1XzeCHwsq4u299P-ngN6eix5C5AXWE4cemP-EFjHy9aO4zqnyXvrxe1-2ilo=s4800-w800-h600",a:"Anan Nawakitbumrung"},
+
+{c:"market",n:"Luohu Commercial City",zh:"罗湖商业城",lat:22.53057,lng:114.119364,
+ m:"Luohu · 3.8★ · 10am–10pm",d:"Five floors of copies, right on top of the Hong Kong border crossing. The real reason to come is the tailors — bring a photo, get a suit in 48 hours. Expect relentless touting on the ground floor.",
+ g:"https://maps.google.com/?cid=10005321104535119185",
+ p:P+"AG9NLjB3-I6vOLs0S3S1TF48Lq8N2rEfgdT6OuSi4zR-f5GNBFu73W30gDa_4g56p1QEOSVvoduv3kshv6k4oZvrtak9hX-2FqRfb8jefsyNJDHJadlenl-H0IfmCV4tCZ3BgcHGf-5b3dqC_5Wo7s0=s4800-w800-h600",a:"MS hui"},
+
+{c:"museum",n:"Shenzhen Museum",zh:"深圳博物馆",lat:22.5441625,lng:114.058949,
+ m:"Futian · 4.5★ · Closed Mon · Free",d:"Three floors on how a fishing county became a megacity in forty years. Dense, occasionally overwhelming, and free. The reform-era section is the interesting one.",
+ g:"https://maps.google.com/?cid=13628263969973561832",
+ p:P+"AG9NLjDUYwFHMm6r4pBdU37QCQ0VK4ggQKTS_Yrk4BiUBFQCSZKUyvFmlHPJ2yWt4kgohgh-i-QWMbjWLBxku3IADHh3Gy_lh3J2PqsvDprnBb5e6ZVnhctsDUBjeAGHwqi20fzpD-AmNKnEkNQogA=s4800-w800-h600",a:"Diksha Pathak"},
+
+{c:"museum",n:"MOCAPE",zh:"深圳当代艺术与城市规划馆",lat:22.544771,lng:114.0612774,
+ m:"Futian · 4.6★ · Free",d:"Two museums in one Coop Himmelb(l)au building: contemporary art, plus an urban planning hall that lays out Shenzhen to 2050. The architecture alone justifies the stop. Next door to the Shenzhen Museum.",
+ g:"https://maps.google.com/?cid=2556910264856215863",
+ p:P+"AG9NLjBhNDzTnPS9-q_y55aeQZcu1dpEU6eKCrS7jwumxOZPKHtfjDcJFoWlnzXvIIH_wa_fbczsC1CZqvmLBGylxi36cdxV8NkrbL7PK0IhdE1vm6Vicg8w-sgf1IjL8KNZxFABVLUWZzEXMurj2A=s4800-w600-h480",a:"Doug Ho"},
+
+{c:"museum",n:"OCT-LOFT",zh:"华侨城创意文化园",lat:22.5369468,lng:113.9934833,
+ m:"Nanshan · 4.5★ · Free",d:"Old factory blocks turned into Shenzhen's creative quarter — galleries, design shops, the excellent Old Heaven Books, and a lot of very good coffee. Shenzhen's answer to Beijing's 798, at half the scale and twice the calm.",
+ g:"https://maps.google.com/?cid=15212389132548181964",
+ p:P+"AG9NLjAM1VI7iXR0PvJszMIIzYFYmCLbYEyu3-QDhwtY7wWTUSNUtYtVqsPlHvdmHkpcVtOa10qhVK92XR69XfRk5rU_Ynb2BAJGmogbFCO8hPUMc1lajwhqkFaFBB8TfRYc29vvdK220MPPG-G31w=s4800-w800-h600",a:"Grzegorz Rymar"},
+
+{c:"museum",n:"Sea World Culture and Arts Center",zh:"海上世界文化艺术中心",lat:22.480463,lng:113.916764,
+ m:"Shekou · 4.1★ · 10am–8:30pm",d:"Fumihiko Maki's waterfront building housing Design Society and a V&A gallery. Triple aspect — mountains, sea and city — and a rooftop that opens onto the bay walk. Worth it for the building even if the show doesn't grab you.",
+ g:"https://maps.google.com/?cid=6004654855557061791",
+ p:P+"AG9NLjCxXTJZpg2xigKSW8S2QyMnPa4CMfgK93NE6iGA7p6wEtC51xco1uECrsrZ-x09yJMIsPZrNAi14bHfV5JATWulwA-qTJiGvNqPXnZEU5x7pdxC3HZ8DS3u6xvXTBIWlx2844bSw7kbLfqZIw=s4800-w800-h600",a:"Kenzo*"},
+
+{c:"museum",n:"Dafen Oil Painting Village",zh:"大芬油画村",lat:22.609845,lng:114.136482,
+ m:"Longgang · 4.4★",d:"The village that once painted most of the world's replica Van Goghs, now half copies and half original studios. Watch artists work; a framed oil starts around US$10. Prices aren't fixed, but don't push past ~30% off.",
+ g:"https://maps.google.com/?cid=16642536671894477251",
+ p:P+"AG9NLjBwrjvu-YEJd2DpbcRRNms4TOTTVkUKgJZbID_0zBPl8r1S9Fm3Z8LhzJyUUaeb7B8QJag90ueWeLlVyKkev4QrQ0_g97Nk34-0wbc5RwC9Ui9tk6oxwTjq7VeVTysqwZVjykA1bmSOL9LQLdMD-hx2UQ=s4800-w800-h600",a:"E.C. Yoong"},
+
+{c:"museum",n:"Guanlan Print Village",zh:"观澜版画村",lat:22.7430236,lng:114.0914136,
+ m:"Longhua · 4.1★",d:"A woodblock printmaking centre built inside a restored Hakka walled village. Usually near-deserted, which is either the charm or the problem. Beautiful architecture; go on a bright day.",
+ g:"https://maps.google.com/?cid=17434029596634841643",
+ p:P+"AG9NLjDckyydc8fsxfatRfjbj2A7o4gqKIrwumnkTQFuB23Wy8mpFYlpIE5oJeLFXbdBkNatI1KIcCA3eLOhZHliLkOAoIQbuoazdVp59U4WmozJ3RjNMUsxRDq4hKOEaRvcVEIyV0J5s6VfMs6kNQo=s4800-w800-h600",a:"Olga"},
+
+{c:"nature",n:"Fairy Lake Botanical Garden",zh:"仙湖植物园",lat:22.5775992,lng:114.1825737,
+ m:"Luohu · 4.2★ · ¥15",d:"Enormous — Butterfly Valley, a bonsai garden, a petrified forest, and Hongfa Temple inside the grounds. Pay the ¥10 for the shuttle; walking it is a mistake. Easily a full day.",
+ g:"https://maps.google.com/?cid=999493577053934427",
+ p:P+"AG9NLjBpiKfOW45mH_ufgdX79otOX8AFWqj2ikm9vA-6qDRNcQFVvIxm4uq65WLk1ELdnxat8LIz0iqV-KoGLqOR8Epgc2n-Qzo0IUPVftWHOcCBSiW3PToES1XrkPyCFm8odvO9CIJMMRzFwuo-Dg=s4800-w800-h600",a:"ho kavin"},
+
+{c:"nature",n:"Shenzhen Bay Park",zh:"深圳湾公园",lat:22.506537,lng:113.95348,
+ m:"Nanshan · 4.7★ · Free",d:"13km of coastal path looking straight across the water at Hong Kong's hills. Rent a bike. Migratory birds in winter, and drone-delivered bubble tea year round — which tells you everything about this city.",
+ g:"https://maps.google.com/?cid=1396721827355539031",
+ p:P+"AG9NLjCsaiEdEEZXcl19Y88JV1cD1oOkmxB3s_XOUfrMEEzw53KODtn0NOpmJVH8io0P_QhcT01A9q3uSgv9y6XiHvjOVXqT23aqlgm0NAihwJpi_NpdsHmC2n3qZI2ZGqE2f1BXJU91fhND0FDSpBo=s4800-w800-h600",a:"Brandonn Lu"},
+
+{c:"nature",n:"Talent Park",zh:"人才公园",lat:22.5112161,lng:113.9462257,
+ m:"Nanshan · 4.7★ · Free",d:"Come at 7pm: the towers across the water light up in sequence, with song lyrics scrolling across the facades. Peak Shenzhen. Seven minutes' walk to MixC mall afterwards.",
+ g:"https://maps.google.com/?cid=14618263513849415153",
+ p:P+"AG9NLjCgZBotUZIbP-8tXRzH6-8Bem9By1GO7Edl91QyS3y7FCJLFTxjZZo39RANSiJOqiIJ-6nUbKn5Wye3wNOosJZTFBsQ0cbnMNaBq17XxLsIBHziCbWnOgCwGjZzAw0eoDTt62OxezY1GAl61w=s4800-w800-h600",a:"Jog of the town CHANNEL"},
+
+{c:"nature",n:"Dameisha Beach",zh:"大梅沙海滨公园",lat:22.5948,lng:114.309105,
+ m:"Yantian · 4.3★ · Free",d:"The city beach, now with its own metro stop (exit A). Clean sand, soft water, and absolutely rammed at weekends. Go on a weekday or don't go.",
+ g:"https://maps.google.com/?cid=316758268567998334",
+ p:P+"AG9NLjARlOugFL0dul2sD1QxTkkH2rSFZpSm1eub2IPzjFYfGmE6_WjTYFvB7adZ18-DXBdcUISzOl3EJc_PT4EZQeX9VSgnz5KBONGvjsQIFOjql3hkG2XfgVlb1-KJt47R5OIKLQTa2TfZxWjkyg=s4800-w800-h600",a:"SK"},
+
+{c:"harbour",n:"Sea World",zh:"海上世界",lat:22.48329,lng:113.916127,
+ m:"Shekou · 4.5★",d:"A beached 1960s French liner — once Charles de Gaulle's flagship, now a hotel and restaurant — surrounded by bars and a fountain show. Shekou's social centre and the best evening in Nanshan. Go after dark.",
+ g:"https://maps.google.com/?cid=17642895653236131489",
+ p:P+"AG9NLjCn8T8Up8ZrTv6YAr7f5QdM32jUaMDrzF8Lq92Um9AiaeXQNy84AyX_NmfxiKHdMCL1x7vqRpBsITx2QarNf29BPwD7b16SSky2s3RrpB0HRlNR3i1cr3owb8n7rP-IIM64JOck1SatRvM_hk544P9uVw=s4800-w800-h600",a:"CC"},
+
+{c:"harbour",n:"Shekou Fishing Harbour",zh:"蛇口渔港",lat:22.479047,lng:113.92729,
+ m:"Nanshan · 4.6★",d:"Blue boats, drying nets and fishermen selling the catch straight off the deck. Ten minutes from Sea World's polish and a completely different city. Best at sunset.",
+ g:"https://maps.google.com/?cid=6846501983391438141",
+ p:P+"AG9NLjB4WtALD57GrMKyI14LpJJnsJORZhdBvVENhyH10zkJ94Pu0WuCaf1GcVxwivov1pSNWuz0NYQWYmJJ7kbu-Gq9hrWtguj3vHRBc2DxKFWGuOp8EBeVcjnyvYmVs9r_Q3sykmibwMehowHaQj4=s4800-w800-h600",a:"方甜"},
+
+{c:"heritage",n:"Nantou Ancient Town",zh:"南头古城",lat:22.540857,lng:113.920009,
+ m:"Nanshan · 4.3★ · Free",d:"A 1,700-year-old walled town that Shenzhen grew around and then swallowed — now a maze of Ming gates, urban-village housing, tiny free museums and third-wave cafés. The most interesting two hours in the city. Five minutes from the metro.",
+ g:"https://maps.google.com/?cid=1350757895288715882",
+ p:P+"AG9NLjCX5kQYcrDTW3swxTYlI1iHzbCzA5I5q5nNN5k7wnhXknz-xe5byzQXZr2CkyY35oqZAwLDHdTGKKWP2dyqlYBDIAOi2gXTQb2nxsy9Ykgu0wBv-xu8QiPGkRtadCoA8lTfasB7VAOBOAEsF7DKbTsVVA=s4800-w800-h600",a:"Shikuray.T"},
+
+{c:"heritage",n:"Dapeng Fortress",zh:"大鹏所城",lat:22.594195,lng:114.513201,
+ m:"Dapeng · 4.0★ · Free",d:"A Ming coastal garrison, remarkably intact and still lived in — generals' residences, ancestral halls, barrel-vaulted barns. Its deputy commander once ran the Kowloon Walled City. Two hours out by taxi; barely known even locally.",
+ g:"https://maps.google.com/?cid=15226678187337535375",
+ p:P+"AG9NLjB7XMCRTVk7zEyqW9UWm5QOJdMYRnnoniePQJcHC_En5Mcic40oDd17VdTop1c0_74zXUjuWzdmbV7WD3dhKTB2MG5rfaZiadlJMDK0vR5aLkb8zEpEJ0t4JSakKIJkpBlmZqqTtEohFA-RSr4=s4800-w800-h600",a:"Rob Moreno"},
+
+{c:"heritage",n:"Gankeng Hakka Townlet",zh:"甘坑客家小镇",lat:22.65652,lng:114.10368,
+ m:"Longgang · 4.2★",d:"Restored Hakka village, heavily commercialised — expect costume rental and food stalls more than history. Genuinely pretty at night when the lanterns come on. Metro Line 10 to Gankeng, then a ¥2 shuttle.",
+ g:"https://maps.google.com/?cid=10288499678619130751",
+ p:P+"AG9NLjDoL6xlgHQNjDAjKpflBIuQhNurWFfbTREe1E7uAm-CrBYIxi72nYIPf2WvdQSBJCgJIBwC2K26awq-SXMfCVDi3buEpxjv6L8Ng0BbnpzaJmCM4BcLHH1WDPofZvr2zE_QWOTwFzFCGB1AAg=s4800-w800-h600",a:"黄诚浩"},
+
+{c:"heritage",n:"Longgang Hakka Museum",zh:"深圳（龙岗）客家民俗博物馆",lat:22.727755,lng:114.266206,
+ m:"Longgang · 4.2★ · Free",d:"Set in Crane Lake New Residence, the vast fortified Luo family estate — a maze of courtyards and exhibit rooms. Free, central to Longgang, and the real thing rather than the themed version. Allow 2–3 hours.",
+ g:"https://maps.google.com/?cid=13050205222465618007",
+ p:P+"AG9NLjCU44rfWsjuQkMTHTd71rB8K2mX-wwMuhcNvNMnLlguEPHy0fH4dPpbSc-MdUAc4B23Ri05hx5w6Q1tUBuaRla1nBSII4RgYayNTwDzCYJw_v6KI_fu5ZlwXbHCZVa0JpbHI1IlKzfFKkH1LA=s4800-w800-h600",a:"pete lam"},
+
+{c:"food",n:"Coco Park",zh:"购物公园",lat:22.53323,lng:114.054448,
+ m:"Futian · 4.3★ · 10am–10pm",d:"Not really one mall but a whole connected district of them, with the city's densest run of bars and restaurants around the outdoor blocks. Where Futian goes at night.",
+ g:"https://maps.google.com/?cid=281949399165496716",
+ p:P+"AG9NLjDTHbhcxIbsWnaKu52Fszdiq_AqTnkHRo8eIx_mXnGBhy_h_SttJipeNK766YixrCLR6ocEQR9lui_3t6SUrI1gKVnWPUrrcG0VUnq7m2mKjswr7EBM1t6bMC8Hf19kpAYQLoEx5TIsYAvRC9RKK0b5tA=s4800-w800-h600",a:"Ronald WU"},
+
+{c:"themepark",n:"Window of the World",zh:"世界之窗",lat:22.535327,lng:113.975609,
+ m:"Nanshan · 4.4★ · ~¥220",d:"The Eiffel Tower, the pyramids and the Taj Mahal at 1:3 scale, plus rides. Gloriously kitsch and oddly compelling. Arrive around 2pm for the shows; the metro exit is styled as the Louvre.",
+ g:"https://maps.google.com/?cid=5984072049532447602",
+ p:P+"AG9NLjDltSIquAxgQeMQJKNaC8jNv844H362vIiJXwvs-9nFaHug3y50SFZuVpCauimgrzScOmX4KEwwaFu0L-_4ZQo5JlwC0q7i24yJEcatYXqls9hc-YPyhNFjmWBjlnVtbXiK9ZvnOoWIVOSmMr8SRjRQSw=s4800-w800-h600",a:"joe chan"},
+
+{c:"themepark",n:"Splendid China Folk Village",zh:"锦绣中华民俗村",lat:22.5312356,lng:113.9887197,
+ m:"Nanshan · 4.4★",d:"Miniature Great Wall and Terracotta Warriors on one side; live ethnic-minority dance and performance on the other. Sounds naff, plays better than expected — English signage throughout, and half-price tickets online.",
+ g:"https://maps.google.com/?cid=13712736129389968312",
+ p:P+"AG9NLjBBUmi7l84aZ1Bu5-srArb8QAMSqIMrP8hCqdlIeVu-4yk8mHECsniUBLKZE1m-AjYEGIcUTNoVwVhfQ703hLsEylME81r9i3wNcrRJo8MUMEYYe0pZKwft0vwVq2a7rX7SkyRzsvrIXwpp1wo=s4800-w800-h600",a:"Mehman Baltali"},
+
+{c:"themepark",n:"Happy Valley",zh:"深圳欢乐谷",lat:22.5416728,lng:113.9806153,
+ m:"Nanshan · 4.2★ · 9:30am–9:30pm",d:"The proper thrill park of the OCT cluster — decent coasters, plenty of spinning rides, seasonal events. Skip the indoor 'Snow City' if you have kids in tow; it disappoints reliably.",
+ g:"https://maps.google.com/?cid=12629720791850261266",
+ p:P+"AG9NLjCmbp52ow5H7ujH1JuPl1Cnq0icpl4EnV7IsTZAq8lT4SqJViY4q1lrrHZAvXekGR5K_VnBeeXrnZ1UK0dBxxtXkm6SwjjZmJN_wZcsvf1m7a_es_r1Gq5ThF-afR6K7CN09oyeelP0LtdGaw=s4800-w800-h600",a:"Savoir Aimer"}
+];
+
+/* ---------- GCJ-02 → WGS-84 ---------- */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:`<div class="pin" style="background:${CATS[pl.c].color}"></div>`,
+    iconSize:[21,21], iconAnchor:[10,10]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => groups[k].addTo(map));
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = `<input type="checkbox" checked>
+    <span class="swatch" style="background:${CATS[k].color}"></span>
+    <span>${CATS[k].label}</span><span class="n">${n}</span>`;
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet ---------- */
+const sheet=document.getElementById('sheet'), sPhoto=document.getElementById('sPhoto'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn');
+let selected=null;
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  if(pl.p){ sPhoto.src=pl.p; sPhoto.alt=pl.n; sPhoto.classList.remove('none'); }
+  else { sPhoto.removeAttribute('src'); sPhoto.classList.add('none'); }
+  sPhoto.onerror=()=>sPhoto.classList.add('none');
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||"";
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  sCredit.textContent = pl.p ? `Photo: ${pl.a} via Google Maps · Amap link uses the Chinese name` : "Place data © Google";
+  // Amap expects GCJ-02, which is what Google returned — pass through unconverted.
+  navBtn.href=`https://uri.amap.com/marker?position=${pl.lng},${pl.lat}&name=${encodeURIComponent(pl.zh||pl.n)}&src=map&coordinate=gaode`;
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.add('open');
+  map.panTo([pl.wlat,pl.wlng],{animate:true});
+}
+document.getElementById('closeSheet').onclick=()=>{sheet.classList.remove('open');selected=null;};
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? `📍 ${Math.round(d)} m away · ~${Math.max(1,Math.round(d/80))} min walk`
+                               : `📍 ${(d/1000).toFixed(1)} km away`;
+  } else sDist.textContent="";
+}
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>

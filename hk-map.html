@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Hong Kong — Where to Go</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24;
+    --paper:#ffffff;
+    --muted:#5b6472;
+    --line:#e3e7ec;
+    --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    --views:#E8590C;
+    --temple:#C2185B;
+    --market:#F9A825;
+    --museum:#6A1B9A;
+    --nature:#2E7D32;
+    --harbour:#0277BD;
+    --heritage:#5D4037;
+    --food:#00838F;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  /* ---- top bar ---- */
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{
+    pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;
+  }
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  /* ---- controls ---- */
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{
+    width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease;
+  }
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  /* ---- layers panel ---- */
+  .panel{
+    position:absolute;left:12px;top:70px;z-index:1000;width:236px;
+    background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:12px 13px;max-height:calc(100vh - 100px);overflow-y:auto;
+    transform-origin:top left;transition:opacity .18s ease,transform .18s ease;
+  }
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .panel h3+h3{margin-top:15px;padding-top:14px;border-top:1px solid var(--line)}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .key{display:flex;align-items:center;gap:8px;padding:3.5px 0;font-size:12.5px;color:#3c4553}
+  .swatch{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+
+  /* ---- pins ---- */
+  .pin{
+    width:15px;height:15px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);
+  }
+  .pin.big{width:21px;height:21px;border-width:3px}
+  .me-dot{
+    width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3);
+  }
+
+  /* ---- sheet ---- */
+  .sheet{
+    position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:72vh;overflow-y:auto;
+  }
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+  .sheet-photo{width:100%;height:170px;object-fit:cover;display:block;background:#eef1f5;border-radius:20px 20px 0 0}
+  .sheet-photo.none{display:none}
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .grab{width:38px;height:4px;border-radius:2px;background:rgba(255,255,255,.85);margin:0 auto;
+        position:absolute;top:9px;left:50%;transform:translateX(-50%);z-index:2;
+        box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .close-x{
+    position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:2;
+    border:none;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;
+    font-size:15px;cursor:pointer;line-height:1;backdrop-filter:blur(4px);
+  }
+  .tag{
+    display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;
+    text-transform:uppercase;color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px;
+  }
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:5px;line-height:1.25;letter-spacing:-.01em}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.4}
+  .actions{display:flex;gap:10px}
+  .btn{
+    flex:1;display:flex;align-items:center;justify-content:center;gap:8px;
+    padding:13px 10px;border-radius:12px;border:none;cursor:pointer;
+    font-size:14.5px;font-weight:700;text-decoration:none;transition:transform .1s ease;
+  }
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  .toast{
+    position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4;
+  }
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:206px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of Hong Kong places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Hong Kong — Where to Go</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Lists and key" aria-label="Show lists and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Lists</h3>
+  <div id="layerList"></div>
+  <h3>Pin colour = type</h3>
+  <div id="keyList"></div>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grab"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <img class="sheet-photo" id="sPhoto" alt="">
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Navigate
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Open in Maps
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {
+  views:   {label:"Views & peaks",     color:"#E8590C"},
+  temple:  {label:"Temples",           color:"#C2185B"},
+  market:  {label:"Markets & streets", color:"#F9A825"},
+  museum:  {label:"Museums & arts",    color:"#6A1B9A"},
+  nature:  {label:"Parks & beaches",   color:"#2E7D32"},
+  harbour: {label:"Harbour & ferries", color:"#0277BD"},
+  heritage:{label:"Heritage",          color:"#5D4037"},
+  food:    {label:"Food & nightlife",  color:"#00838F"}
+};
+
+const P = "https://lh3.googleusercontent.com/place-photos/";
+
+const LISTS = {
+  best:     {label:"Best of HK & Kowloon", on:true},
+  downtown: {label:"Downtown tour",        on:false},
+  colonial: {label:"Colonial Buildings",   on:false},
+  causeway: {label:"Causeway Bay",         on:false}
+};
+
+const PLACES = [
+/* ===== BEST OF — a week's worth ===== */
+{l:"best",c:"views",n:"Victoria Peak",lat:22.2758835,lng:114.145532,
+ m:"The Peak · 4.6★",d:"The view everyone comes for. Ride the tram up, then walk the quiet Lugard Road loop away from the Peak Tower crowds — the skyline unfolds the whole way round. Best an hour before sunset.",
+ g:"https://maps.google.com/?cid=3328594691076231992",
+ p:P+"AG9NLjCA6JYS87ZkQdtSGmZeUa-fJmrgSaS9asdERrTz2GCt8WcN-m_TNmmBngKmo5gPpVMEOIdU8A9Ly5AWYzHTQUKxg6VLxpoPFTJo4wVBvMfFr8QNsg2EmYfD6ZHZtSd3GFgRbCLKX48wJrm0vZw=s4800-w800-h600",a:"Globetrotter"},
+
+{l:"best",c:"views",n:"Ngong Ping 360",lat:22.2563163,lng:113.9014163,
+ m:"Lantau · 4.5★ · 10am–6pm",d:"A 25-minute cable car over mountains and sea to the Big Buddha, with the airport runway below. Pay up for a Crystal Cabin mainly to skip the queue.",
+ g:"https://maps.google.com/?cid=7908806383351754530",
+ p:P+"AG9NLjCBSDdPR7sVh3gWFA6MqdEbj2sXGJGprOZJmk9BQaOjoGWtYs947tBZhabEGREtSkeyRmTsGsOKp-UdS2OKIL8Jj7LRUZwOSUJAB9PYcUi4WKlexpC0lEH1v7WApeVl3jO8mcYrI4YKJRs2Ig=s4800-w800-h600",a:"Lalida K."},
+
+{l:"best",c:"views",n:"Instagram Pier",lat:22.2889875,lng:114.1337587,
+ m:"Kennedy Town · 4.3★",d:"A working cargo pier that turns into the city's best sunset spot. Locals fish, run and hang out on the pallets. Closest MTR is HKU, exit B2.",
+ g:"https://maps.google.com/?cid=18117255377481661064",
+ p:P+"AG9NLjDA15DiP8JCfq7arCQfaSWNjfAGHwXQWmgcN3AlzR0ZgF_CZCKgWbJK1Frmwt-JivdPg7wn_lmjLVeeGX8hEtqAm7wEoTVzeZGR3EVQZAjtkl3gB5nQEKPxJukzeDoc22pHShiYytlvTEBQzO8=s4800-w800-h600",a:"C.H. Tsai"},
+
+{l:"best",c:"views",n:"Lion Rock",lat:22.3543698,lng:114.1825781,
+ m:"Kowloon · 4.3★ · ~2h up",d:"Steep steps most of the way, wild monkeys en route, and a panorama over all of Kowloon at the top. A cultural icon as much as a hike. Bring plenty of water.",
+ g:"https://maps.google.com/?cid=4302544319777274640",
+ p:P+"AG9NLjA_IFDf37nhPDa5JEbweqUoKFhSLlSgtchFsr5o8p7SeEOvK0JkHT7DGGRWWJ0RYxplCNGcsCTq4sMwsWG0w5ynV7tzjl-PuKZDGMiicFlNEcy9uLxVrKn-OKlWEhXnkmEQ_vONS6z1nxbVGQ=s4800-w800-h600",a:"Abby Thomas"},
+
+{l:"best",c:"temple",n:"Tian Tan Big Buddha",lat:22.2539847,lng:113.904984,
+ m:"Ngong Ping · 4.6★ · 10am–5:30pm",d:"268 steps up to a 34m bronze Buddha seated in the mountains, with Po Lin Monastery below. Go early; the site empties out beautifully once the tour buses leave.",
+ g:"https://maps.google.com/?cid=5552907718704361584",
+ p:P+"AG9NLjAe8zZCeAkSUvzcWw131dO7IMp-Qy3tiBCrQl_fAFNs083twV5p05evWfpBCegfC1UgCqoX4WQBT_dBADxFw2JXkkpb9polzWJ3fTSL4YTsQTn9uaxwRir1NjKsSupXmu19Lyoka7gTZsQm3yAhy_Ju=s4800-w800-h600",a:"Murugan Manokaran"},
+
+{l:"best",c:"temple",n:"Chi Lin Nunnery",lat:22.340498,lng:114.2050575,
+ m:"Diamond Hill · 4.7★ · 9am–4:30pm",d:"Tang-dynasty timber halls built without a single nail, hidden behind Kowloon's tower blocks. The highest-rated stop on this map, and deservedly so. No photos inside the halls.",
+ g:"https://maps.google.com/?cid=15369103422795328966",
+ p:P+"AG9NLjB9wgNA0gKmqUrXwWE0K3eGPvW6P7xf24Mk1jT02ZK860mr8Et2zo6s3qR_Y5fQANLZGRUjSEexpCuOsw255KVFCPXsfFPHH_dF0qZoPROSOmzxjRyl27cgg9TjrrSDNJJt4Uokto33KLZ8lA=s4800-w800-h600",a:"Lewis So"},
+
+{l:"best",c:"temple",n:"Wong Tai Sin Temple",lat:22.3427257,lng:114.1932582,
+ m:"Wong Tai Sin · 4.3★ · 7:30am–4:30pm",d:"Famous for granting wishes — locals shake fortune sticks in clouds of incense. Free, right by the MTR, and busy. Arrive around 8am for the quiet version.",
+ g:"https://maps.google.com/?cid=3859961019732326862",
+ p:P+"AG9NLjBNChGvKxk5Dbv_OBKXphztDzP0XaD7gUCth_m2dsMwMrAqcd2QffIwEesJEby8pduJKJiqCdPY3LCq2716dwaNR-yoDsZaUdn00LYWOCVycqORRPctKkmfO-DiVHqWW50sk0afUNGdX2bV0Q=s4800-w800-h600",a:"Hugo But"},
+
+{l:"best",c:"market",n:"Temple Street Night Market",lat:22.3065185,lng:114.1699805,
+ m:"Jordan · 3.8★ · 2–11pm",d:"Neon, lanterns and clay-pot rice after dark. The southern end is now mostly food stalls — grilled oysters, skewers — which is the better half. Haggle hard on souvenirs.",
+ g:"https://maps.google.com/?cid=13248819550881067940",
+ p:P+"AG9NLjBovgfQ7nMXCYx8MXCxw5YYVG4Xy1gdIExDWUZd0b-lLwiLxbtTBxJmtUQpRU82ylM89yMXsYAhwJnNylI3SUm6u9M8bTnuVBuBxN4n3j2En_cHubKCWDefRLP_tWSmR6dYgrhztRH6pl92dw=s4800-w800-h600",a:"Masahiro Tokuno"},
+
+{l:"best",c:"market",n:"Goldfish Street",lat:22.3228283,lng:114.1699284,
+ m:"Mong Kok · 4.0★ · 11am–9:45pm",d:"Shopfronts hung with bagged fish like living wallpaper — locals keep them for luck. Genuinely strange and very photogenic. Fair warning: conditions upset some visitors.",
+ g:"https://maps.google.com/?cid=5954362366497162843",
+ p:P+"AG9NLjCfCBhBn0pm5eWYnEsRwWgIM5Sq14VvTlFwJCO8opsbQc1izJU2c--J0npgV2R_UyzP3xE5564gEQuLUVV_S1F7KyeEzSQ-wE3aqgXab_QsZl5FxMCejLHI4dltEoXMa6JMc0mTeS16SyCAYUt5zUxVYA=s4800-w800-h600",a:"HB Lam"},
+
+{l:"best",c:"market",n:"Flower Market Road",lat:22.325238,lng:114.1720886,
+ m:"Prince Edward · 4.5★",d:"A whole street of orchids and cut flowers, quieter than you'd expect and smelling wonderful. Chain it with the bird garden next door — they're 200m apart.",
+ g:"https://maps.google.com/?cid=9371582801077620178",
+ p:P+"AG9NLjC9Qg_TK2J89nVr8J7hhDN5mcUHzLqcM51fXDN0_MD23Dn7z9FT2XV3vuUUWg51kTnl0qLamxNjyk0aAwhJUrV6hyxdnIctjsjLZSuAoVFN82jnqnojyY-rmgswNNH261xPEH-PHDIGqod3-w=s4800-w800-h600",a:"Kin Hung Chan"},
+
+{l:"best",c:"market",n:"Yuen Po Street Bird Garden",lat:22.3259661,lng:114.1739511,
+ m:"Prince Edward",d:"Old men bring their songbirds here in bamboo cages to take the air and compare singers. One of the last places you'll see this ritual.",
+ g:"https://maps.google.com/?cid=7496486495516791934",
+ p:P+"AG9NLjBEheu4Lbe5zTRz51hUIfdNZl1VebaplyRPsoUr2TBPu9i4flPxWVJz4N6xVdFwLuGDrpEVZa4SPBcUuVI1GUhizfeqmq448Rb2sZ1uMQ994xckjHsr4DFVssbdruu_5P2d8nZ0eJ0H9B2MEP4=s4800-w800-h600",a:"Daniel Ko"},
+
+{l:"best",c:"market",n:"Apliu Street",lat:22.329942,lng:114.1623347,
+ m:"Sham Shui Po",d:"A sprawling flea market of electronics, cables, vintage hi-fi and junk. The surrounding district is the city's best cheap-eats neighbourhood — do both.",
+ g:"https://maps.google.com/?q=%E9%A6%99%E6%B8%AF%E6%B7%B1%E6%B0%B4%E5%9F%97%E9%B4%A8%E5%AF%AE%E8%A1%97&ftid=0x340400b45c64d88f:0x690b6ec41e1a6a98",
+ p:P+"AG9NLjAYMH-Gv0H3fxOYxnJ2jTeMN7mjo714GUyyCmSSjZkiqK2hmLEGbs1LbTJlqtWwhiGYJ70-WJ-tM2s8cmNM3Mbj-5IUBvWIT0oymg_FZLbfFZtFyZdlo6mQmDVT22QLpst0UHBYGoH_mKjGFQ=s4800-w800-h600",a:"Evan FUNG"},
+
+{l:"best",c:"market",n:"Ladies' Market",lat:22.317609,lng:114.1709284,
+ m:"Mong Kok · 3.9★ · 11am–11:30pm",d:"A kilometre of stalls selling knock-offs and souvenirs. Repetitive and touristy, but iconic — worth a walk-through rather than a special trip. Quieter after 10pm.",
+ g:"https://maps.google.com/?cid=18255385939667396015",
+ p:P+"AG9NLjAWc3D_fA0-_baqzXPr8hpoAmfdoE8Kny8DmZdpgIbmXEvUnssvzfiRbtG3c8DPU-ur5W202q5zBCu-haiCofOBy2IBM1l9hIMGpoLROxUMA0g9vGr2lWsx_NS3dV_rtgYaA_84cOTXbpSI0Lp0ldDCVw=s4800-w800-h600",a:"Pawon Soimut"},
+
+{l:"best",c:"market",n:"Stanley Market",lat:22.2181259,lng:114.212625,
+ m:"Stanley · 4.0★ · 10am–7pm",d:"Seaside village on the far south coast. The market itself is faded, but the bus ride over the hills is spectacular — sit on the upper deck, right side going out.",
+ g:"https://maps.google.com/?cid=17960149278641538645",
+ p:P+"AG9NLjDja8cnf8_QExA7TGZewTPWCp_kV2wMq7BDv65L-BfG4LbTiHctfOhbKhjnCTWkc-2e8UoGv-Fus9vAD8Bt9IpD0u1lSqJ5m5qccuFWvgX5rS1OxQm8_Ly-yN00SF9umjatoYGWjEmzbCsCzw=s4800-w800-h600",a:"Lucky Energy"},
+
+{l:"best",c:"museum",n:"M+",lat:22.3005164,lng:114.1594998,
+ m:"West Kowloon · 4.3★ · Closed Mon",d:"Asia's answer to Tate Modern — visual culture, design and architecture in a huge concrete building. The rooftop harbour view is worth the ticket alone.",
+ g:"https://maps.google.com/?cid=15739563810894928908",
+ p:P+"AG9NLjCfDZveiJcrbk_p-OTit-ENrdnGsXsY9QyN2PsiAdckhrjIvmIN5Qm1KlwSA5j7ywihVbF8l93LO_yoxMTGPnh1jqNdMrH5E4LKPl13OGkzKVvXSaiJLSaC_IxCtmBqPUa9SInXEGUyK64A3BY=s4800-w800-h600",a:"Hideko Murakami"},
+
+{l:"best",c:"museum",n:"Hong Kong Palace Museum",lat:22.3017726,lng:114.1559898,
+ m:"West Kowloon · 4.4★ · Closed Tue",d:"Forbidden City treasures on loan from Beijing, shown against the harbour. Book ahead. It's a five-minute walk from M+, so pair them across one day.",
+ g:"https://maps.google.com/?cid=516169132226152341",
+ p:P+"AG9NLjANjobobMJIZkwEcjEiRZBLux_1qDMBsSyC9lMFmaw55KiEm-Q5efB9Z6IibeHpP6AaNVYL550O6CiDGdDUxHj7wc03mI8fQXRy_pBaoHOf-7TYg5xNQ62wpXopRzAPxGcbK12-NJCDTbSsBz_s2tR-=s4800-w800-h600",a:"KK Yuen"},
+
+{l:"best",c:"museum",n:"Museum of History",lat:22.3018851,lng:114.1772612,
+ m:"Tsim Sha Tsui · 4.3★ · Closed Tue",d:"The place to understand how a fishing settlement became this. Note the flagship 'Hong Kong Story' gallery has been reworked — expect rotating exhibits.",
+ g:"https://maps.google.com/?cid=9387465653202413858",
+ p:P+"AG9NLjDx9cNFbdojZMSig-ZDr9FlKEv4ax6ho_nINHex0vvhFUAjvUNuY4F9gHvHEIlgButoSwrJ6XQlmYMJZ1KdW37qaivgSTUe5B787wPaO_M0NFEh5u3Hsw3zOd5ZS09SOrLkju6CHz4r3nSD2g=s4800-w800-h600",a:"Ginger Luk Reiki"},
+
+{l:"best",c:"museum",n:"Maritime Museum",lat:22.2866116,lng:114.1619992,
+ m:"Central Pier 8 · 4.3★ · HK$30",d:"Small, sharp and built out over the water — ship models, pirate history and a live radar of the harbour traffic outside the window. Great value.",
+ g:"https://maps.google.com/?cid=12617668818569505409",
+ p:P+"AG9NLjDniFK0YkbxdFLb8DLddNYFQ5f7XbdRuku6AUpzsXAIB1hN0oGrxw68UecpNY4XPlgE4XM4V2nnSVRrqFE76ffPQgjh-U-YHtOX4G8b-DM6t2Sp9ufClGVNK_Rf25Eelem_FtMKahBQgBU7jw=s4800-w800-h600",a:"HK Maritime Museum"},
+
+{l:"best",c:"museum",n:"PMQ",lat:22.283328,lng:114.1515669,
+ m:"Sheung Wan",d:"Former police married quarters turned into studios for local designers and makers. Good for gifts that aren't fridge magnets, and there's a decent rooftop.",
+ g:"https://maps.google.com/?cid=6676989976376565510",
+ p:P+"AG9NLjAN5S_r6QdUjd6hm8-FuQS6Hs73AJNcyshWGYMObcaEz1lfHMtZiWJRDD03-rXL73s6OjAhzjjYiat_VhRAdXpRh59ezhPrexQJPn8aHNR5BfT3ba5i1ig9Jjez3oR0uAzeXHXsDbVNp1gi=s4800-w800-h600",a:"Heartrich sit"},
+
+{l:"best",c:"museum",n:"Tai Kwun",lat:22.2811686,lng:114.154023,
+ m:"Central · 8am–11pm · Free",d:"The old Central Police Station and Victoria Prison, restored into a superb arts complex. Free to wander, good bars, and the cell blocks are left largely as they were.",
+ g:"https://maps.google.com/?cid=9149147509840151390",
+ p:P+"AG9NLjCk_O-AXlj4A6TV2PuNeYYlyLyo8hGeDRqebhzBrYQfmkUcLGJUYZwhw5XyIv3POinzzQk-PP9fDn68N_FzYOQp6md2pq_C4fa8em63EfRjsYbP04aiRO7ed4QHFmS4OaIZPJgY7VmNp-GJnA=s4800-w800-h600",a:"Henry Man"},
+
+{l:"best",c:"nature",n:"Dragon's Back",lat:22.2361841,lng:114.2433547,
+ m:"Shek O · ~3h",d:"The city's signature ridge walk — undulating spine with sea on both sides, ending at Big Wave Bay for a swim and a beer. Take bus 9 from Shau Kei Wan.",
+ g:"https://maps.google.com/?cid=9126088486009552202",
+ p:P+"AG9NLjBEXfRWKxVqI_5Q4TSRwjEwNdmzIY8H-LcF2ckI7fI2JJnE_KwJmr5GPvn-gwW1trE2idIm0GpZ-M9-4ve0ofysewi8PU8vehgy6hG7Tt4FXFX9viA1SAXwhk5Hj_AtgzE9LI8l_HWLgTYrGw=s4800-w800-h600",a:"Kingston Chan"},
+
+{l:"best",c:"nature",n:"Shek O Beach",lat:22.228976,lng:114.2511234,
+ m:"Shek O · 4.3★",d:"Clean sand, real waves, and a sleepy village behind it. The natural end point of the Dragon's Back walk. Winter is the local favourite — empty, big surf.",
+ g:"https://maps.google.com/?cid=16528565667022636550",
+ p:P+"AG9NLjBoZru1UOVSO3c2-RLRYHECukNNSbWIGaFXPZU2sh7LDih_HNvwCTN7x8lwhDlFyQdrlS_5_oASetrUqeki4xDnccfpVSF9Fcbb2r3Zlcj4pwjK9wTgspgKblfVYmzI0INuGmpsg48tlqn1=s4800-w800-h600",a:"Andrew Kwong"},
+
+{l:"best",c:"nature",n:"Repulse Bay Beach",lat:22.2367659,lng:114.1963252,
+ m:"Repulse Bay · 4.5★",d:"The easy beach — 25 minutes by bus from Central, fine sand, calm water, lifeguards and bars right behind. Less wild than Shek O, far less effort.",
+ g:"https://maps.google.com/?cid=13409871788011637640",
+ p:P+"AG9NLjCUXcD-7Sj0yq4XgHQAUMHwP_2qA4vZpxDgWlxq6EJSLQqi2MHMosTcwGd4uqhf8l50LbzDGWs1672KjU629lEH6s_5VvYNIPJNgKpdzz5vkGlPtnL2dUMXLdrYgqggOvh-1ulQAAaBqKcnbQ=s4800-w800-h600",a:"Funny C"},
+
+{l:"best",c:"nature",n:"Nan Lian Garden",lat:22.3396114,lng:114.2045149,
+ m:"Diamond Hill · 4.6★ · 7am–9pm · Free",d:"Tang-style garden of rocks, pines and a golden pavilion, connected to Chi Lin Nunnery by a bridge. Immaculate. The surrounding highways do intrude on the calm.",
+ g:"https://maps.google.com/?cid=17252081587366620367",
+ p:P+"AG9NLjCN9HVJ_c5ux4bwtoa2oqCFgYM2S8SsoG1T-YLFT0OOaDOuwdtryDpH88x-f6Ee3JRbSIlrHWRCZsmoRZ4dmPPxvR9WBzf8Yi_srV3nsMEkpr_RO8wn5qsyoLJgf8E3Yi_NGgrWmZ4dcdtgySM=s4800-w800-h600",a:"Siu Ming Lau"},
+
+{l:"best",c:"nature",n:"Kowloon Walled City Park",lat:22.3321296,lng:114.1903285,
+ m:"Kowloon City · 4.3★ · 6:30am–11pm",d:"A Qing-dynasty garden on the site of the world's densest slum, demolished in 1993. The on-site exhibition recreating the Walled City is the reason to come.",
+ g:"https://maps.google.com/?cid=8650338345982234270",
+ p:P+"AG9NLjAYPCIrt8hYaasLKPL48IEw_D4g6CZ3szZ9fV2drLmBcsPHyDnXgMcWGr9XbC93QuOymKxoWCMn1rGFjY_wWRy9uNDq3N_jCroa3fGvr9BYqMn2gFmFFaWPjb1EpHJSWwG99o2N9nx82lGBYg=s4800-w800-h531",a:"SPCA663 Little B"},
+
+{l:"best",c:"nature",n:"Zoological & Botanical Gardens",lat:22.2767651,lng:114.156037,
+ m:"Central · 4.3★ · Free",d:"Hilly, free, and improbably good — orangutans, lemurs, cranes and a fountain, ten minutes uphill from the banks. A fine place to end a walk down from the Peak.",
+ g:"https://maps.google.com/?cid=8059152751233705969",
+ p:P+"AG9NLjA6SE3SQ7h0l9P46MUZXE7zPbkWkbDzk463g4RB7K8sVoSFWPhC5lJJLJ8WAlgORibBRgyVqVLjgSh-6wl9K3hS5xJ-waV63myfwYZVnsTyrE5nCJV-gzvn1_uo88uUa2fGmEg1MhAwcWFPEQ=s4800-w630-h472",a:"Tourist Attraction"},
+
+{l:"best",c:"nature",n:"Kowloon Park",lat:22.3003928,lng:114.1707929,
+ m:"Tsim Sha Tsui · 4.5★ · 5am–midnight",d:"Flamingos, ponds and shaded paths in the middle of Nathan Road's chaos. Best used as a breather between TST museums and the markets north.",
+ g:"https://maps.google.com/?cid=1127421016984194028",
+ p:P+"AG9NLjCA3u_UYY77S2ycIl4VK2pAUco8fZggfx8_YQFNtLggwtRh47gQHbzqL6gg_r0X8pSUjaFiZtaN5COnSVoeUD-YeoFj0aRhiqrddxmAjApNL5yTtpjboe-ojmBpntD76x233x6zONS_JAJT=s4800-w800-h600",a:"David Chick"},
+
+{l:"best",c:"harbour",n:"Star Ferry",lat:22.293763,lng:114.168748,
+ m:"TST Pier · 4.5★ · ~HK$5",d:"The best-value view on earth. Ten minutes across Victoria Harbour on a boat unchanged since the 1950s. Take it at night, sit on the lower deck, tap your card.",
+ g:"https://maps.google.com/?cid=16372217752150918290",
+ p:P+"AG9NLjC39v4d6sCi5J0D9pfEtbDnZvX9uEPNNiroAfm0XTK-C5UhaKhV8ioxSAS-x0RI7Vg4ZXmlzkber59Fedsbb3A-Rb08i1bBrHNDY3fYz_KZ9NBTcnYECzR4d6LmeS4F61Q5mRM-QbehiJXOvxc=s4800-w800-h600",a:"Pat Chun Chan"},
+
+{l:"best",c:"harbour",n:"Avenue of Stars",lat:22.2930046,lng:114.1741517,
+ m:"Tsim Sha Tsui · 4.3★ · 24h",d:"The TST promenade — Bruce Lee's statue, handprints, and the front-row seat for the Symphony of Lights at 8pm. The skyline, not the plaques, is the point.",
+ g:"https://maps.google.com/?cid=11101468419363059150",
+ p:P+"AG9NLjAAKAIHI2YDvP90nBUcHCRCXTdrsOiYyCfOw1YNmQwZxwtqDOu37IqO54tN-nI01OdHvAHTQWuX7tZbsbuX3xZZofxTpivlmhwXl7ZAXlH18tMxOFei4qHDu-lQCs1Zl37QAE4E7cdRiYdM=s4800-w800-h600",a:"Karney Li"},
+
+{l:"best",c:"harbour",n:"Clock Tower",lat:22.2935624,lng:114.1695528,
+ m:"Tsim Sha Tsui · 4.4★ · 24h",d:"All that survives of the old Kowloon–Canton railway terminus, where passengers once arrived having crossed Asia. Right beside the Star Ferry pier.",
+ g:"https://maps.google.com/?cid=10393691699546794536",
+ p:P+"AG9NLjCpgrJINBvvqjYR__ND1niSPZgQ4WDpRInZBJln5rwxWl5uc0xa61rcNh0ppR3Vcr9b0MSxmFfD1bAT2LMzHlOptj2trojbkj6MryO-v2mn9uIwZAD2AdvhLXiG-0I_CmkzhoYhK1h5eaY-=s4800-w800-h600",a:"Clock Tower"},
+
+{l:"best",c:"harbour",n:"Aberdeen Sampan Ride",lat:22.2468532,lng:114.1592058,
+ m:"Aberdeen · 4.1★ · ~20 min",d:"A little wooden boat weaves through the typhoon shelter past houseboats and junks — a glimpse of the fishing community the city grew from. Negotiate at the pier.",
+ g:"https://maps.google.com/?cid=10512858014365048696",
+ p:P+"AG9NLjAnK9FDBcj6ccRs8jygndzOkf1C72lwjAcn4eH_NvnvtS-pvDvarMddSbGEDJapNf3Bs6N_dbigQl6mX8mXvBIQlLna21UIbnzHMSH3QHqhQSt55Z7PbkCGCX-Afe3HsjB1WqxfYwY1KIPZ=s4800-w800-h600",a:"Tom"},
+
+{l:"best",c:"heritage",n:"Tai O Fishing Village",lat:22.2525111,lng:113.861075,
+ m:"Lantau · 4.3★",d:"Stilt houses over tidal creeks, shrimp paste drying in the sun, and boat trips out to spot pink dolphins. The 'Venice of the Orient' — slow, salty and unlike anywhere else in HK.",
+ g:"https://maps.google.com/?cid=8039283459564625042",
+ p:P+"AG9NLjCCXWIP2TtBykw6wqX4Pnu5WkmjcnY4jFfhOpPNtul8VSygwplscZu8dVMzG1CYRWJbqj12Y1JmtZSkI55dVd0_qfxHC1rLWQa95W5kIPwNKWkXmBzpkUcFiy_Mbgk_eHaDeCAKt5FIdsviyJHqATFLcg=s4800-w800-h600",a:"黃偉利"},
+
+{l:"best",c:"heritage",n:"Cheung Chau",lat:22.2016179,lng:114.0265007,
+ m:"Island · 4.4★ · ~40 min ferry",d:"Car-free dumbbell-shaped island of bikes, seafood shacks and beaches. The easiest way to see that Hong Kong isn't only concrete. Ferries from Central Pier 5.",
+ g:"https://maps.google.com/?cid=12925377474469728458",
+ p:P+"AG9NLjC_T3-Q2Byb2-L7rPk-BzUr_rZYqoBmTsgU9OSbFVC6BP0-hK_mieE0Sw1W_NyComE40PM1w6DCwzUHNW2VRnqxCniv6V5WS6MdM0wxo9RJHI989Ei3E9cvifM8DFX-xMVfO5uJaRRFsdcX5EzrwfuJug=s4800-w800-h600",a:"David Florimond"},
+
+{l:"best",c:"heritage",n:"Lamma Island",lat:22.2263105,lng:114.1088152,
+ m:"Yung Shue Wan · 4.0★",d:"No cars, expat cafés, and a 1.5-hour path across the island from Yung Shue Wan to the seafood restaurants at Sok Kwu Wan. Ferry in one end, out the other.",
+ g:"https://maps.google.com/?cid=6347582234825451422",
+ p:P+"AG9NLjBSBZBFtp10vwUA8DS7nhfgMXveVzMYp2THpWlrVjPnzle7IaQZxi2Zazec4npGnjvCiTp06C7AJkDzrDWmzct-lOscAo9EweaiQPXxiEhXzfjwF3VmgtKWfN9DMgar65cZFo5YwIRxH_J_qw=s4800-w800-h600",a:"Michael Emmenegger"},
+
+{l:"best",c:"heritage",n:"Blue House",lat:22.2739309,lng:114.1741481,
+ m:"Wan Chai · 4.1★ · Closed Wed",d:"A bright blue 1920s tenement, still lived in, saved by its residents and awarded by UNESCO. Start here and walk back to Central through Wan Chai's markets.",
+ g:"https://maps.google.com/?cid=9229108788140704835",
+ p:P+"AG9NLjDkVPs-ONRkgvSW3BEj439qtw0GY1l-sfLeA81w0McF_xfhdvcDQuLkkWwlIcYJ-TRhF0g3dZHicBSoJD2XaiXhnbf7sYj1DdJylo84c-2JopOmBLx3qDjZBNo0HAckjyddzMWfYfo3ZEvjKMY=s4800-w800-h600",a:"Dr. Z. W."},
+
+{l:"best",c:"heritage",n:"Choi Hung Estate",lat:22.3345262,lng:114.2071925,
+ m:"Ngau Chi Wan · 4.3★",d:"A 1964 housing estate painted in rainbow stripes, with a basketball court on the car-park roof. Go on a weekday around 10am. Bring your own ball; it's residents' home, so keep it quiet.",
+ g:"https://maps.google.com/?cid=13137758586452383659",
+ p:P+"AG9NLjANhLY_RVgxZNhuhiZQnY0l62OwAjNvKug8rhIxBfC7E2F1wLeJFuV6Jqu3VOCCJ0XL5ezvmQ24-kZ2xL2wMSYG97A9nmEi00Kxo5BFoMJeRJQUTTkYxmPETTsktynskIMLEH6R23WROKyspw=s4800-w800-h600",a:"Joseph Chan"},
+
+{l:"best",c:"food",n:"Happy Valley Racecourse",lat:22.2718214,lng:114.1806169,
+ m:"Happy Valley · 4.5★ · Wed 5–11pm",d:"Wednesday night racing under floodlights, ringed by tower blocks. HK$10 entry (free with a passport), cheap beer, live music. The single best night out in the city.",
+ g:"https://maps.google.com/?cid=17958700862111961242",
+ p:P+"AG9NLjA7weE-PmvWJss8HruBZdEVdwCbcMbubx1vDGdjqPCiM7eu9PdafkkhzPZJZJ7w551XvPvn5v8SgD1aCVAMpuYcMcDkfhZq-OHB4rE8wYq5vYy5SIajEbldMPJcmmzPQrdQCv1__AKflGuTrm4nSqVrJA=s4800-w800-h600",a:"Alex Fung"},
+
+{l:"best",c:"food",n:"The Peninsula",lat:22.2951024,lng:114.1718537,
+ m:"Tsim Sha Tsui · 4.6★",d:"Afternoon tea in the colonnaded lobby of HK's grande dame, string quartet on the balcony. No reservations — turn up early or expect to queue. Smart dress.",
+ g:"https://maps.google.com/?cid=17267874180162557099",
+ p:P+"AG9NLjChz9b93k4LBe3yG3Gr94ffl1Hks3YehHtl0DVy0_lPr737FOxTRP2qLy48-Qk_OjAvH5k7DQAqCQHZYmS4RryVmN5sYSaznd7PYYluntMigV4hPaJ4epCt-reYo1_kiDJz_u760HgfYRkcz-X1uOr-EA=s4800-w752-h478",a:"The Peninsula Hong Kong"},
+
+/* ===== DOWNTOWN INTRODUCTION TOUR ===== */
+{l:"downtown",c:"nature",n:"1. Hong Kong Park",lat:22.2769477,lng:114.1608187,m:"Downtown tour · Stop 1",d:"Lush oasis with a walk-through aviary, conservatory and waterfalls.",g:"https://maps.google.com/?cid=639489834470487389"},
+{l:"downtown",c:"heritage",n:"2. St. John's Cathedral",lat:22.2787367,lng:114.1597309,m:"Downtown tour · Stop 2",d:"The oldest surviving Anglican church in East Asia (1849).",g:"https://maps.google.com/?cid=13222759991106803074"},
+{l:"downtown",c:"nature",n:"3. Chater Garden",lat:22.2804504,lng:114.16122,m:"Downtown tour · Stop 3",d:"Small formal park with a tree walk and water features.",g:"https://maps.google.com/?cid=4648869047845144151"},
+{l:"downtown",c:"heritage",n:"4. Statue Square",lat:22.2810802,lng:114.1598129,m:"Downtown tour · Stop 4",d:"Historic square framed by the HSBC building. Lively on Sundays.",g:"https://maps.google.com/?cid=12492421083777191336"},
+{l:"downtown",c:"market",n:"5. Li Yuen Street East",lat:22.2827949,lng:114.1563871,m:"Downtown tour · Stop 5",d:"Narrow alley packed with clothing and trinket stalls.",g:"https://maps.google.com/?cid=3224010009604875688"},
+{l:"downtown",c:"food",n:"6. Lan Kwai Fong",lat:22.2806973,lng:114.1555456,m:"Downtown tour · Stop 6",d:"The famous nightlife quarter — bars, restaurants, street energy.",g:"https://maps.google.com/?cid=12643130716378474702"},
+{l:"downtown",c:"market",n:"7. Graham Street Market",lat:22.2829471,lng:114.1535569,m:"Downtown tour · Stop 7",d:"Historic open-air produce market near the escalators.",g:"https://maps.google.com/?cid=5772947836207037060"},
+{l:"downtown",c:"heritage",n:"8. Mid-Levels Escalators",lat:22.2838464,lng:114.1549689,m:"Downtown tour · Stop 8",d:"The world's longest outdoor covered escalator system (800m).",g:"https://maps.google.com/?cid=2797888173960283504"},
+{l:"downtown",c:"temple",n:"9. Man Mo Temple",lat:22.2839729,lng:114.1501999,m:"Downtown tour · Stop 9",d:"Atmospheric 1847 temple with giant hanging incense coils.",g:"https://maps.google.com/?cid=1534238293208784867"},
+{l:"downtown",c:"heritage",n:"10. Ladder Street",lat:22.2838796,lng:114.1498374,m:"Downtown tour · Stop 10",d:"Historic stone stepped street climbing to Caine Road.",g:"https://maps.google.com/?cid=8917060320149431716"},
+{l:"downtown",c:"market",n:"11. Cat Street Market",lat:22.2851261,lng:114.1493694,m:"Downtown tour · Stop 11",d:"Antiques and curio flea market on Upper Lascar Row.",g:"https://maps.google.com/?cid=8391373790670143822"},
+{l:"downtown",c:"heritage",n:"12. Possession Street",lat:22.285952,lng:114.1483848,m:"Downtown tour · Stop 12",d:"Where the British flag was first raised in 1841.",g:"https://maps.google.com/?cid=9730681252896633215"},
+{l:"downtown",c:"heritage",n:"13. Western Market",lat:22.287287,lng:114.150392,m:"Downtown tour · Stop 13",d:"Restored Edwardian shopping hall from 1906.",g:"https://maps.google.com/?cid=2916570649479651680"},
+
+/* ===== COLONIAL BUILDINGS TOUR ===== */
+{l:"colonial",c:"museum",n:"1. Flagstaff House",lat:22.2784318,lng:114.1625347,m:"Colonial tour · Stop 1",d:"Earliest surviving Western building in HK (1840s), now the Museum of Tea Ware.",g:"https://maps.google.com/?cid=87634809113475317"},
+{l:"colonial",c:"heritage",n:"2. Legislative Council Building",lat:22.280792,lng:114.165578,m:"Colonial tour · Stop 2",d:"Neoclassical granite landmark of 1912, formerly the Supreme Court.",g:"https://maps.google.com/?cid=18111979647168168613"},
+{l:"colonial",c:"heritage",n:"3. Court of Final Appeal",lat:22.2809281,lng:114.1604285,m:"Colonial tour · Stop 3",d:"The red-brick former French Mission Building (1917).",g:"https://maps.google.com/?cid=259640621430558949"},
+{l:"colonial",c:"heritage",n:"4. Government House",lat:22.2786766,lng:114.1574514,m:"Colonial tour · Stop 4",d:"Governors' residence from 1855 — Tudor, Georgian and Japanese elements.",g:"https://maps.google.com/?cid=13676642332593278228"},
+{l:"colonial",c:"heritage",n:"5. Old Dairy Farm Depot",lat:22.2802398,lng:114.1557172,m:"Colonial tour · Stop 5",d:"1892 cold store in 'blood and bandages' brick — now the Fringe Club.",g:"https://maps.google.com/?cid=8407030681194159345"},
+{l:"colonial",c:"heritage",n:"6. Central Magistracy",lat:22.2811686,lng:114.154023,m:"Colonial tour · Stop 6",d:"The colony's judicial hub (1913), now part of Tai Kwun.",g:"https://maps.google.com/?cid=12491884607023708875"},
+{l:"colonial",c:"heritage",n:"7. Central Police Station",lat:22.2812686,lng:114.154123,m:"Colonial tour · Stop 7",d:"1860s police compound with Victoria Prison, restored as Tai Kwun.",g:"https://maps.google.com/?cid=5216991637954630797"},
+
+/* ===== CAUSEWAY BAY TOUR ===== */
+{l:"causeway",c:"market",n:"1. Times Square",lat:22.278151,lng:114.1821136,m:"Causeway Bay tour · Stop 1",d:"Landmark shopping mall with a giant LED display.",g:"https://maps.google.com/?cid=17172091327578073619"},
+{l:"causeway",c:"museum",n:"2. Po Leung Kuk Museum",lat:22.2764869,lng:114.1848496,m:"Causeway Bay tour · Stop 2",d:"History of a charitable body that shaped HK's social welfare.",g:"https://maps.google.com/?cid=2827703099565596918"},
+{l:"causeway",c:"market",n:"3. Sogo",lat:22.2804272,lng:114.1843032,m:"Causeway Bay tour · Stop 3",d:"One of HK's largest department stores.",g:"https://maps.google.com/?cid=5764092068475717455"},
+{l:"causeway",c:"nature",n:"4. Victoria Park",lat:22.2823565,lng:114.1886969,m:"Causeway Bay tour · Stop 4",d:"Green escape for a stroll or Tai Chi between shopping stops.",g:"https://maps.google.com/?cid=6624970667899221214"},
+{l:"causeway",c:"heritage",n:"5. Noon Day Gun",lat:22.2825542,lng:114.1837567,m:"Causeway Bay tour · Stop 5",d:"Fired daily at noon for over a century. Access via the underpass.",g:"https://maps.google.com/?cid=1122862715870356257"}
+];
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(LISTS).forEach(k => groups[k] = L.layerGroup());
+
+PLACES.forEach(pl => {
+  const col = CATS[pl.c].color;
+  const isBest = pl.l === "best";
+  const icon = L.divIcon({
+    className:'',
+    html:`<div class="pin ${isBest?'big':''}" style="background:${col}"></div>`,
+    iconSize:isBest?[21,21]:[15,15], iconAnchor:isBest?[10,10]:[7,7]
+  });
+  const mk = L.marker([pl.lat,pl.lng],{icon, title:pl.n, riseOnHover:true});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.l]);
+});
+
+Object.keys(LISTS).forEach(k => { if(LISTS[k].on) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>LISTS[p.l].on).map(p=>[p.lat,p.lng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.lat,p.lng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const layerList = document.getElementById('layerList');
+Object.keys(LISTS).forEach(k=>{
+  const n = PLACES.filter(p=>p.l===k).length;
+  const row = document.createElement('label');
+  row.className = 'layer';
+  row.innerHTML = `<input type="checkbox" ${LISTS[k].on?'checked':''}><span>${LISTS[k].label}</span><span class="n">${n}</span>`;
+  row.querySelector('input').onchange = e=>{
+    LISTS[k].on = e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  layerList.appendChild(row);
+});
+const keyList = document.getElementById('keyList');
+Object.values(CATS).forEach(c=>{
+  const row = document.createElement('div');
+  row.className='key';
+  row.innerHTML = `<span class="swatch" style="background:${c.color}"></span>${c.label}`;
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>LISTS[p.l].on).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel = document.getElementById('panel'), layersBtn = document.getElementById('layersBtn');
+layersBtn.onclick = ()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet ---------- */
+const sheet=document.getElementById('sheet'), sPhoto=document.getElementById('sPhoto'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sMeta=document.getElementById('sMeta'), sDesc=document.getElementById('sDesc'),
+      sDist=document.getElementById('sDist'), sCredit=document.getElementById('sCredit'),
+      navBtn=document.getElementById('navBtn'), gmapBtn=document.getElementById('gmapBtn');
+let selected=null;
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  if(pl.p){ sPhoto.src=pl.p; sPhoto.alt=pl.n; sPhoto.classList.remove('none'); }
+  else { sPhoto.removeAttribute('src'); sPhoto.classList.add('none'); }
+  sPhoto.onerror = ()=> sPhoto.classList.add('none');
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  sCredit.textContent = pl.p ? `Photo: ${pl.a} via Google Maps` : "Place data © Google";
+  navBtn.href=`https://www.google.com/maps/dir/?api=1&destination=${pl.lat},${pl.lng}&travelmode=transit`;
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.add('open');
+  map.panTo([pl.lat,pl.lng],{animate:true});
+}
+document.getElementById('closeSheet').onclick=()=>{sheet.classList.remove('open');selected=null;};
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req = el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame = (window.self !== window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,15);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.lat,selected.lng]);
+    sDist.textContent = d<1000 ? `📍 ${Math.round(d)} m away · ~${Math.max(1,Math.round(d/80))} min walk`
+                               : `📍 ${(d/1000).toFixed(1)} km away`;
+  } else sDist.textContent="";
+}
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
