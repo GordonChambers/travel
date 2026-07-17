@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Danxia & Shaoguan</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{width:21px;height:21px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Danxia & Shaoguan</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Google Maps has no usable navigation inside mainland China — use the <b>Amap</b> button, or Baidu/Didi. Coordinates are datum-corrected for this basemap. Photos are traveller submissions from Google and are shown as a gallery — swipe if the first one is unhelpful.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Amap
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Google
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {
+  views:    {label:"Views & peaks",     color:"#E8590C"},
+  temple:   {label:"Temples",           color:"#C2185B"},
+  market:   {label:"Markets & streets", color:"#F9A825"},
+  museum:   {label:"Museums & arts",    color:"#6A1B9A"},
+  nature:   {label:"Parks & nature",    color:"#2E7D32"},
+  harbour:  {label:"Water & coast",     color:"#0277BD"},
+  heritage: {label:"Heritage",          color:"#5D4037"},
+  food:     {label:"Food & nightlife",  color:"#00838F"},
+  themepark:{label:"Theme parks",       color:"#546E7A"}
+};
+const PLACES = [{"c": "views", "n": "Danxia Mountain", "zh": "丹霞山", "lat": 25.02433, "lng": 113.744519, "m": "Renhua · 4.5★ · ¥50 · UNESCO", "d": "The type locality for 'Danxia landform' worldwide — red sandstone cliffs, pillars and gorges across three massifs. Two are laid out with trails; locals advise against the third without a guide, as hikers get lost and there's no signal. Two days to do it properly.", "g": "https://maps.google.com/?cid=6613838704126655984", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCE8W_zMOfZbGGvpYBJ67yKT0lGOjPwh3MX18sMzYshmzOtRz_Qq1kdu3nuimv1kBgjPQ23fTmygXeMSKMjzMPhspJNmf1UEi2aI47ZhruMH6GRs15O2xOXKOgSyQrvljBKZedNwhsZgn66ETs=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBXEV7z_J4EAU8CAN1ijLo5z2RhxvZh65dGy_1LiRPgGaqp3KQacOgA3_q_c92OsKLEDRPXohUuO3FKNkgGSID5p2bRKUR8rfI6SxNgLHJT_2yg-OgWKp8TCKWk6ZGz9Rzb7zmIwa1G7Ddv=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDQXDjNeZP3Dcnl8Y48AGFXr0nF7ZvwW1ImFSF_8kBDCAPRJ8QpeYhaqTFyU5l2hYPawnftSGOg2vT0PoSA2Shqd-aKR35-EXU8qw7ugxjeRD4qTpmSXNBKwPM9-rfSxFvTVKeMWucwHihRoQ=s4800-w800-h600"], "a": ["Tobby As", "Nissing Tang", "葉厚志"]}, {"c": "views", "n": "Zhanglao Peak", "zh": "长老峰", "lat": 25.02255, "lng": 113.74324, "m": "Renhua · cable car ¥60 return", "d": "The main summit area — an entire plateau you can wander for hours, with two monasteries built into the rock face that most visitors walk straight past. Take the cable car up and walk down; it's mostly descent.", "g": "https://maps.google.com/?cid=9252133245593521918", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAuWZ9eSKlsTp8TruKsxBSgaNySsy7RwcumQraEO9jQAgEKAET5fdyvIfp0P5Yxy8RHyDoCSjjDU-NNhlSGA0NnOOT1j8gytdQgQKyIZLpSBmGWJJG9qKD3bule6StNfUwzV4ZlzUyxLaEQJNZtDBpc=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDlr6MoHJwW8Ld9-pP-2VcvhJJztBlHI39TQk2ZbfDYYmemROxKGmJkP7iRlP1wzCBzqkOxx34TCc7o3ccMXSzhgVcbq5M9KsstWRVNXfOZrdQYXC0uPYs_GytHm0TDG3WAXZKCmXkoFfhb7rH0_d1izg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBqjWU97LU-VF1P051uiG9Jid7P-Dt8b_o1kb5sEWTWBVUelAEW2rFKWDikpiKyWxTosmUZO2lsKvy-0TjXvv1sDFB7fSIEN83Ycb3znTjq2vEJF24pTL6hSKpLjfPOwim2mg-m8WUbt3TYvEK4FaRFww=s4800-w800-h600"], "a": ["Sunny", "Little Ant", "Little Ant"]}, {"c": "views", "n": "Yangyuan Stone", "zh": "阳元石", "lat": 25.042855, "lng": 113.743663, "m": "Renhua · 4.4★", "d": "A 28m phallic rock pillar, and yes, that is the entire draw — there's a fertility shrine at the base and a matching Yinyuan Stone across the park. Steep paths; do this section first before the narrow trails fill up.", "g": "https://maps.google.com/?cid=4012830034034461896", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBNeMxZ2kkC3y-vVv3IlX9MUKYw46VphE9QrM8M66KTEPQsInhb9cVoWFfbJTVQcZBzXCdXsaQzeKVbJG9MOlKx32ZJ6tnHSZD50A5mK0MaS7fRM9HZi0jot8b8sqLyO_icbr0qJ276G3s63Aw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDwTEEB3kT6zrwAdl9ieHVVOl1dSmEYJrD5Ybkgf-o7dmuduqJuxcncMKX_MEr_jTt1sFkkufdo4lNAh4cD0tPzoCQvYEgO3HVUkQKMQSrcKjkpZ8Qri69ggT-SePZhQS6Ttb9xOvddCwX7Yw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBqlMTk4s44mrLoy-RK6SucVUZ4CRfsV-EkxVSAqgk_oUk3lbZ-VP6DoBEr4ejnDuuNInZ48yOumP4J-79kwmvZxWubbIGjROG34IFKPlDFS6lbHrV311cMC2ku8QA72xx0sXyXZQj1AFfd7w=s4800-w800-h600"], "a": ["阿君", "阿君", "Mars Ma"]}, {"c": "nature", "n": "Bazhai", "zh": "巴寨", "lat": 25.00192, "lng": 113.68178, "m": "Renhua · remote", "d": "The wild western massif — a classic Danxia route with farmhouse food nearby and almost no infrastructure. Only two Google reviews, which tells you how few outsiders get here. Don't attempt it without local advice.", "g": "https://maps.google.com/?cid=18334874040954480850", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAtBJQOHZKrdBsVeE6QLE65Ey8WjNl76_vwvGCcYwQfxOPUR0TUIuH5U-u2ABBZS6546kqIEFw37ddOZjyno4T_CfnbN0mqUuxH1seFI20Kb_8x--OqbIzk6yRrmtWxnJUnNNk8_Y084ONkSg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDeuGTfz_SQcWYaMhMci2g9E92ZFoMyLLTb8Dq2qaCZQGcxcKWbnNd_ik8ZSlwMfql0cl6SlJdJZWMNq6GuqkYGxUe6QHmE70jXKZTYuJoj-jriDjYDxv9jAfN-m9uhIkFmyG8Xanui9fFs2AM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAzrdXKHibHWWiv9X6UJZkk96QYl80Qb2O3444r9hi3Sh3qkPPxctgcu6IjXVjrTwS-RETSSJuTTzP3dDAdmEMN0jJ00Y3wdSxHXSCCC7LGoNe1YgSDTOrPxitvwGT9P70eCsHAUMnkw7jgwA=s4800-w800-h600"], "a": ["Yuki Cheung", "Yuki Cheung", "Yuki Cheung"]}, {"c": "museum", "n": "Danxiashan Geopark Museum", "zh": "丹霞山博物馆", "lat": 25.044044, "lng": 113.758254, "m": "Renhua · 4.0★", "d": "Explains how the red sandstone actually formed, plus Hakka culture and the hermits who once cultivated in these cliffs. Worth 40 minutes before you climb, so the landscape means something.", "g": "https://maps.google.com/?cid=3838160093289122854", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAmUg_e_vk03ANEk6U5h4rJSUUur4jssSa4J5NFMnq8X7yTDYQvrBOSf7tg-CvzwX2jUsOUgtNOPXy1ZztRHtmiJqn8OjHJq5xQOvhVQXS9CzKVKvCYwTD0WUd1x3YHILZmgiXuac_6DU2jBQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAA5Tk7OAmjW6Sm9s_dp0WDddZD72Y-cfVKlJcV94FM6n2pI-mR25DYtUJ4oN5Xb2Qimu2hWOpXqs116WbMJWPhbcDzoVr07PR4RGlIfYhG5TeN1Yd3pwxD5ZZDqI6JtS7o0rPBLqRZHfRc=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDqo9D9KifrASz9AUS30QKaYKZDGU_HzC8O25CRjzI7O5xLgc92n4Y6idsuIiSjnkiAIWR21f9qOhPBhnOxBSQaCu0u7xhRJEqT3AhXh75LSvL0DIlgrsz6Vs5Gd5pk0h7LnSJdmIMYVQMP6Q=s4800-w800-h600"], "a": ["Tan See Min", "Tan See Min", "Tan See Min"]}, {"c": "temple", "n": "Nanhua Temple", "zh": "南华寺", "lat": 24.648735, "lng": 113.639009, "m": "Qujiang · 4.5★ · ¥20", "d": "Founded AD 502, and the seat of Huineng, Sixth Patriarch of Chan (Zen) Buddhism — whose lacquered body has been kept here for some 1,300 years. Arguably the most historically significant site in Guangdong. 1.5 hours; 25 min taxi from Shaoguan station.", "g": "https://maps.google.com/?cid=3952591830113141707", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBPf7aWXvrqsaAFqydGHfDKNrmlzrIIpzyGpiQ33KPHfAJlBDs16UFS8JWeodYJDGKgKIjmZaKlqK_qFHroBjYeJldzbdZfEcs23J7vcBeORo8t8QpNyHbSeRowkERniZ9AVst-F-1zohObQPJkKQz80g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBU9_gUvvsNkqTGakPST9Y5PE88PbEdvbNxGP0coRheu7yZOiQ-DJSqcgploQYlw1Wb3P3FOIuU7umCrD9F3u9Y-foBOAYaSRvZj1WIHv3HocJowhyE6zhr2pE0woRs-_5TC4R2rWPWletO2_sWVqhrIg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCumEt1U0FJJxxzwQ35T2ouMOOIf6IwFEqJrqwadJlT5k7HA9AMfleTQKLPuymzGyDHCiAOn2DmvC_R2JkK6BrfTr3S3-BEGOfkRyTj4UUYT3zzMlOoQ_-r7sdCRNTOg72M2v9S4045bf5NzyI=s4800-w800-h600"], "a": ["Doug Ho", "Doug Ho", "Marcus Goh"]}, {"c": "temple", "n": "Yunmen Temple", "zh": "云门寺", "lat": 24.804552, "lng": 113.31284, "m": "Ruyuan · 3.8★", "d": "Birthplace of the Yunmen school of Chan Buddhism, founded 923 and rebuilt after the Cultural Revolution flattened it. Quiet and little-visited, except on public holidays when it isn't.", "g": "https://maps.google.com/?cid=17926344439972972877", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBnWivydaQqbwTOo8YHa0YriOatOa62PzlCmDPjuMmRKQ0rWQZGmo5IhDO89uTA8_Zb0lsrC6pq3pxKtZd4WNRd_NPqg-nZ80-m6wjBrgqL7EDEiIMpMxRgZbMDTNy7t66wMyveD3IVHrjKLl-dsCpjXA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB7XME1eiL2X5fsAiuwu14Y3p6QXYICF0oOu6oELYtJpt0EEtP7MRo_TG0uWtwPYZHglY-kk2EH4lJO28bw8snUz3jys0RkIAdjE53ZeQBDWuReUrUvz-PA5qRkyCnGfSxSEHwgzftlKYS3=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCLhYSgQHIGyAlTppt_Is22xgCXEYCOaq1CJaiFVkkPFeTpO4sGdfcWhLxTuFEIcfWCzY4V1rXtLwPBJKMnqe1WrAkqPhXAzgrhKdoo99Zgy2Oy4aPTkiq31DpV5-O7U5ED2Sq5YZxRvT5oy_pWdAOP=s4800-w800-h600"], "a": ["维尼的新衣", "陈亚钟", "维尼的新衣"]}, {"c": "nature", "n": "Guangdong Grand Canyon", "zh": "广东大峡谷", "lat": 24.519941, "lng": 113.129555, "m": "Ruyuan · 4.8★", "d": "The highest-rated place on this map. A deep gorge with a spectacular waterfall, reached by a long staircase down — and far less commercial than Danxia. Hard to reach without Chinese. Check road closures approaching from the north.", "g": "https://maps.google.com/?cid=6747214299892981756", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD52cD_ESFYlSy3JVFNXsfEynSikP8bvex4EUGu2aHNJidslFbPCePGzZy-4unaYe7MYDbKu1Uy1j8lYO1mm8PNKJcK9j_Uh1_SarpAtCkSZnOKyXm-xUUd8cQydVe6u-R8tDVI0ZxrTRPR=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCmERIGuGz1dNvk_0nyEwPWIaEVU0ufhyjZXdNqViuiz8mp40sRNOdiY4cDJBxjqHz7AFg8EGntKjMnbVR5ve0sGIPGzZx35TZ_iYIIt64C_HvzOtuuFnUoCIoK6QNW7tbmu1ocsCBU-Vrjrg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA7BGtYDoKlqsWdFtt_svBkVPwjjpRjeBbRd6-nMUtyqC_fXEB9m8rI7X_zVXVz7msHG-VHbcmhN7oSAgA-Taj8oEj5ugGWAB58HWmq5STXxC2CfpxArz5on1q2USQ4F83CtM87rz3nO-OhWKTlBU_YRA=s4800-w800-h600"], "a": ["Joey Lu", "Joey Lu", "Shannon Z"]}, {"c": "nature", "n": "Nanling National Forest Park", "zh": "南岭国家森林公园", "lat": 24.913331, "lng": 113.082651, "m": "Ruyuan · 4.1★ · check it's open", "d": "Guangdong's largest forest reserve — waterfalls, streams and the province's highest peak. Genuinely good hiking. Caveat worth heeding: a reviewer reported it closed around 2018 and still shut in 2020, so confirm before making the trip.", "g": "https://maps.google.com/?cid=3482044322062891149", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCIxOIPAkpU8I31tFkSjT6izeRwLG8hYAWhBySLHioK9UY7iZncXZG3ZkBE2lIQlDeoTm2OFEbXu8dEVFa4AO1mguFFWod9kXJwDPS2aPQ4SpZ8ecQ-W-08jWl08YDWfYbRwGsfRO1vaGViIw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDgjhrwKw7ZZ-v7Fc3MiAzDj6q66MGT6NCBtXCsL4SJpdJLZYN64JhR9J78SbvbG-cfddX3n5rX8-R1X-sIck6PwcMAqA1B9p5YrUAGKlO_tzpB1FGim_ByzaZthRvWdQolV86WAA_yzLxiag=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD9FCEbYn5ZB1gCElPKWBDrTNojN9Fv5wfU7kdCFUYcru_t9OLaI72XDAM6S282GK2DrxtLF5aT0U3TlvZMtkGFi1jI5ji_3-tp1QeZZJR32KJt5oE4nufdXd83ig0HrJzaPH3xTudY_bUmTA=s4800-w800-h600"], "a": ["XiaoGuang Lu", "XiaoGuang Lu", "Little Ant"]}, {"c": "museum", "n": "Maba Man Site", "zh": "马坝人遗址", "lat": 24.672407, "lng": 113.586928, "m": "Qujiang · 4.0★", "d": "The cave where a 130,000-year-old archaic human skull was found in 1958, with a museum attached. You can walk into the discovery site itself. Ten minutes from Nanhua Temple — pair them.", "g": "https://maps.google.com/?cid=17193287879079399295", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBEJBxMalyBB6BbeAMNsBqrUdUGcW-lPHutHzUDKO3psT8NuIbmAKFBWVnG7xHZavHs3r0EdeuzwMg5B-b_-kZZeQnakRf9ZZJL5hREh7LkmqAS7ehyNc6_P41Xx_EGufsX2teKKTluCM6iig=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB-HsPlw0cIWliwygrVbKrFQ9TlNz7DgJkD2NKTknXcIitQS2TLJJlbQpwO0VEZ0CQFuvQLKPlxkPM03MQCjWVfdwEOw7TlzP4QZHN8lqzdwiqjjjPiEQo09HyibEAQ9ZFi9JB33FZXbOxpPeU=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA0nSg12fR9MZy0Cz_RSaO_HeCdN99hY23mVB-sffXVNT2Q2EVk35QvK4MkhpJKVskGUaQ6YoDKEQsD9mYuPMkvyOrjoTUfFJVqm1xINIxENxO_7I1J3GSKn9lDx3wTo7h6ka5UKNNuDA1vaRM=s4800-w800-h600"], "a": ["Wai Ki Wong", "Francis Hui", "Wai Ki Wong"]}, {"c": "heritage", "n": "Zhuji Ancient Lane", "zh": "珠玑古巷", "lat": 25.189494, "lng": 114.357652, "m": "Nanxiong · 3.4★", "d": "The 'ancestral home of Cantonese culture' — where Tang and Song migrants from the north paused before spreading into Lingnan. 183 surname halls; many Cantonese trace their line through here. Reviews are blunt that the 'ancient' street is largely reconstruction — come for the genealogy, not the stones.", "g": "https://maps.google.com/?cid=13746248713728650540", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBrud89XNlPK5GDDUgICa16BEuoVyVz_JLR2OxQOgoRrwGl9v7-YeU21VmbRcspEJyW1Xf4RYiLTYkkUWP4J7mPCgE2UzDd45hAoaIF63YAMhyJfXgpiLPdEJwIlT5Pa9MlVxXqiih4W4g9Xw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDWryksU82mJH6hxb2dpaS6GxxVHV6vORkxv7iDw_IuqIOHpnDDLbe6C51NE6NhgoWfoPEZV4dmcUcJBco7IozlFwLKT3qvYymy_Dyx86JUNXCOC4lUM7-Hs6rUn_YlMIAmc4ymN5F9JdBUCw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBiD76KC0WZeu7D4uEH6S9kPRhc-lJnuF0Vs3A6G5Xzf7jhiFq_iMLXik5p-at-R2hPgRRFWDBYpV6WMTjnYB9gNnxAbn3ThnWoO1KAK4cCzwV6pw1w_WeqC73XHUfgWPGjl4reWUMP-XrMAQ=s4800-w800-h600"], "a": ["TJIUNGGU TJERMIN", "Wolfgang Aull", "TK choi"]}, {"c": "heritage", "n": "Meiguan Ancient Road", "zh": "梅关古道", "lat": 25.268779, "lng": 114.382857, "m": "Nanxiong · plum blossom in winter", "d": "A Tang-dynasty pass cut through the Nanling mountains in 716 — for a thousand years the main artery between the north and Lingnan, walked by merchants, armies and exiles. Named for its plum trees; go in winter when they flower.", "g": "https://maps.google.com/?cid=5632764935734873140", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDn_q1r3x7G90kUOmNPPQQZnjLDpRXBKr4MfTB0J2sSFA7fARq9p9DSvkXXBc-IJbIfxXefodO-EjxiIX75PH_aPAuFUoQb19DOAMJQr_xUFOa-GrgFFeqmlA87R3rnthIO8sXqUkzommI89g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDputkYc8zgnVmaklgotxWjPix0M7Q7shoKIOsusPkyGjwlrNyMFOprCWA2UdxgXungFaYgGwauduFFsdsllq2b4lCdcPHsIkC9vpkiqHQDZ11w7FREp8-vkugtLobpz1do7ofDhIIq3VWA0A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCUSzrVhX2XelL2qrxF7yT_pa2TEie28Z6UC1STWBvFoNM9Ff_ib0w41fsFIDlzhkyrEPi3sFQBVlGmSCHyyixs1NANJifTfgeBQRMokVX0qVgHmcETcr_SCtXwq9DrfHptaA1us7vcNhUQSVA=s4800-w800-h600"], "a": ["發揮神力", "發揮神力", "老猫"]}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin" style="background:'+CATS[pl.c].color+'"></div>',
+    iconSize:[21,21], iconAnchor:[10,10]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch" style="background:'+CATS[k].color+'"></span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://uri.amap.com/marker?position="+pl.lng+","+pl.lat
+            +"&name="+encodeURIComponent(pl.zh||pl.n)+"&src=map&coordinate=gaode";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.add('open');
+  map.panTo([pl.wlat,pl.wlng],{animate:true});
+}
+document.getElementById('closeSheet').onclick=()=>{sheet.classList.remove('open');selected=null;};
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
