@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Hong Kong Walking Tours</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#1c2430;
+    --paper:#ffffff;
+    --tour1:#c8452c;   /* downtown — vermilion, Man Mo lantern red */
+    --tour2:#1f5f8b;   /* colonial — harbor blue */
+    --tour3:#b5860a;   /* causeway bay — brass / noon gun gold */
+    --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    --radius:14px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink);}
+  #map{position:absolute;inset:0;z-index:1;}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    position:absolute;top:0;left:0;right:0;z-index:1000;
+    display:flex;align-items:center;gap:10px;
+    padding:10px 12px;
+    pointer-events:none;
+  }
+  .title-chip{
+    pointer-events:auto;
+    background:var(--paper);border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    padding:8px 14px;
+    display:flex;flex-direction:column;gap:1px;
+    min-width:0;flex:1;
+  }
+  .title-chip h1{font-size:14px;font-weight:700;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .title-chip .legend{display:flex;gap:12px;font-size:11px;color:#5b6472;}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+  .dot.t1{background:var(--tour1)} .dot.t2{background:var(--tour2)} .dot.t3{background:var(--tour3)}
+
+  /* ---------- control buttons ---------- */
+  .ctrl-stack{
+    position:absolute;right:12px;top:74px;z-index:1000;
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .ctrl-btn{
+    width:46px;height:46px;border:none;border-radius:12px;
+    background:var(--paper);box-shadow:var(--shadow);
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);
+    transition:transform .12s ease, background .12s ease;
+  }
+  .ctrl-btn:active{transform:scale(.93);}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px;}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+  .ctrl-btn.active{background:var(--accent);color:#fff;}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite;}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  /* ---------- markers ---------- */
+  .stop-pin{
+    display:flex;align-items:center;justify-content:center;
+    width:30px;height:30px;border-radius:50% 50% 50% 4px;
+    transform:rotate(0deg);
+    color:#fff;font-size:12px;font-weight:700;
+    border:2.5px solid #fff;
+    box-shadow:0 3px 8px rgba(0,0,0,.35);
+  }
+  .stop-pin.t1{background:var(--tour1)}
+  .stop-pin.t2{background:var(--tour2)}
+  .stop-pin.t3{background:var(--tour3)}
+
+  .me-dot{
+    width:18px;height:18px;border-radius:50%;
+    background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.25), 0 2px 6px rgba(0,0,0,.3);
+  }
+
+  /* ---------- bottom sheet (description display) ---------- */
+  .sheet{
+    position:absolute;left:0;right:0;bottom:0;z-index:1001;
+    background:var(--paper);
+    border-radius:20px 20px 0 0;
+    box-shadow:0 -8px 30px rgba(16,24,40,.25);
+    padding:14px 18px calc(18px + env(safe-area-inset-bottom));
+    transform:translateY(110%);
+    transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:46vh;overflow-y:auto;
+  }
+  .sheet.open{transform:translateY(0);}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+  .sheet .grab{width:38px;height:4px;border-radius:2px;background:#d5d9e0;margin:0 auto 12px;}
+  .sheet .tour-tag{
+    display:inline-block;font-size:10px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px;
+  }
+  .tour-tag.t1{background:var(--tour1)} .tour-tag.t2{background:var(--tour2)} .tour-tag.t3{background:var(--tour3)}
+  .sheet h2{font-size:19px;font-weight:800;margin-bottom:4px;line-height:1.25;}
+  .sheet p.desc{font-size:14px;color:#414b5a;line-height:1.5;margin-bottom:6px;}
+  .sheet p.dist{font-size:12.5px;color:var(--accent);font-weight:600;margin-bottom:12px;min-height:16px;}
+  .sheet-actions{display:flex;gap:10px;}
+  .btn{
+    flex:1;display:flex;align-items:center;justify-content:center;gap:8px;
+    padding:13px 10px;border-radius:12px;border:none;cursor:pointer;
+    font-size:14.5px;font-weight:700;text-decoration:none;
+    transition:transform .1s ease;
+  }
+  .btn:active{transform:scale(.97);}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px;}
+  .btn.nav{background:var(--ink);color:#fff;}
+  .btn.gmap{background:#eef1f5;color:var(--ink);}
+  .btn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+  .sheet .close-x{
+    position:absolute;top:12px;right:12px;width:32px;height:32px;
+    border:none;border-radius:50%;background:#eef1f5;color:#5b6472;
+    font-size:16px;cursor:pointer;line-height:1;
+  }
+
+  .toast{
+    position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);
+    z-index:1200;background:var(--ink);color:#fff;
+    font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;
+    max-width:88vw;text-align:center;
+  }
+  .toast.show{transform:translate(-50%,0);opacity:1;}
+
+  .leaflet-control-attribution{font-size:10px;}
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of Hong Kong walking tour stops"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Hong Kong Walking Tours</h1>
+    <div class="legend">
+      <span><i class="dot t1"></i>Downtown Intro (13)</span>
+      <span><i class="dot t2"></i>Colonial Buildings (7)</span>
+      <span><i class="dot t3"></i>Causeway Bay (5)</span>
+    </div>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="fsBtn" title="Toggle fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24" id="fsIcon"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="Show my location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all stops" aria-label="Zoom to show all stops">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-modal="false" aria-label="Stop details">
+  <div class="grab"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close details">✕</button>
+  <span class="tour-tag" id="sTag"></span>
+  <h2 id="sName"></h2>
+  <p class="desc" id="sDesc"></p>
+  <p class="dist" id="sDist"></p>
+  <div class="sheet-actions">
+    <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>
+      Navigate
+    </a>
+    <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      Open in Maps
+    </a>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const STOPS = [
+  // tour 1 — Downtown Introduction
+  {t:1,n:1,name:"Hong Kong Park",lat:22.2769477,lng:114.1608187,desc:"Lush urban oasis with a walk-through aviary, conservatory and waterfalls, wedged between Central's skyscrapers.",gmaps:"https://maps.google.com/?cid=639489834470487389"},
+  {t:1,n:2,name:"St. John's Cathedral",lat:22.2787367,lng:114.1597309,desc:"The oldest surviving Anglican church in East Asia (1849) — a Gothic Revival calm spot amid the towers. Shared stop with the Colonial Buildings tour.",gmaps:"https://maps.google.com/?cid=13222759991106803074"},
+  {t:1,n:3,name:"Chater Garden",lat:22.2804504,lng:114.16122,desc:"Small formal park with a tree walk of 30+ species and water features, next to the Legislative Council Complex.",gmaps:"https://maps.google.com/?cid=4648869047845144151"},
+  {t:1,n:4,name:"Statue Square",lat:22.2810802,lng:114.1598129,desc:"Historic public square framed by the HSBC building — lively gathering spot, especially Sundays.",gmaps:"https://maps.google.com/?cid=12492421083777191336"},
+  {t:1,n:5,name:"Li Yuen Street East",lat:22.2827949,lng:114.1563871,desc:"Narrow, bustling market alley packed with clothing and trinket stalls.",gmaps:"https://maps.google.com/?cid=3224010009604875688"},
+  {t:1,n:6,name:"Lan Kwai Fong",lat:22.2806973,lng:114.1555456,desc:"Hong Kong's famous nightlife quarter — bars, restaurants and street energy.",gmaps:"https://maps.google.com/?cid=12643130716378474702"},
+  {t:1,n:7,name:"Graham Street Wet Market",lat:22.2829471,lng:114.1535569,desc:"Historic open-air produce market — fresh fruit, vegetables and street color near the escalators.",gmaps:"https://maps.google.com/?cid=5772947836207037060"},
+  {t:1,n:8,name:"Central Mid-Levels Escalators",lat:22.2838464,lng:114.1549689,desc:"The world's longest outdoor covered escalator system (800 m), lined with cafés and boutiques.",gmaps:"https://maps.google.com/?cid=2797888173960283504"},
+  {t:1,n:9,name:"Man Mo Temple",lat:22.2839729,lng:114.1501999,desc:"Atmospheric 1847 temple to the gods of literature and war, famous for its giant hanging incense coils.",gmaps:"https://maps.google.com/?cid=1534238293208784867"},
+  {t:1,n:10,name:"Ladder Street",lat:22.2838796,lng:114.1498374,desc:"Historic stone stepped street climbing between Queen's Road and Caine Road.",gmaps:"https://maps.google.com/?cid=8917060320149431716"},
+  {t:1,n:11,name:"Cat Street Market",lat:22.2851261,lng:114.1493694,desc:"Antiques and curio flea market on Upper Lascar Row — jade, memorabilia and haggling.",gmaps:"https://maps.google.com/?cid=8391373790670143822"},
+  {t:1,n:12,name:"Possession Street",lat:22.285952,lng:114.1483848,desc:"Where the British flag was first raised on Hong Kong Island in 1841.",gmaps:"https://maps.google.com/?cid=9730681252896633215"},
+  {t:1,n:13,name:"Western Market",lat:22.287287,lng:114.150392,desc:"Restored Edwardian shopping hall from 1906 — the tour's western endpoint, with fabric merchants and a red phone box.",gmaps:"https://maps.google.com/?cid=2916570649479651680"},
+  // tour 2 — Colonial Buildings
+  {t:2,n:1,name:"Flagstaff House · Museum of Tea Ware",lat:22.2784318,lng:114.1625347,desc:"The earliest surviving Western-style building in Hong Kong (1840s), now a free museum of Chinese tea culture inside Hong Kong Park.",gmaps:"https://maps.google.com/?cid=87634809113475317"},
+  {t:2,n:2,name:"Legislative Council Building",lat:22.280792,lng:114.165578,desc:"Neoclassical granite landmark completed in 1912 as the Supreme Court, with colonnades and a central dome.",gmaps:"https://maps.google.com/?cid=18111979647168168613"},
+  {t:2,n:3,name:"Court of Final Appeal",lat:22.2809281,lng:114.1604285,desc:"Housed in the striking red-brick former French Mission Building (1917) with Renaissance influences.",gmaps:"https://maps.google.com/?cid=259640621430558949"},
+  {t:2,n:4,name:"Government House",lat:22.2786766,lng:114.1574514,desc:"Residence of Hong Kong's governors from 1855, blending Tudor Revival, Georgian and Japanese elements.",gmaps:"https://maps.google.com/?cid=13676642332593278228"},
+  {t:2,n:5,name:"Old Dairy Farm Depot (Fringe Club)",lat:22.2802398,lng:114.1557172,desc:"1892 cold-storage warehouse in 'blood and bandages' brickwork, now home to the Fringe Club arts venue and the Foreign Correspondents' Club.",gmaps:"https://maps.google.com/?cid=8407030681194159345"},
+  {t:2,n:6,name:"Central Magistracy (Tai Kwun)",lat:22.2811686,lng:114.154023,desc:"The colony's former judicial hub (1913–14, Neo-Grecian), now part of the Tai Kwun heritage and arts complex.",gmaps:"https://maps.google.com/?cid=12491884607023708875"},
+  {t:2,n:7,name:"Central Police Station (Tai Kwun)",lat:22.2812686,lng:114.154123,desc:"1860s police compound with Victoria Prison — restored as Tai Kwun, a lively cultural centre with galleries and cafés.",gmaps:"https://maps.google.com/?cid=5216991637954630797"},
+  // tour 3 — Causeway Bay
+  {t:3,n:1,name:"Times Square",lat:22.2781510,lng:114.1821136,desc:"Causeway Bay's landmark shopping mall (despite the name, not a square) — high-end boutiques, electronics and a giant LED display that lights up at night.",gmaps:"https://maps.google.com/?cid=17172091327578073619"},
+  {t:3,n:2,name:"Po Leung Kuk Museum",lat:22.2764869,lng:114.1848496,desc:"Home of a historic charitable organization that shaped Hong Kong's social welfare — exhibits trace its history of aiding orphans and the vulnerable.",gmaps:"https://maps.google.com/?cid=2827703099565596918"},
+  {t:3,n:3,name:"Sogo Department Store",lat:22.2804272,lng:114.1843032,desc:"One of Hong Kong's largest and most famous department stores, spanning multiple floors of fashion, cosmetics, electronics and homeware.",gmaps:"https://maps.google.com/?cid=5764092068475717455"},
+  {t:3,n:4,name:"Victoria Park",lat:22.2823565,lng:114.1886969,desc:"Causeway Bay's green escape — a peaceful oasis for a stroll, Tai Chi, or just resting under the trees between shopping stops.",gmaps:"https://maps.google.com/?cid=6624970667899221214"},
+  {t:3,n:5,name:"Noon Day Gun",lat:22.2825542,lng:114.1837567,desc:"A historic artillery piece that has fired daily at noon for over a century — a quirky colonial-era tradition on the harbor promenade.",gmaps:"https://maps.google.com/?cid=1122862715870356257"}
+];
+const TOUR_NAMES = {1:"Downtown Introduction",2:"Colonial Buildings",3:"Causeway Bay"};
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false, attributionControl:true});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19,
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(map);
+
+const bounds = L.latLngBounds(STOPS.map(s=>[s.lat,s.lng]));
+map.fitBounds(bounds,{padding:[60,60]});
+
+/* ---------- markers ---------- */
+let selected = null;
+STOPS.forEach(s=>{
+  const icon = L.divIcon({
+    className:'',
+    html:`<div class="stop-pin t${s.t}">${s.n}</div>`,
+    iconSize:[30,30], iconAnchor:[15,28]
+  });
+  const m = L.marker([s.lat,s.lng],{icon, title:s.name, keyboard:true}).addTo(map);
+  m.on('click',()=>openSheet(s));
+});
+
+/* ---------- bottom sheet ---------- */
+const sheet=document.getElementById('sheet'),
+      sTag=document.getElementById('sTag'),
+      sName=document.getElementById('sName'),
+      sDesc=document.getElementById('sDesc'),
+      sDist=document.getElementById('sDist'),
+      navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn');
+
+function openSheet(s){
+  selected=s;
+  sTag.textContent=TOUR_NAMES[s.t]+" · Stop "+s.n;
+  sTag.className="tour-tag t"+s.t;
+  sName.textContent=s.name;
+  sDesc.textContent=s.desc;
+  navBtn.href=`https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}&travelmode=walking`;
+  gmapBtn.href=s.gmaps;
+  updateDist();
+  sheet.classList.add('open');
+  map.panTo([s.lat,s.lng],{animate:true});
+}
+document.getElementById('closeSheet').onclick=()=>{sheet.classList.remove('open');selected=null;};
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    (el.requestFullscreen||el.webkitRequestFullscreen||function(){toast("Fullscreen not supported in this view — try opening the file in your browser.")}).call(el);
+  }else{
+    (document.exitFullscreen||document.webkitExitFullscreen).call(document);
+  }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame = (window.self !== window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Open this file over https:// or localhost — file:// and previews are blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating');
+  firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating');
+    locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    }else{
+      meMarker.setLatLng(myPos);
+      accCircle.setLatLng(myPos).setRadius(acc);
+    }
+    if(firstFix){map.setView(myPos,16);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating');
+    stopWatch();
+    let msg;
+    if(err.code===1){
+      msg = inFrame
+        ? "This preview blocks location. Download the file and open it over https:// to use live tracking."
+        : "Location permission denied — enable it for this site in your browser settings.";
+    } else if(err.code===2){
+      msg = "Position unavailable — no GPS or network fix right now.";
+    } else {
+      msg = "Timed out getting your location. Try again outdoors.";
+    }
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null;updateDist();
+}
+
+function updateDist(){
+  if(!selected){return;}
+  if(myPos){
+    const d=map.distance(myPos,[selected.lat,selected.lng]);
+    const txt=d<1000 ? Math.round(d)+" m away" : (d/1000).toFixed(1)+" km away";
+    sDist.textContent="📍 "+txt+" · ~"+Math.max(1,Math.round(d/80))+" min walk";
+  }else{
+    sDist.textContent="";
+  }
+}
+
+/* ---------- fit all ---------- */
+document.getElementById('fitBtn').onclick=()=>map.fitBounds(bounds,{padding:[60,60]});
+
+/* ---------- toast ---------- */
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),3500);
+}
+</script>
+</body>
+</html>
