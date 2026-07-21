@@ -57,6 +57,9 @@
     max-height:76vh;overflow-y:auto}
   .sheet.open{transform:translateY(0)}
   @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+  .grab{width:38px;height:4px;border-radius:2px;background:rgba(255,255,255,.85);
+        position:absolute;top:9px;left:50%;transform:translateX(-50%);z-index:2;
+        box-shadow:0 1px 3px rgba(0,0,0,.3)}
 
   /* ---- gallery ---- */
   .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
@@ -136,6 +139,7 @@
 </div>
 
 <div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grab"></div>
   <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
   <div class="gal" id="gal">
     <div class="gal-track" id="galTrack"></div>
@@ -322,7 +326,44 @@ function openSheet(pl){
   sheet.classList.add('open');
   map.panTo([pl.wlat,pl.wlng],{animate:true});
 }
-document.getElementById('closeSheet').onclick=()=>{sheet.classList.remove('open');selected=null;};
+function dismissSheet(){ sheet.style.transition=''; sheet.style.transform=''; sheet.classList.remove('open'); selected=null; }
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---------- pull down to close ---------- */
+(function(){
+  let startY=0, startX=0, curY=0, startT=0, dragging=false, active=false;
+  const DISMISS_PX=90, FLICK_V=0.55;
+  sheet.addEventListener('touchstart',e=>{
+    if(!sheet.classList.contains('open') || e.touches.length!==1) return;
+    startY=curY=e.touches[0].clientY; startX=e.touches[0].clientX;
+    startT=Date.now(); dragging=true; active=false;
+  },{passive:true});
+  sheet.addEventListener('touchmove',e=>{
+    if(!dragging) return;
+    const dy=e.touches[0].clientY-startY, dx=e.touches[0].clientX-startX;
+    if(!active){
+      if(Math.abs(dy)<6 && Math.abs(dx)<6) return;
+      /* only hijack a downward, mostly-vertical drag that starts at the top of the sheet;
+         otherwise let native content scroll / horizontal gallery swipe take over */
+      if(dy>0 && Math.abs(dy)>Math.abs(dx) && sheet.scrollTop<=0){ active=true; sheet.style.transition='none'; }
+      else { dragging=false; return; }
+    }
+    curY=e.touches[0].clientY;
+    sheet.style.transform='translateY('+Math.max(0,curY-startY)+'px)';
+    e.preventDefault();
+  },{passive:false});
+  function release(){
+    if(!dragging) return;
+    dragging=false;
+    if(!active) return;
+    active=false;
+    const dy=curY-startY, v=dy/Math.max(1,Date.now()-startT);
+    if(dy>DISMISS_PX || v>FLICK_V){ dismissSheet(); }
+    else { sheet.style.transition=''; sheet.style.transform=''; }
+  }
+  sheet.addEventListener('touchend',release);
+  sheet.addEventListener('touchcancel',release);
+})();
 
 /* ---------- fullscreen ---------- */
 const fsBtn=document.getElementById('fsBtn');
