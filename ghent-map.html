@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Ghent — Where to Go</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{width:21px;height:21px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Ghent — Where to Go</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Photos are traveller submissions from Google, shown as a swipeable gallery — swipe if the first one isn't helpful. <b>Directions</b> opens Google Maps walking directions from wherever you are.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {
+  views:    {label:"Views & peaks",     color:"#E8590C"},
+  temple:   {label:"Temples",           color:"#C2185B"},
+  market:   {label:"Markets & streets", color:"#F9A825"},
+  museum:   {label:"Museums & arts",    color:"#6A1B9A"},
+  nature:   {label:"Parks & nature",    color:"#2E7D32"},
+  harbour:  {label:"Water & coast",     color:"#0277BD"},
+  heritage: {label:"Heritage",          color:"#5D4037"},
+  food:     {label:"Food & nightlife",  color:"#00838F"},
+  themepark:{label:"Theme parks",       color:"#546E7A"}
+};
+const PLACES = [{"c": "heritage", "n": "Gravensteen", "zh": "Castle of the Counts", "lat": 51.0571769, "lng": 3.7207225, "m": "4.6★ · 10am–6pm", "d": "A moated 1180 castle dropped in the middle of a modern city, complete with dungeon and torture collection. The free audio guide comes in a straight version and a comedy version — take the comedy one, it's genuinely funny. Book online; the queue is real. Lots of stairs.", "g": "https://maps.google.com/?cid=3314463221043878846", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCNgqXTkyzxUzlf9tYxFC6G97_G5_ha_TV0oDGvu6-UzZmtRxBfvFSx5p5e-yA-GM5uxLcUTQOUaqSQcDxjDtcMyqTSvBwZtm8PMWtPQo1hkxeLpLjZ9gAkBRNDRYdbx9BV0plOib1onUnvKg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDotdr8JseLOidS4G3oLnee0fE_GiGTUa-d57tsT66J6soxQDvvjvRpkOUkAfopa5LUJDiSyeAJzyeHD3EH0eEB_jtX5Iezyly6zxYjhVGNZzXOqLLDR0_s5lCdlobbrz_o11MTQWf_VnHTvv_AbtfZ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAUKwnmrH-LNoYiUZsNysrhUHwtcCyJZlq6_g1zmugiMugT8bsMq0SlUEtVbVY0-vrQUaR2Jq7SVzQLydwzyG7OmiIYZfbsGtmWKooQ4EFo3ABc1QwqT_UCJxRwaJELrfaE6GEUH23Q82Wu=s4800-w800-h600"], "a": ["lubomir cehelsky", "Óscar U.M.", "Светлана Терентьева"]}, {"c": "temple", "n": "St Bavo's Cathedral", "zh": "Sint-Baafskathedraal", "lat": 51.0532335, "lng": 3.726506, "m": "4.7★ · from 8:30am", "d": "Houses the Ghent Altarpiece — van Eyck's Adoration of the Mystic Lamb, the most stolen artwork in history. Do the AR headset tour in the crypt first; it explains the panels and the thefts, and makes the painting land properly. About €16, an hour.", "g": "https://maps.google.com/?cid=10715076962136704338", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDUm7ud6sBNCGUxsHVykn98wolMGat_7RQWO6aEh79e_suTtCSaYc7PcPQrJ6RIoWSK83euxNFQ5rdQN2B65A-OMt_R9F0KCZFpVei9c81k-chDYP8G5_-gn_IWSFXyl10vxKiofmMRjY9KmQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDpmGhNQepAZUSdlv-Qw7hCtCkXzgS5K6ubGOPhFxMXBAicO3ooYckrjNkhbay4fTT-6k9aGvzsP0P4xhxI-gCUcLAZOWzs-3i5MFSBHYr-Ipx7zZoX6zjW7N3aMDO76CD9QBVcs_fWOMF2W9iyxvk89A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAKDgNxjosSaqJOkadoPn9bJOQvZaPygzYfDxpPJ7Wp3nETaiYXTKz2CYYKMT_NEe3U3yC5Praz0TtM2uxBjpBoF0PdYB8EfkbORsrq6vGRaXsH2k6zfJlHeMTHRliwUpjAsjurqKJmutjofQ=s4800-w800-h600"], "a": ["huaiyu cai", "Taco Petri", "Walter Schwarz"]}, {"c": "views", "n": "Belfry of Ghent", "zh": "Het Belfort", "lat": 51.0537543, "lng": 3.7247553, "m": "4.6★ · 10am–6pm", "d": "14th-century tower with a gilded dragon on top and a 360° balcony over the three-tower skyline. There's a lift up — but you come down 100+ steps of the old spiral stair, which is the catch. Time it just before sunset.", "g": "https://maps.google.com/?cid=11342621978146934875", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCyo0YequRBitCSD0OI0IS10baeepjpYVC2hEtMjQi_Ajd7BUuBuQDn8O6d0lX3sUfGMMGjkC6-pi-sSlKHjiC0yHuL2BG3aV5zC-xmmZhUrckc-l1R5XDFz8QoliC66fN0WGlIpvmnyzsq7OM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDJUGlVgkkdSXIqheGPT8OsV2EOppPHzJZhu3jsVHPfBz2oXetH6bwxmuwWllhegv_HUYlaXhRKoP3u_Op_S__JfKk6NVdLrfUY1H3_zu5MDAvDmPMHXT_V1M1PtC4wAvkja_fBKjtP1x5cvTVFFSILiA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDY3OzQt9aE7z6lI1X_Lvt5__t7SKh0bqpOoUpBvL_4tkpHKBjooSDi6rLM6q_XtFIyrNWTpTk1HHT66WaOWRaeZpdXQZ08hGrtlQ_-l3VlhqpeFOo8mPM19IiTIUka9Z9MNwLDpE5vmSx5lQ=s4800-w800-h600"], "a": ["Bell imo Vast Goed", "Peter Rijkers", "Paul Ciprian"]}, {"c": "harbour", "n": "Graslei & Korenlei", "zh": "", "lat": 51.0547683, "lng": 3.72075, "m": "4.8★ · Free", "d": "The old grain harbour: two facing quays of guild houses from the 12th century on. The highest-rated thing in Ghent, and the place the whole city sits with a beer on a summer evening. Kayak rental if you'd rather see it from the water.", "g": "https://maps.google.com/?cid=6067936036454104672", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA09oWPV6oNq40p-V7On42ozO15Im-927YfiHciJNeRhBY6mWv-ItOdlPgdurhuU1r4LlWw2giXS16Z9yriKhbxgNd0P_MQnuUrbDULyrMEHe7Ja27kuF_gN-Z_fUuirH1j8hDqzQANi2Ducw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBgMUt6Cwxx6ETeXm30tUiX0HfBkI_Vxftj2l2-prjMmHMXfNsmpccFLei3t1PpNhe_SoqpTlKqnHPZol1Z_vz2my86nq9rD3NMEU93zpykQP4p-oWmiLPYeUKbo5T0xcTj2xtpIsNWnpGG=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCfMrl0sl04YCjEg8BWinp-hYqEVJdZfB7UQs-h4mY4mV6GC6Mev23c3pgPp-y8wtv3ENvqFINPc50TyuTdwy6v1XdggnBFlgjGeW3wVyDm2aQ-4WYxzmkzlmueQ1MGHFJKnshmem6Z-OTW-c0=s4800-w800-h600"], "a": ["Pascal Brachais", "Giovanni Di Micco", "VMZ"]}, {"c": "temple", "n": "St Nicholas' Church", "zh": "Sint-Niklaaskerk", "lat": 51.0539136, "lng": 3.7229356, "m": "4.6★ · 10am–4pm · Free", "d": "Early 13th century and one of the oldest buildings in the city — built in blue-grey Tournai stone in the local 'Scheldt Gothic'. Free, quiet, and the middle tower of Ghent's famous three-in-a-row skyline. Restrained inside rather than gilded, which is the appeal.", "g": "https://maps.google.com/?cid=813606110771640840", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBYswdXKmpp_ltVoheJeefkijA9WYfD8UgLbenqGTvrFZgGZlfx3wEa6937j48IT-8ZZYXwCvlWuKBz_q76Xmkltagnh_IkVXaSQt0yWFTRjZYCi7EGxeSFjIgy2T_ZaWuQRcOFmp6RxmXb1w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBucl3iAc6yeXbq14-FwkrAXPTUOuj-ShXkoUveeDhOtS0f8fvi2J-jKdeMnPePYuwdZYT6af6hfqvNuxn85yg617O0nqynzJR7rzhCdzE3Y1DEGoyGe7xS5T4HEucbSnSuXO9NaK9pUcKRzg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAYf_5lb362l3_C8DEQwgVzhAKeJGLfusFPIigqpJbgEi6Z77wAr-nl2z5YITsyUvjeokxLDeNaIFCuQmD-17de41mm9M0GxAi58RuK8d8E0PpXOwRfK53TjJeHB-MYL-tnwMZ-T4jM6sP_2xM=s4800-w800-h600"], "a": ["Rob Hall", "Luis Alberto Prado", "Pascha Her"]}, {"c": "market", "n": "Werregarenstraat", "zh": "Graffiti Street", "lat": 51.0555297, "lng": 3.7246292, "m": "4.2★ · Free · 24h", "d": "A narrow alley where anyone is legally free to paint, so it changes constantly — you will never see what's in these photos. Short, and there's a good chocolate maker and a café along it. If you're lucky an artist will be working.", "g": "https://maps.google.com/?cid=14051047219374835216", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCezqRJC41aHT459U5tvDE_TEUMY-oMuSylzYCTlErWWbyO9nJr_RyfmYBRgD3d3XqPxo6H1XExfv55eeIxB0qa1f0lq2EynUCZTUp08onJbA6mKTPif1sUXKWWEOxkW8LXGjT8SssteSplKA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCpUgVQrXWngtErTzUQW9rnQwyUtuAmhFa3BI2Qy09t2TAOAJWoI7asn8bPDHwH7CqTDiwQEt3MCwZ7PWiUQCasAnDELrQ-mQkv3NhYF-HCTtf-ZO2AhQC5cy1taREhTBaj7O1XTSefw3jcixoxYjuq1g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDOCMgczI510xgtIkDZD43DZDvyrTB8-Xc-R5Fk3kOkGWLaO-IRXcnof6y9jQkny_d9a2upbFVSBnB7ISaGEkCvVbJsPbE5KW96do4531pDuTR2ZF_ityrHTtBr8I5T6Tvxpj9cGRwbR2GTaA=s4800-w800-h600"], "a": ["Matthieu Claus", "Timo Poort", "Zemir A"]}, {"c": "food", "n": "Dulle Griet", "zh": "", "lat": 51.0565719, "lng": 3.7252779, "m": "Vrijdagmarkt · 4.4★", "d": "Legendary beer bar with a huge list and a good gluten-free range. Order the 1.5-litre Max and they take one of your shoes as deposit, winched up in a basket. Sounds like a gimmick, plays as good fun. Weekends need a short wait.", "g": "https://maps.google.com/?cid=4029422743128906269", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAYIz04kTTll61XpC46Wh5BlagX-gwpMad2bH_4c2vCYPWa8vOSZTvRCqev2g8-q_1OQiBxIzgGUomUfI2xpCoM-8CJBpfR3DpFlH1vsuSMcTqJDvjdqRoL6Wamw76YzLXNdzG0hEoBwhUqWw=s4800-w800-h533", "https://lh3.googleusercontent.com/place-photos/AG9NLjBJPtVl8o_td8-JDayLp4umaSeKu9N5KUAK-krrDfPm-Nbh1AiPt9ej5aW_SNdxsrAfaVJjaHbjt9SU3FPD72cPylVlJqukrPNk0jz23fBvvptKA9iKnYC41UrN5prc4ZJdRdpnkcZsYoUwVg=s4800-w750-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCGI_Ev8MTUlykmq9i2_sifbIlUB0Lrh0ndVZ-jBLje-QxJNFhHSVsi5aVzP9LwRejJkN_JpaInSadVgOEYPxaJM1uqr4iRsZRH3cpPcD2mJxa4tK9_HWF1pTJR5mxV41AQIFvhSHm0MbMKIJqCgYODXg=s4800-w800-h600"], "a": ["Dulle Griet", "Dulle Griet", "Nika Mgaloblishvili"]}, {"c": "museum", "n": "Design Museum Gent", "zh": "", "lat": 51.0554845, "lng": 3.7197735, "m": "4.1★", "d": "An 18th-century townhouse fused to a modern wing, running from period rooms to contemporary design. Modest — about an hour — and information comes mostly via leaflet rather than wall text, which annoys some visitors. Good for kids.", "g": "https://maps.google.com/?cid=7877510700222878139", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDQGCxGEhMMn7WOYNQhAUaPZt1bCPtq4SoCduZ6a5sX2GrcTupj0LLe4AztPca_Ife7QWNDDLHsjs-yY9jlXFpGwCbdb9Mk9NIhqBTEz8oW3RSL7bzGd6nt-Cim_XQsVYKvLwuGN2-1f7q1_bQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBrqF5lfAk_nvl6XnQXlO-RGFU6mVD3PZAeoPkg6sVb7HPZbmatWe529RqwK2ewe0aTGZTpv0-ydFHY4mak78Ry_hW_u5HEa35dxfh8JPFpK3xVsJZVa3pThwIa-8zp4XNZ5MVc1Aq9mW0gMA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC6y89YnciwSCJsEuaPNz9sPyHGwiTKYHhSF8lQwmCSRw0-hMfOZms-AoWZbTNI3XijMrLGzfrRpt6qQGSZWhVs2Mi7fi4Fatl90hjp2T3qD-6V4rlo-CmaeHSn7AHG6P4-2L3R2FGjxLGVTw=s4800-w800-h600"], "a": ["Xavier Pauly", "Kaili Põder", "Rik Maes"]}, {"c": "museum", "n": "STAM", "zh": "Ghent City Museum", "lat": 51.0439769, "lng": 3.717369, "m": "4.4★ · Closed Wed", "d": "The city's story told across a 14th-century abbey, a 17th-century convent and a 2010 glass wing. Starts with a giant walk-on aerial photo of Ghent. Multilingual throughout, interactive, and a genuine standout — reviewers rate it among the best museums they've visited.", "g": "https://maps.google.com/?cid=10590879271587408516", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAGUj7napMJPStwbkOUwLYLo0SQwgixcWoj4GfkiGZb184HyflFSNfk2Hz0Y2yLurrYH2tC8PhVm5m9BtdVx9M00KbRZQG9Ub_Ob02T9OeBvaUzpDscp2US05wPSYaWNkTPCnZniwCn3PGK4g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA9pCf6aKOXvFNAGO1fzrpIFZ9vO5qTY8ZS4mlV7ry5UbsHlAr8oPMVz8waBuyQQwig5NYsX-BWP-GxifVR2TXjG0j4VZWuXFrdDKusb1D7H0QE0bQxfhjZPrerSNc09H1waffF-5dNbQIVuJI=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAt8Mp8Qqx146EnFDoMUbFMBYrpejxNwDZvSvX9DuPCyABzTPQkoGAm1tsSjd68BmOuWQq8sIw89cjc0GZDUbAahIZ5F9NHt130jYyHbQlxrb3aLqc0QEEoOVQabxA9VQhysYdBGcgyxS_DTOM=s4800-w800-h600"], "a": ["STAM", "Jelmer Holwerda", "STAM"]}, {"c": "museum", "n": "MSK Gent", "zh": "Museum voor Schone Kunsten", "lat": 51.0381661, "lng": 3.7240782, "m": "4.5★ · Closed Mon · ~€15", "d": "Bosch, Bruegel, Rubens and Van Dyck in a calm, well-lit building with plenty of benches — and rarely busy. Free audio guide via the Smartify app, so bring headphones. Two hours. SMAK, the contemporary museum, is directly across the street.", "g": "https://maps.google.com/?cid=10994420397877218044", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCeJCgs2WKTil6kFMtvf8GekUqH6jJQguRK020UkxAEY1ASbLgi2LrRrk-y-HCa8epNLw7fNG9-G2pSiDc2sRJtcrZ7YmJ1liVBtxH6NlIyDLfIY2MPboAv3o1S9_DluXLiHN0Vuaz4OIC9O91MJSgrSQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBI7CzVuzxRmJPSKpWRCK6hc_SiJ-MafcrwYB91rPmQMmuhZm5AyyZ3rMXHaNVkkkKmNcDzPNHx5bEukqgUjlfpdbZ6sXJ5-INdPX3U2L1OFXj3SaGDEXGQv6IBEyowz4mImfepiaBTkl4K=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDcxESaF4zeIn7BNl70wskNzY29XIFp7_Ib0DJoGkQTUon1WzPZB9Nj4ijW0Cf1vtX9WKgFaQzYB285a7VM-d7Ml5l8NoEXDRAATlCmyFdO0og94iYh72PqK63BzJuDrVA9fevPPw2gNgVROw=s4800-w800-h600"], "a": ["MSK Gent", "Jan", "pascal stenuit"]}, {"c": "heritage", "n": "Patershol", "zh": "", "lat": 51.0595702, "lng": 3.7232341, "m": "restaurant quarter", "d": "A knot of medieval lanes behind the castle, once the tanners' and friars' quarter and now Ghent's best eating district — small restaurants, no through traffic. Google files it as a neighbourhood, so no photo card. Wander after dark.", "g": "https://www.google.com/maps/search/?api=1&query=Patershol&query_place_id=ChIJAR5nwzhxw0cRlvWJT3AKl_Y", "p": [], "a": []}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin" style="background:'+CATS[pl.c].color+'"></div>',
+    iconSize:[21,21], iconAnchor:[10,10]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch" style="background:'+CATS[k].color+'"></span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng
+            +"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.add('open');
+  map.panTo([pl.wlat,pl.wlng],{animate:true});
+}
+document.getElementById('closeSheet').onclick=()=>{sheet.classList.remove('open');selected=null;};
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>

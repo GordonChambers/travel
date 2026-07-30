@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Bruges — Where to Go</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{width:21px;height:21px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Bruges — Where to Go</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Photos are traveller submissions from Google, shown as a swipeable gallery — swipe if the first one isn't helpful. <b>Directions</b> opens Google Maps walking directions from wherever you are.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {
+  views:    {label:"Views & peaks",     color:"#E8590C"},
+  temple:   {label:"Temples",           color:"#C2185B"},
+  market:   {label:"Markets & streets", color:"#F9A825"},
+  museum:   {label:"Museums & arts",    color:"#6A1B9A"},
+  nature:   {label:"Parks & nature",    color:"#2E7D32"},
+  harbour:  {label:"Water & coast",     color:"#0277BD"},
+  heritage: {label:"Heritage",          color:"#5D4037"},
+  food:     {label:"Food & nightlife",  color:"#00838F"},
+  themepark:{label:"Theme parks",       color:"#546E7A"}
+};
+const PLACES = [{"c": "views", "n": "Belfry of Bruges", "zh": "Belfort", "lat": 51.2081466, "lng": 3.2248011, "m": "Markt · 4.7★ · 9am–8pm", "d": "366 steps up a leaning 13th-century tower for the view over the whole medieval core. Timed tickets and they sell out — book ahead. Try to be at the top on the quarter hour when the 47-bell carillon fires; the mechanism alone is worth the climb.", "g": "https://maps.google.com/?cid=7589814388937032024", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC_o4KvIa_4ZHBuq1uuUGYPcHj9dqCtJkFYixhJrPpH9HbCDgJ7kEYxkbnXXugB5YWGkBCHouhYVxVDJ6YNmH5J6gFZAa_1k-wQ4TDLz1T8SrWjWpuQ8ObSEhheMHP58ClSevsItQJR1RmmhQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDBVeBMmhBvYT4BwxlsUsEC8wy58_sptfn89f5Y0oFiSlJmrfmConPtu6rJNjbShdkW6--pW1BuIZBu0K4PA-IFkqLlQK4HYhwyZgyhK0C45ZBqWcU_eZgFKuzHdJRSTO-ZTQzJtAzidQ0bfok=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjATTQk9IhEGRdBNGj1f4ZEjMOf_4b4bqijqHoAn4c-E73x4Ct9DuBRGgIjVEPIK3NHvK1Hlp2P5lpIrTkww9TE8wuCh9OTsvc7LDuEOxN5GapE2KkxzE7FOX5GyGAO78TedQYjdL5sLIXFlEw=s4800-w800-h600"], "a": ["Mermaid Denizkızı", "frank alvarado", "陈迪"]}, {"c": "heritage", "n": "Burg Square", "zh": "De Burg", "lat": 51.2085062, "lng": 3.2268383, "m": "4.7★ · Always open", "d": "Six centuries of architecture around one small square — Gothic town hall, Renaissance registry, Romanesque basilica. Photos genuinely don't convey it. Come at 8am before the coach parties; it's a different place empty.", "g": "https://maps.google.com/?cid=11531928152841650763", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDW-WNh9aTEzeA1-7i6H1ekwfY3BUkEIGgxtD8uqcla8tLYt2GTfzDC3GepK9tIEUGdaWA9l-wLaqS7cWmTmBDqsJoyRkq_7_Vc0AyaSuNPn78y6we97zdwViofsUg_PLZG6HAIapoO-xjjE-M=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDcTKka7Xuf984HOgQiWRjAckGoWzzmpmY8OGhHZEVWuLzrKmBo42dQGE72s7pl_ncq1dcZs7uekIFybQEDgcomK_YSQcdf9A9DHT0twJmUyh2NYW62I4O_f2iJeDN-SnKqmNi_m5QtM0jpoAw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCiO_p35vgAmoLObgv27F6lhVIVDQmmQI_Y_w7cXMaM4AK-klBeSBcNgsuYgzXl9yMQszaxTwiTaHUhtyFrFZy-p8nqM_u0Bv6ik-7EjG7g8q_XiyaOm0ucSFkKiU2yJkWx4HkEw23L7MAWn0A=s4800-w800-h600"], "a": ["Amed Ait el kadi", "陈迪", "Cosmin Bodeanu"]}, {"c": "temple", "n": "Basilica of the Holy Blood", "zh": "Heilig-Bloedbasiliek", "lat": 51.2081343, "lng": 3.2265448, "m": "Burg · 4.6★ · 10am–5:15pm", "d": "Two churches stacked: a bare Romanesque chapel below, a riotously painted Gothic one above. The relic — a cloth said to be stained with Christ's blood — is brought out for viewing between noon and 4pm. Small and it gets very tight. The attached 'museum' is one room; skip it.", "g": "https://maps.google.com/?cid=6067829549226383192", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA14cTWn1BM_utNshZgwF7E2uV4l4OD-3mYZ8UvSa0pkGooX2fTj_vKWN4lwz4SAO2CEPvNaEnsv7ZURTyF3H9FojCz9voB4Fu0kf9sCQvg2apkGNmLiPJSxVrNcppdmNKGmWA1ELaCx0IJOhs=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD_oemt7YneguaKKG9BN11ar-y9IByOjU1pSDPF8Cvw5dbFdoVVViC8zO_0vlgmFv-hzj8wU8_bXKf4q-qQA3_dCNxWVFQFT_fWfItY9X1VOAfxewFJ874LwCt9rutbAExKH4hFGyn0UrR8Cfk=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD5zBWoYiPjW82xUz1k7QwkTBt1SeVfglU04NM_cNM1QogC4IRdqJZPFQpN4vXMK0bOtVInrahvOCnv23MGImBRyy-KZEjzsVv-J6llHWHlbcRHDfbWbUbaa3ZyE_jsNxdxfh3a9aKaNe7Z=s4800-w800-h600"], "a": ["Didier Laurent", "Roberto Marzola", "Paul Van Buekenhout"]}, {"c": "museum", "n": "Groeningemuseum", "zh": "", "lat": 51.2052205, "lng": 3.2266679, "m": "4.6★ · Closed Mon", "d": "Six centuries of Flemish painting in about ten rooms — Van Eyck, Memling, Bosch. Compact and superbly hung: quality over quantity, an hour is enough. Info cards in four languages, free lockers, and a serene garden while the centre seethes.", "g": "https://maps.google.com/?cid=1620976881299262998", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA59l-2b2fnT-iSy-JujSGPO0uYE6bKMY1ZhcWnH-TkOcSwkr1d-8eYw5qfydwmhMN44U9hKw2IGLAUWJe_JFse3Uk_F3T_zKYxQpFX1S0AcDxyKGhlW64040Ic3N1u5aCiEibGK08TMonHiQ0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBSkxuapL1G9DT0tMxSDhAj_eCYinaLBrMBZISAAht_yHQvwk8pQwZ6RSgS5vRu03I2LxbRf12joa4bIJJDDAFvz82uns68iHsJoxHAXeKFaC8RJRZV2eRYOJUyEsUClXgqaYFCF7azzHhF_g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDB4X0yGEwp9MUR158EfiGsORbH29bWaIUtDoPVcPBCteTjhDtUl87CpjY6u4x1zPLTl2dzeTrDrZB4ftlxlp9DIuBJfIy72V8jb6ynqMW-Ej9tH8X0iwHPk27QVa7EqYkGKpawkLZKrCYU=s4800-w800-h600"], "a": ["Michalina Pabianczyk", "Gottfried Watzinger", "Sayak Das"]}, {"c": "temple", "n": "Church of Our Lady", "zh": "Onze-Lieve-Vrouwekerk", "lat": 51.20469, "lng": 3.2244474, "m": "4.6★ · from 9:30am", "d": "Holds Michelangelo's Madonna and Child — the only sculpture of his to leave Italy in his lifetime. The nave is free; the museum section with the Madonna and the painted medieval tombs costs about €10 and is worth every cent.", "g": "https://maps.google.com/?cid=2109980542059191787", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCoRXgAFUO9_lsSYolV1QzIRBwC1J6liJdz54ksMBxMWDvq4MQwaBUzZXBVc9-WLPNIdf1Fjip2623fmV4i_aXbKopGj14J2_WQV9Eo5hvAT77WL5vyrfWYrSWC9XZXm2jp-orNNu0r25zs-7s=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBje4Dm_fjpY0aj9LmA_AKxWQ_oB4J-e3dW7NCgLncZ6Fe_aZV3SvZrkXZb4gtV214ZYZ1NfOqGxhL0cd1ZfR8JjJcL49uwDssk6Vmy8w7hX9AalwDOFIELlzFZwJcVx2DmHHHk41YZDTHacBNGMWY_JQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDtaShU-h7JCJKSk0OVg5i0pZx2WgJlpqk_y5L2iixczR-TMTl7p2rN6l-Kj_2qJy8_v_utvndjIZM2jDcKvOcnaRxbu9g_GeLMq0ZEBgAFB2oWIMtuxkJdGTunuGJx9qI1rySXlgLDIOE4qnk=s4800-w759-h600"], "a": ["Bernie Rainer-Guy", "ΕΥΑΓΓΕΛΟΣ Manyyear", "Marisol Pastor Gonzalez"]}, {"c": "museum", "n": "Sint-Janshospitaal", "zh": "St John's Hospital", "lat": 51.2039051, "lng": 3.2237571, "m": "4.3★ · Closed Mon", "d": "A medieval hospital ward turned museum, with six Memling masterpieces including the Ursula Shrine, plus an intact 17th-century apothecary. The building — vast timber posts, cathedral ceiling — is as impressive as the art. Reviews are split on the modern-art interventions.", "g": "https://maps.google.com/?cid=15059678014133946087", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBxPaQKFwR-n5xG__h3iuaQRkiUy0aYkCBLJ-F3CbRDN3DhlFkl1ZzJhfnTE5ovw9DI49F67GhMG5wdjoHCPwaiVQVQQGUk0plET_nSafG6GpdeRV2pVlrAYsAnuh7ehaQBjOVLSiKgRjmmxRaSRWz16g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBFocf0OTKW3r-JqnlIP1l7Kxk-5E62HyZD7NuwXy3vmcGFIE31Fo4PFM8y15C6FIQarEI1qlOi5VQiMcGjNLzQzpH_cFc5H9ezI0q8z1QrGd4rPAptxhX-6JiAWVwyudU_fOiv8VW0DvIXpQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD_G-1Vaq4H7-tzgwAaS_n7gbKofoKBaNnUx8zn9EOCTqhmmg-_tIETimDNCjd6yPJaGfey_4CpXkPgL5Gq1mSjIkbKHoJTkHwcrUpt_-FMw_fSXsYsjUj9Kz_jzaCpsG30QTQHpplBjVe0ObSDn_6u=s4800-w800-h600"], "a": ["Balázs Turai", "Luboš Vaněk", "Dean Horton"]}, {"c": "heritage", "n": "Begijnhof", "zh": "Ten Wijngaerde", "lat": 51.2013447, "lng": 3.2227093, "m": "4.6★ · 6:30am–8:30pm · Free", "d": "A walled courtyard of whitewashed houses under poplars, founded 1245 for the beguines — laywomen who lived in community without taking vows. Benedictine nuns live here now. Free. Go before 9am or after 5pm and you'll hear nothing but birds.", "g": "https://maps.google.com/?cid=5565177156085992687", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA8PmISpVXluMxvdjeYSzIif1hLgB31ErisL-hzIh52H9SJUD3E4qB6ZUIsPayOghwGQ4IiBbLxuQHA3lPo86epWDkjdbi8g5v5mmGAsce-Scb7DgAW3QuvjQNhYfcL3PZtH0KWo0FYDcqbYqY=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC4HU4z4UQS4g2OpAx4qIVlDO4CR6bT9EPNR8JbAyRYjMpdkC23T5X8st5ncglBNqfITuC9SbtGZq6Nwf-vUlKF84WFoIt1AeQkrafdGdG4-vYRHSbHDEtBTShG-HVrX6ikQhuU0g9-opgdpGw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjByNsmrCKuE-F2N8Fr2Lzv4_NeXU8D3yN6KHVpl3o1YLi7S1OSR7huhKdL49k4DZTFBKuILyKLoslsukFKiAXVkZ08JmxE6xKFJYdPEMLcLCM6NbJ2rD-xjiAkfeMdqm7qC8GFELD4O39BcU1Q=s4800-w800-h600"], "a": ["Philip and Luc", "Carlos Alfredo Gómez Pérez", "Bruce"]}, {"c": "nature", "n": "Minnewater", "zh": "Lake of Love", "lat": 51.1997294, "lng": 3.223942, "m": "4.8★ · Free", "d": "The highest-rated spot in Bruges. A medieval reservoir turned swan-covered lake, five minutes from the station and right beside the Begijnhof. Named for Minna, a girl in a tragic love legend; couples put locks on the bridge. Early morning is the one to catch.", "g": "https://maps.google.com/?cid=491434144473318658", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDigddy9xs-dgiHTc_S0Cg0EaRi59Q3xU5UlkkhkH-YeluCMTRXbrm7SoIr-43ydf7KOvd7Zoy-NQyVMtm6KEZhWRTYStKuxXdyv7exywDIPwjHtT2l_hsGkks11Ov9q5xjURH-T6cQtGFPeo0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCi8I1uEzDt_87aLdOFXWycDxXuIPGTus7LsvDB8ZEQHuiKEfvNEQPCWTWcO3Qw-_hOOqWgdsFOcxlaS9Sh_WEcHvF0tbnKwRavpcf-RQLA9DGiKled6keQtgifjnTwad4vOjRmuA58qzFeWF0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDKgQNk-Uwf6tp84aGtcazcxOkBgQLF3Y6iVjnjvoriYRBgmbGN3XMHtY9HDyDf7qlFoXpTrw4w3BLWP9_5Ab-KE97JeXOvhHnPJ-o5uZx5FFyW2JDlcUjVn6FWUEaooU8ZzZNcYkSIofLQ4Q=s4800-w800-h600"], "a": ["陈迪", "Manuele De Santis", "陈迪"]}, {"c": "food", "n": "De Halve Maan", "zh": "Huisbrouwerij De Halve Maan", "lat": 51.2024473, "lng": 3.224178, "m": "Walplein · 4.6★ · from 11am", "d": "A working family brewery in the centre since 1856, famous for the 3.3km underground beer pipeline to its bottling plant. The tour ends on a rooftop with a superb city view, then a Brugse Zot unfiltered — served nowhere else on earth. Book the tour; the beer garden needs no booking.", "g": "https://maps.google.com/?cid=16853882936516799745", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD5tXCuVFIi2EjUzjvbd7TyySr9W9p9HIGGnG3LMYSVG_Y-aUFn5_4iQwIJP0s5MwS6207K4jGeR3Suk0SimJE1F3-R09ecr6lJhw9sVsSSuVHaD_QMXrjFkzJ_XvjYBOEKnBSCRRmyu08p1g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCER635x_KcPo5ZIecvbL8NaAzcqzt4aAh1hgBDhxfMboKl3r5NneMFUR9b-XvM_Jl_WnQetxbsTruPEU5H8p8ItksEGThM9VcAm5jRxG6SjrD57DGLmwikw4blv4Koa8QDd6jRsg5Hz8rkRA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC_69Yefzun25qq3o2nCJomZE1Wz7VNs4SeGZTHS_OSl9BzE77psQ_2USYML9udWtPhtEb_Jo7TDV6o3Q5xJrkkdpkYFxAsMaziW4Wafshuw-BTgXeBGZO8C1FVi2L8SCjOUazpnTaRc9pZXA=s4800-w800-h600"], "a": ["De Halve Maan", "Brice Cortès", "G.A.G"]}, {"c": "harbour", "n": "Rozenhoedkaai", "zh": "", "lat": 51.207137, "lng": 3.2275063, "m": "canal viewpoint", "d": "The single most photographed spot in Belgium — the canal bend where the belfry rises behind stepped gables. Sunrise or dusk; midday is wall-to-wall tripods. Google files it as a road, hence no photo card here.", "g": "https://www.google.com/maps/search/?api=1&query=Rozenhoedkaai&query_place_id=ChIJvQ79csVQw0cR_Ay3LBG4Wlo", "p": [], "a": []}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin" style="background:'+CATS[pl.c].color+'"></div>',
+    iconSize:[21,21], iconAnchor:[10,10]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch" style="background:'+CATS[k].color+'"></span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng
+            +"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.add('open');
+  map.panTo([pl.wlat,pl.wlng],{animate:true});
+}
+document.getElementById('closeSheet').onclick=()=>{sheet.classList.remove('open');selected=null;};
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>

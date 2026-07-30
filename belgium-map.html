@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Belgium — Four Weeks</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{width:21px;height:21px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Belgium — Four Weeks</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Sub-label under each name is the <b>province</b>. Several places open only on certain days — Cantillon Fri–Sat, 3 Fonteinen Fri–Sun, La Batte Sundays, In de Vrede closed Fridays. Photos are traveller submissions from Google.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"heritage": {"label": "Historic towns & buildings", "color": "#5D4037"}, "temple": {"label": "Abbeys & churches", "color": "#C2185B"}, "museum": {"label": "Museums & arts", "color": "#6A1B9A"}, "beer": {"label": "Breweries & beer", "color": "#0277BD"}, "food": {"label": "Regional food specialities", "color": "#00838F"}, "market": {"label": "Markets & streets", "color": "#F9A825"}, "nature": {"label": "Nature, caves & parks", "color": "#2E7D32"}, "views": {"label": "Viewpoints & citadels", "color": "#E8590C"}, "war": {"label": "WWI & WWII sites", "color": "#455A64"}};
+const PLACES = [{"c": "war", "n": "Menin Gate, Ypres", "zh": "West Flanders", "lat": 50.8519937, "lng": 2.8911326, "m": "4.7★ · Free · Last Post 8pm daily", "d": "54,000 names of men with no known grave. The Last Post has been sounded here every single evening since 1928, war years excepted — arrive 30 minutes early for a spot. Recently cleaned, with a new Commonwealth memorial. Pair with the In Flanders Fields Museum and Tyne Cot.", "g": "https://maps.google.com/?cid=13804732144501755827", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDmBz7_eUPZBEJXOAT8w5Xh0ZoEromFTY64a54dCB4FbCv6gkEeO8W8wJquHCAtdk8WMeAcicR-9-oGVHcOiPs6D-Vcw3DEmLkko34kKWf3sZRGHGG8Vvc6E1fQnjAPz9blEWuXpUa-cwuao9U=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBHF3NFRc7wq0Ws9s7LTTb2EOvMuMW5fHeVq3ryxFL-0fiEY5L4CYVmJ2ePOYDc9mxVW-efn1qZUscGGwEK1cOJKpdh1W8HD7gFbGmtNOiCljRrL8uCdn_kqi8yb-T3qEFxOciUn_wsEi3eOCM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCRCDOCiWs1EtzxsaJlE3I3mlNUvcW1YLEHqzVFMuVJxbxDgbQJoNUBRFLJfrAPOe3VWwSbJmNUaHxa_Ny5ahDpQE54U_rBqOPRxPF8TnkRwY3VZwQKHvgSrJ-wfebiy7d27_Lo5e7z2BpgYA=s4800-w800-h600"], "a": ["Peter De Lathouwer", "Longdot Claude", "Elizabeth Cutler"]}, {"c": "beer", "n": "In de Vrede — Westvleteren", "zh": "West Flanders", "lat": 50.8948378, "lng": 2.7217969, "m": "4.4★ · CLOSED FRIDAYS · 10am–8pm", "d": "The café opposite Saint Sixtus Abbey, and the only place on earth you can simply walk in and drink Westvleteren 12 — repeatedly voted the best beer in the world and sold nowhere else. Blond, 8 and 12 side by side, plus abbey cheese in the shop. Book to eat. Note the Friday closure.", "g": "https://maps.google.com/?cid=14223133189185467147", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBA9za_b6WqTcGZNpGK_aQGE0D6vJQTNOsEYAIUhuxpWoXmm7FEHGxp04zVyQ4AZB8xcaVlMbVzK1hTBKpp3BT8w5HvIp20MiaEQfDweL0zBPOQxexNnfQMaZ9Ir8lBNl_kBXD8UVs8Xw5juD0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDaDoUYks44SB2gyph4ZrkAe0TzLlER93lXsbsQQOFZpi-H_M8H2YDZ-K2LIPH6bQOJCKwUnacjDhIwr2xGfQeTVkoIhsdhRqrpniaBZRA2zDdR72W1QJto5DMaMb9_oBQqp3QVenBFh12unQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCmlPnf8hSuSXe3foxP6htR7-Jxp36abpBRCknPhAkuyxsihIiWWQ1f9RUk_fI6tepC64iNAiT1sGRgbdy4NhdWBgG9TLGoV_uvJpO1bavbnLR6M3VFZMcisdHsrroTm3gMP-bGo1_mkAVC1EVdvyO4=s4800-w800-h600"], "a": ["Michiel", "Stuart Cameron", "Gabi Cicconi"]}, {"c": "food", "n": "'t Vistrapje — Ostend", "zh": "West Flanders · grey shrimp", "lat": 51.2333556, "lng": 2.9216679, "m": "4.3★ · Closed Mon–Tue", "d": "Ostend is the home of the North Sea grey shrimp, and *garnaalkroketten* — shrimp croquettes — are the defining Belgian coastal dish. This place does them properly, with sole meunière alongside. Better value and more refined than the tourist brasseries on the seafront.", "g": "https://maps.google.com/?cid=9794683093544134119", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBivaEc_r_cxLMfGH8-3lTLvisTylLA2bJg0Tf4nc46speaJzCF3QD6wYRvUfP459TdXwr4Y0dEr0SAqfC3SMz2Om-4XznXYm4jL6linqnuTfcJngaXNr3vy6DIEqi4XOySTCWujDCEa4WEAQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBuQjpvhIZ3w5Z-wU-QJ0rR-PAmrWmluJqyG3lwmAZYDLEXAeKnZCHqePqh6-mYqjOYdGUnPjR0bc63faAdx7rPGrevjTJwI4JxbzUHRX6wjNK_ZPjD9mISUipsWsEKS55K3bXNM_KGyhOH=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA5xIM97O715mbmkCqwQiuN5za2jgZQhPwNn6hHOw08EVt0_gRM0Andn2lvGI1cFPiV04bftsAF-CsbMx8Io_ViMspTdZi-ogjkyXpaMOCCpvPkm0Z7q4Cp-V9exUfY7810EPSlLURhoNdjAeFUro76mg=s4800-w800-h600"], "a": ["'t Vistrapje", "'t Vistrapje", "Rudi Tonniau"]}, {"c": "nature", "n": "Ostend Promenade", "zh": "West Flanders", "lat": 51.2315506, "lng": 2.911163, "m": "Free · 24h", "d": "Belgium's coast is one long tram line — 67km, the longest in the world — and Ostend is its heart. Fish stalls on the Visserskaai selling shrimp by the cone, beach bars, and a promenade built for the Belle Époque crowd. Take the Kusttram along the whole coast if you have a day.", "g": "https://maps.google.com/?cid=257055892693727901", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCwBO7dthjpsasReTbQS835K4C8IC9LOC_ARtc2O64xswOYEnSmJlqbAdtgB1fgffOSDcINykuhEfrQfuwFFw3w8R_rDnQGTEKOE1de2Jc1RuWoWwBfxFJPmebFB9TpPjIopDzF7lfVC8Pg7ynz2mak=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjApOBJRAnV6ff78e2v-6cr5RMncfDeFBRuhCQ-PWWKtXMWimVOaqaqfBAjn_ZnGh0siCC4sjiL3ADcsCdLzbV3HTvO9XzNvrdWg8Gx69ljFzI4xV_1FdO4WrhwmmNlRPHQ9dSEHgZSGBRzOHd4_Q4CbDQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAxGIL2RD-VWvmBuJk3IxC_RU1xpuq-l1MIFFS9f5wxQtPzWnH3oAcZSSOAtuBwVa1D3kY_UmpNave0DX2X3slpk4dWzoPJ5ydW2TrFkYMsFuTM0_Hc-u00lWGeUrWSWzbyXdQcTcAtUv4kMDmBH_yA=s4800-w800-h600"], "a": ["nine t", "Hayat Ali", "Hayat Ali"]}, {"c": "war", "n": "Talbot House, Poperinge", "zh": "West Flanders", "lat": 50.855957, "lng": 2.7232849, "m": "4.7★ · 10am–5:30pm", "d": "A house behind the lines where, from 1915, officers and privates were equals — 'Every-Man's Club'. Still furnished as it was, and you can actually stay the night in the original rooms. Quietly the most moving WWI site in Flanders, and quite different from the cemeteries.", "g": "https://maps.google.com/?cid=11796858010737045831", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAnZp5eBeCSOhwpDCIAdS8SVp7hFt3NEB-qkQYd4BXRzB9ndzkT-bTjDpcjEFVspDYKxFdFBcux3DxrvJdxKQjeDFLwC__r3KAI9ffxrxsNHaJ36nRVRPqiFMukMQ8gHZhI6ZwUJWFI18mlzg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB4rMB-eWcHl9APa8NaVGMSGAunBLw-DefeO2Rc8sBaFIR21LCukTC88HF_gmOmW1Fk2wFXVQt1KrkLTOEYZmDz5DgqXpvqx6AiWyDmzxocwORppL6Y4M6ypDbY9h5HGFWqH63NkF9TgrE6vds=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBXjc7sBNcot5AU43FVajg2viZ0th3H1d_q63m-UUyFdLKf65elzYnny221c3HOKEGeepZiW6jZ-CZW5MRyJbx3W7e_h8mlX5250gh5a5DVmYWJ3SohvrQja52f1Ddz6b1KuvZ1B9AX4Ce8=s4800-w800-h600"], "a": ["Talbot House", "Antonio Palazzo", "Kristof Vandenbroucke"]}, {"c": "beer", "n": "Hopmuseum, Poperinge", "zh": "West Flanders · hops", "lat": 50.8551918, "lng": 2.7219794, "m": "4.4★ · Closed Mon · ~€6", "d": "Poperinge grows nearly all of Belgium's hops, and this is the old municipal hop-weighing hall. Free English audio guide, a serious display of Belgian beers on the top floor, and 90 minutes well spent before you drink anything. Two minutes from Talbot House.", "g": "https://maps.google.com/?cid=8824106771244179682", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCKOIvDf61nthZKs3KRlr_BRs_mCyfX6NtQylZQbMPKx_IHY6if0xndCBiitzTKxRIrWG7co5viQzrX5CA4gdk7U9vC2Hp2hWH9w2GOFhDC3pX8HGpjbI0zf46EpkRTxsAwABwv0MMnmtqEwj8=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAPzJ28v2fbZdQa9XO8CsFSAmwTCY0HUg38Wj6hrtbultL48EaXKA9IBwrQRbJfX2XJEBXiQuUfcBNUUg3SxeNpSla22vgFYHv1WBH7bKRrVuhFlOCpJEdFJ5G6oZnzrBBrNYy_vEt6_aLI=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCIeKwvR-CwgmQu5XD2F1RzgfndYWIWZ0vaHl-BfKv89Aphl_YQ7mqyJf-pXEH5xeTvWfrnBHRHTfeT7BIIucmdPKtHhrYLiTbxSv2VyTEfYyXhof6mT04GkiH8VpOa7yNVwTNKMg4dr_TShg=s4800-w800-h600"], "a": ["Philip Varechon", "Fletch Martin", "Albert Schans"]}, {"c": "heritage", "n": "Damme", "zh": "West Flanders", "lat": 51.2520763, "lng": 3.2804353, "m": "7km from Bruges", "d": "A medieval port that silted up and stopped, reachable from Bruges by a poplar-lined canal — cycle it, or take the Lamme Goedzak paddle steamer. Now a book town with a Gothic town hall and windmill. Google files it as a locality, hence no photo card.", "g": "https://www.google.com/maps/search/?api=1&query=Damme&query_place_id=ChIJge9PfgZZw0cRME9NL6uZAAQ", "p": [], "a": []}, {"c": "food", "n": "Mattentaart Atelier, Geraardsbergen", "zh": "East Flanders · PGI", "lat": 50.7716382, "lng": 3.8821349, "m": "4.6★ · Closed Mon–Tue · cheap", "d": "Mattentaart is EU-protected: it may only be called that if made in Geraardsbergen or Lierde. A flaky puff-pastry tart of curdled milk curds, painted by Bruegel in 1567. Reviewers travel from Antwerp and Germany for these specifically. Walking distance from the station.", "g": "https://maps.google.com/?cid=6823872922759103552", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAoOU2CS9a5W1kC75K_muCyIiN9uoAL1IsEUX_qi46FJGSV19ibgZTVPsPPaqWXFIpIaJfnYhQdbfK5u36Lqq3CAEbkRW9hH6omyl6IrGl-NVYxknE6RFUSI9ly6ltK02NGuK2IaaNwrioBc5Cr8Z8z=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBe9ttK_Y2_ZkZgILpfnbqUOoI4Ahe9JMR4wtWSMw2Tn2jib_noo1iwdjmTlrfHW5Yqnu0NXUlkbd5QtDYDZbh6uVuVIhNJKfPeQWVxd5gbkFIBFN66aRViKx1W6RMMNFZL0FZrqhe4gVdP7w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjASBrmocR5x6SUFQj5fXGRwb2_-PSJDEHrCPeg5ovLEYrZgYL2ADpHW42JGX8xTf06kEnxnF-u0nHb6uA5ClGFriinwT19MSXglvTN5QpyqWXkOSY22ENQOt_-OeM_womeHzEcbynG3v1urwFZFj2K3=s4800-w800-h600"], "a": ["Francis Heijvaert", "Тетяна Денисенко", "Christa Claes"]}, {"c": "food", "n": "Confiserie Temmerman, Ghent", "zh": "East Flanders · cuberdons", "lat": 51.0577955, "lng": 3.7237583, "m": "4.7★ · Closed Mon", "d": "Cuberdons — 'neuzekes', little noses — are cone-shaped Ghent sweets with a hard shell and a syrupy raspberry centre that only lasts a few weeks, which is why you rarely see them abroad. This 19th-century shop with its century-old till also does snowballs and poepkes. The owner explains everything.", "g": "https://maps.google.com/?cid=12317032492449443726", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCYr42bB1hV8WTp5Fc4kGm2Jy75-D8jKDatoCEBDrtiHfq3UCmRCBLPtYg--f9mNJsP_rvcEuQD88xDYGteqtG0ZMamBO7o9iBr8s6eeXVYfi8RHU5UQOoPAzuKI6jgfxwP_fFG2qmB19cr4Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDdZvBSRUGaoQa0kZGBdx15VOU5aqoPNbAoPcx4fdrLQ_TmvjwmKLw6qwh9unUrHRXVoUcyha0Q9pU-7BthU73gJf3cy2LksqNRZhLBaLNJ33WOp6Prsw5pZ3T9NkOBNAuxU0fmHwc9yw99J5abVSDz=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBG-P3SfO-ep-vnhfkBsj2GMLkgmRLzKNywQZ5eeGRjNHjwvM_fFCSzxXKTTzmk9RoQttKWLbAyFkAlw_gALn4IOLzclIOWdKb-xDYalYb5Nzkr01HqdJ8D1yxHg-XodfkHIHUo8hag_oMGKA=s4800-w800-h600"], "a": ["Yuri Gaidoukevich", "Karin Schep", "Walter Bruyninckx"]}, {"c": "heritage", "n": "Oudenaarde", "zh": "East Flanders · brown ale", "lat": 50.8389675, "lng": 3.6053791, "m": "4.5★ · small town", "d": "A flamboyant Gothic town hall on a quiet Scheldt market square, plus the Tour of Flanders centre — this is the heart of cycling country and the cobbled bergs are all around. Oudenaarde brown ale, sour and dark, is the local style. Watch the paid parking; enforcement is brisk.", "g": "https://maps.google.com/?cid=9468613424163262903", "p": [], "a": []}, {"c": "views", "n": "St Rumbold's Tower, Mechelen", "zh": "Antwerp province", "lat": 51.0288441, "lng": 4.4781557, "m": "4.6★ · 538 steps", "d": "A cathedral tower left unfinished at 97m — you climb past the carillon and the clock mechanism, touching the bells on the way. From the glass skywalk you can see Brussels and Antwerp at once on a clear day. Mechelen below is a lovely, overlooked small city.", "g": "https://maps.google.com/?cid=10264679590800025948", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAqM1crMhTMMDI6uH9oudnfSi1YStwji15FSfpK1SWr4VKHNkR8IOyH4X7W6ApYQVgJWI4vAJ5WigMALOFDuY5In31vONdqWaJP6cBXU6EXavX9G6W6oBwwKNGwQaBMZlnfUXGj44qJTWO1hg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBk9qfvwWC7ca5OKMFsVCCyobMHs5oSrPE58QjnA6Hgdq90vlaO3HfCO9_Ntr3YOJF92s-CkixT7wiC3iWmnZF6D8kW7JX0-628HkAUkw0m0JINHLVnoReAD7XTMczLQt-hN6Yk6VgBm32yEaE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBw0FDXgiYbOrN59GsMP_xmJtJ2b7GJmckphrQyYudRLk22wGsLs3ZvJGbgRNsjMEPEdVtF_IkyBnc2_PJgWcPJzAZFh24ZPR6n-eyEHfTWtcfszwRxfacTSmi-cTUmpNWfbzwD1HMUrLPj_cQEuDjLrw=s4800-w800-h600"], "a": ["Eddy Roelofs", "Sergey М", "Seabrandy"]}, {"c": "beer", "n": "Café Trappisten, Westmalle", "zh": "Antwerp province", "lat": 51.2807388, "lng": 4.6609392, "m": "4.3★ · 10am–11:30pm", "d": "Directly opposite Westmalle Abbey, which invented the Tripel style — every Belgian tripel descends from theirs. Order the 'half om half': half Dubbel, half Tripel, poured together. Abbey cheese on bread is the correct food. Playground out back; open Sundays.", "g": "https://maps.google.com/?cid=3137022751270922561", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjARV4jFU2fE_P32lfDh6OdlM3LGkl-MGYFWOA2Vg52WdGsqdOvGj-0MN--dFLWUQH2ZoRCK9vHZ_drtFytrgKdhGdvRC-CNuuCOrvTquZF-LC4N697zJDXAjLgvcIV2ACmo2VoGqlTmdyO7M0U=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBDL1A7HHKZxR2vcuyW2fHwnwpt78cZAp8qefQlhkx4xnB0INOccecZxMGFQWwzYvfSmmCPCaGb3MhOoLMl0q6TNGI9QPhKzn7U2-mkceDS4kdkOf1oKXykeat_rw5EsWRRVCdzg4D8KlURx4MH5fv7cQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAy-vmS7hD_SBh6QXz7pToy4RDxeFmlaa852R0ziB0ssc43PyEeoJ9ibMn5QTXUa4Fft8_B_YQfJACCZhAc3eQQpul9kIWci6TbMVFbBHby4kOTrHJoaFAnqYK8irWQBCdYA-tuFbrM0m_v4Q=s4800-w800-h600"], "a": ["Walter G", "Johan L", "Juan Carlos Santamaría"]}, {"c": "museum", "n": "Zimmer Tower, Lier", "zh": "Antwerp province", "lat": 51.1291289, "lng": 4.570153, "m": "4.5★ · Closed Mon · ~€5", "d": "A medieval gate tower containing the Jubilee Clock: 93 dials tracking tides, moon phases, zodiac and the equation of time, built by one obsessive local astronomer in 1930. You can see the whole mechanism working. Extraordinary value, and Lier itself is a pretty, un-touristed town.", "g": "https://maps.google.com/?cid=12376916761367331229", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBeN_qh6qOfF5A_ELkvpGdmeSuxAWDUmojbzQOkELBEVrNW4_JhWm6ZXBd8SY1qeTWR2rWQas4WfONmepVK3P8sN-R5baLqT-CXFZ8jKwef4N7YsZbnVF5TmyQl6MG1zM7Uf3LdJzsZgNBUJA=s4800-w400-h391", "https://lh3.googleusercontent.com/place-photos/AG9NLjAh-foypE_xOh0GsEXWOizwNXkFG_h-03rgA6t5rj9sbkz3-y8_ljksruAR5vjNfd90wUF5VktzJLsg8YFEupoSVwbUwDmhSyTcoYc-HTPzVEg5KA1vBnTkD_JN4j2GE-8Jv509YEse3u4NDw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB8AXBgdnut2JE7bNYJ8FyAxZNXcvh-pi4NMJnmUjA_ghYoFcnw1AevDCtqKW6V8eh1eGDvO_CiONM-yNz7s1WYnxpS7vTRDM_4TorlOak1eb4f4q1i6C-x2qoxU3OVcunGLj3MDN1zthUlIw=s4800-w800-h600"], "a": ["Zimmertoren", "Jacques Fries", "Laas"]}, {"c": "beer", "n": "Oude Markt, Leuven", "zh": "Flemish Brabant", "lat": 50.8783394, "lng": 4.6995892, "m": "4.6★ · 24h", "d": "Every building on the square is a bar — locals call it 'the longest bar in the world'. Leuven is Stella Artois' home and Belgium's biggest student city, so it runs late all week. The Gothic town hall two minutes away is one of the most ornate buildings in Europe.", "g": "https://maps.google.com/?cid=2369040353176781657", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjATf_HDzDOvIh0ZtO1Bg5tNlLJJ1-3hkEqt0KxivJQjQEuBSiPW57wvgXq9GFWbnzkHFxPCLGp5RgrJk8lzV2Vc5TazACGn2gSw0QlbBPdDEA1RAmD6xGCP2dlvaGokg0GzUYVkW8mYGnRGqoY=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAjHswjnew95ldFfjx0LPvcOvNROkO7AGtkndEp8zwFcZIT-G-wAFo503oJc2YjIE17JmR1oamgpF6gPB7cgGQE1GQgfRlxCUPFH1sC-JW8sZDjYZeHAS3pTx09Cq6xjrwNxtiUwUtfNMXN7A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDvXF-4bo4xZUSqcdlvomh6h4PNm5jBA_En8wmndA1E3GpNItoM0j8s8PMaFXakgYuxOSU0qZ2hw33_Tkv32m7JgL1RCWoM-m9FJxItPU8pKCPG2n1hJkFRIJSr3Kko4vY-YjnKkJqmVujy_SE=s4800-w800-h600"], "a": ["De Langste Toog", "Stefan Vossemer", "Diego Celesia"]}, {"c": "beer", "n": "3 Fonteinen, Beersel", "zh": "Flemish Brabant · lambic", "lat": 50.763105, "lng": 4.2736147, "m": "4.9★ · Fri–Sun ONLY", "d": "The highest-rated place on this entire map. Lambic is fermented by wild airborne yeasts found only in the Pajottenland valley south-west of Brussels — it cannot be made anywhere else. Free tour, a vast barrel room, and gueuze at the source. Open Friday to Sunday only.", "g": "https://maps.google.com/?cid=7964202045467060492", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBhmwGv_vdRxcsrnY6GwHpU00vl58JHGZv3Dw17HGG-66krGDKvBqBAt9deVwOh-8POQk6XbDny4WVTXRtLVkueZEhsc3PvxItmJqbFzbuJMKwsw2pKjCqZKSOiOe2rA3zC7uP9LF3RxrS-gHY=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA42c7-6rFICKNwJ10k5OPOFgKnHqM5D8lhvrittuYzmYhucu1dRILLoofUvQSeHbDP8kuKyVbE9W5zR4PLUZewpLoRpEjCUn6U4wdfPpR1pkNqtOKbzkOKP9E4ft4pmG9QBViWwpyR4L7cpyA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDBGbDATyHbHCaZ3Sli8-Zfifoiq7Zb1bs0N-w-npYpwh6shLdhX7aMbtrZ39LDGwGxBHEXEebHkfBRZPr5NRHllBc0TbAnt2ItcC46GZ_k9rslxC45W5cffDaxPZgt8Ct5a_Qq5HzuQzY8w7g4VqbELg=s4800-w800-h600"], "a": ["3 Fonteinen", "Luca Giaccone", "seth bradley"]}, {"c": "museum", "n": "Africa Museum, Tervuren", "zh": "Flemish Brabant", "lat": 50.8309135, "lng": 4.5183065, "m": "4.2★ · Closed Mon", "d": "Leopold II's colonial showpiece, reopened in 2018 after a five-year reckoning with what it was built to celebrate. It now confronts Belgium's record in the Congo directly, with contemporary African voices throughout. Uncomfortable and important. Beautiful park and building.", "g": "https://maps.google.com/?cid=11354570938170697002", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB763oOga_jKDjsP2wvHAxzRFRBysVJOqfqt96pVf8Jc8W-N3RldX8GVFxwCUeY5uLnB5wExc6bJkkCEYepAOMCqJSzUgHkGSUEUOfEuizOioZaSbDIHU4RLomInswG_lIoC23uDfydESnGniM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCVeLwhF7R7yIvXrvXm7bx7_bqTg0-KdYxUQkjC148fJ9FspVRHhJ5kqNnc1SUiJiPGLsRrlrLob1GTI9ptciRiGVLHlmd35l6qH4F39VJvvR0DEYSYtk7cL5WHmn9p5ZizHp_z9EaEoknoaA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD9d1kD6AWG9n2bQv9JUQm4qtqghVTN4ac7phfFtaGleN6C2DhGWPo_lxgNdkjrvS2aBbYS40ASWbPklbvAZgf9oxMD81gwJGXaloQyKqrzBJpoP4ejP4fTa0yc-pXkCgA88mwVugkDdaNxEw=s4800-w800-h600"], "a": ["Royal Museum for Central Africa", "David Luy", "Djahid Saidoun"]}, {"c": "beer", "n": "Cantillon, Brussels", "zh": "Brussels-Capital · lambic", "lat": 50.8415113, "lng": 4.3356532, "m": "4.6★ · Fri–Sat ONLY, to 4pm", "d": "A working 1900 lambic brewery in Anderlecht that has changed almost nothing — a museum only in the sense that the equipment is antique and still in use. Self-guided tour with a booklet and three tastings. Go on a brew day if you can. Bar closes at 4pm sharp; check all three bottle boards.", "g": "https://maps.google.com/?cid=4434525466995153113", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDcz3b-FBgKi_f9RGuD6K38l6YTQ3L_e38wjTZHGOP1USm7Fwg3d1bfpF67YjloP9s8TTZVfBIrRh0S9x9zw9FZ4NzEPW2yB3wzHVDhFRBBNZepa73oyK9pL90edDIjh8XsItVRjPt4l0WgZw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCwuUHPgEvDBAyoUoDhwcsHjfRDgEuGOWGjMHC8Hn8qNErkVChESx-3IhF6kSl16EXvd-ec1LuQJbzebtAUYImHZaHJI5_4YdxnAd3cjc6mvhhlUaIZnG3Srke8wk2AlwYtlGb6gevccn8u7YoccVuA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDuvfsjDoZHVd-5CcnouRqb6MeGxs9L1uoWk8vZxiSLZz1kS3_4pyOvn8fo0tQUPSUIYwtubTCNtPX3J8Ca6pcFB_OudyuGa9Cc1kf9phmpWc0_uosjLx9y-mYuED53vnFpzTSZ9SPxN_ZcEr0=s4800-w800-h600"], "a": ["Aaron Chamberlain", "Daniel Olschanowsky", "Christopher Carlsson"]}, {"c": "food", "n": "Jenever Museum, Hasselt", "zh": "Limburg · jenever", "lat": 50.9328685, "lng": 5.3404752, "m": "4.3★ · Closed Mon · <€10", "d": "Jenever — the juniper spirit that gave the world gin — is Hasselt's, and this is a working distillery museum with machines 50 to 70 years old still in use. Includes a tasting. Signage is Dutch with a translation booklet, which some visitors find thin; interactive displays switch to English.", "g": "https://maps.google.com/?cid=13747396947942146535", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCyIovMJhUK7KJHAvfcYYFa1t0THSl-KiCDFYLPn3JQHmHYJS03FI7nYT4hT9QqygzVjCqGEWcoFaAQeUvSvXRRk8yrI6RVZaqB8RTXKQgNp16Fybu35X8VuQxTuo1Zn5p6W69EGk-pBqCTWg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA4L8Z7khk_Rsyh7EgJUpDz2J4Qbn-7-qSS2U0R_JJ3DE4PrS_FwNNBfb1gJTZdsjHXmVcaRvQLp_N4ts_9XZ-0TSIVXRyA2JVCsMGzczGaQc7bp9vCusI7I46cFKka-ynBKPg87rugUBS6=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAzdd6lRQzbpwlNJdoxlqgDJj_Hhx7Ff4NiyGauLfEvEVIhHu3bdNnNFXzBu2C9lLoDeIgC192qVf-L0ipHgBq0xBk86pLKt7PiQpfhXy0R-ivxNWXcUEFUNcQX63_VwPgx2qPMKlK-BR7uWg=s4800-w800-h600"], "a": ["Jenevermuseum", "Sharon Williams", "Sharon Williams"]}, {"c": "museum", "n": "Bokrijk Open-Air Museum", "zh": "Limburg", "lat": 50.9645017, "lng": 5.4094255, "m": "4.5★ · 10am–6pm", "d": "Real Flemish farmhouses, cottages and workshops moved here and rebuilt across a huge wooded estate, staffed by working craftspeople. Allow four hours minimum; five is not really enough. Bread and ice cream made on site. Some signage is Dutch-only.", "g": "https://maps.google.com/?cid=9697661319155736573", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCso_XiKf9XCBfSRtzsJADg3Pw1YLxihVYNplRZ2saK3SDa4tEjXvtg7dCU_C9yFYtqRmMq9sJxHArzyYHJkq7b5YEqra8NtmchD_dVh1I1p1cvoBkXSXRpGVOYMNNkNrEpeHVIB4Z8EgeCuOs=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCEjGJIoXcepZU8CDQFp29J619GJwwLHOzLtIz2TbfWjer6LSYzSBQV3S0fDMSaNLA97wqmAZdxsW7P_4iTZ0xyPIsKN6VvXmh4VpILDkFuOoWg2v7UF2nyMTXCiw3p6CclDMclc8XIM6pOeA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDYC-IcKWIKIWDwRDjmgSOdO-2qoiCLfatn7h2Jg4vtPv-4VWHJIv8H5UfSiuahJjjfAmChsyywT4bJiwqKFjSy769Cla0ojJ6XUoX1hnRQr3VnfUu2YwNVOblKB4VutdVT6uZzaG6MICX5AA=s4800-w800-h600"], "a": ["Bokrijk", "Jacques Marnef", "Mario Van Daele"]}, {"c": "nature", "n": "Cycling Through Water", "zh": "Limburg", "lat": 50.9627683, "lng": 5.3927284, "m": "4.6★ · Free · 24h", "d": "A cycle path sunk into a pond so you ride at eye level with the surface, water on both sides at shoulder height. 212m long, free, and genuinely unlike anything else. Part of Limburg's superb numbered cycle-node network — rent a bike and make a day of it.", "g": "https://maps.google.com/?cid=10881558401658712318", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCUFeUgTC6RHRD7HoKD7FXHEe5G-E0NCxn-_fJWJI4N0yA5-7eLEfBrCWFgwMs1Wnf4IAwD51s8kOrQ5IIMb5xHhs7ABVZqmo_L1Kh7bUbJSYbcK7xfvia5TqcHvEdFDo4kaxWqfJq-f75osXQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDMYwTOoabq0kIN90JQA7wDKMpv5oxBlVzRbDHqkFMEp-Byo0EXZ4WhSHu7MXgjLFA-QlNcMrEX0EfjIgEi3-vqObcmQnTP-VhdYu9zako_rG5ao26ywrfgbz6uKUkQgMGb9bAOyzwhID7l1Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAg3MjOkG9dQGC6uzAxKJ9M1akPy2nrykEnp3nOcHugYWcLqEuBNNv-JpOdFqzFvaQmBdc0-CheIK2lHOkqS7monV0hSQi0RKLx1QdJhtd2RFqFKbVpfVaJGH-AS7I9w4zy970_pP8ocfcvbA=s4800-w800-h600"], "a": ["Khanh Hang Dao", "Ronald Lemoine", "jo bleux"]}, {"c": "market", "n": "Tongeren", "zh": "Limburg · antiques", "lat": 50.7805067, "lng": 5.4633679, "m": "Sunday antiques market", "d": "Belgium's oldest town — a Roman settlement with surviving 2nd-century walls — and host to the largest antiques market in the Benelux every Sunday morning, 350 dealers. Excellent Gallo-Roman Museum. Google files the square as a road, hence no photo card.", "g": "https://www.google.com/maps/search/?api=1&query=Tongeren+Grote+Markt&query_place_id=ChIJidrrCMrjwEcRbiY64STEeWU", "p": [], "a": []}, {"c": "war", "n": "Lion's Mound, Waterloo", "zh": "Walloon Brabant", "lat": 50.6784717, "lng": 4.404838, "m": "4.3★ · ~€30 combined", "d": "226 steps up an artificial hill over the field where Napoleon's Europe ended in 1815. The museum is thorough but noticeably Napoleon-centric. Fair warning: several visitors object that you can't climb the mound alone — it's bundled into a pricey combined ticket.", "g": "https://maps.google.com/?cid=16425752186087943620", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD0OttYezkzSW1Ym6DqARWftAASu5HS5kWWxwP7iF1d793NlXmfGJ6rKUjQRX_Sg4_xbU_NChwdUDAlXsY3MXgCEbh38RJ1Eo3oouT1wQDcRMktyuhAZHHaVzf7t4dS8p4ysT1-TBO8u0PldQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCU4am8QcbjRkp3O9eyYhS-juRU0h7dRK93I6cq_07ZXCttV2YvrQl9Ur4L1EwefpPMAHbLxIhhwU5x9MoOr7hejHF4i8CqI8_D6YDIEfPLji3HiAvouMhjKhr1F2O5kh-ZjZSqfjFAjfcDAlo=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAKOdm_UO_iApkQVNycQ-PCyJ32zDVLwz1Zvx_-uWp5AFq9xgXtRdABBb-QOtEn1w5_bidK9ga8_hUosZ3-nwzJedi_JWaqkQPEOh6VlLysFGjNhu8Z0JM5YOH3b7ZvqOgqYo4aSzvFuaRj9g=s4800-w800-h600"], "a": ["Butte du Lion", "La Cerise sur le Gateau", "Fotis-George Grivas"]}, {"c": "temple", "n": "Villers Abbey", "zh": "Walloon Brabant", "lat": 50.5905866, "lng": 4.5296249, "m": "4.7★ · 10am–6pm", "d": "Vast roofless Cistercian ruins from 1146, swallowed by trees and utterly unlike the tidy ruins elsewhere in Europe. Allow three hours — most people underestimate it. Don't miss the meditative trail, the hidden garden behind the French parterre, and the vineyard viewpoint.", "g": "https://maps.google.com/?cid=12907942227361524156", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAsihLmB4Mz9zNCdeynmDPgy64NRSmqJ8xKtqOA0jGQDCuyvWvTGC-QdyjzHPNVVxRQzt7o29BYgpolZLoYwenTJAuoeicDvXMxbacBWjtCUHv5NRu1ZqG8uxa9IyEoMVYce53CSLf_cWjiJQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC9__haqa4DJooeL3mRQ9MRKOeuKDddNYbqzYYeWI3RKgXTObw6f63nv52XS9dpwVo90qqHGuSMpxVVogfuBOUxTpnZm9jA6In6xzMdXECOfMN8fTpLgGscdl-0c4S5_4pSTd_JZEZKVhRfDA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA1EF4WzAcgg7T0nabia0mAy2swzBNGj2lyHSwfwJQilVXttAv3Is3lGDPzZPNn3dfiDiuMxKuDBOapyi0cARzOtJoFTKJNExmjeGb-R9Dm3VS9t-WeF225qa41OmTmM4Gn2-1WmqDX0DcqdQ=s4800-w800-h600"], "a": ["Abbaye de Villers", "Sven V", "Julien"]}, {"c": "food", "n": "Nivelles — tarte al djote", "zh": "Walloon Brabant", "lat": 50.5974124, "lng": 4.3237744, "m": "4.5★ · Romanesque collegiate", "d": "Tarte al djote is Nivelles' own and found essentially nowhere else: a hot savoury tart of chard, parsley and strong Nivelles cheese, eaten with butter smeared on top. Buy it from bakeries around the vast 11th-century collegiate church of Sainte-Gertrude.", "g": "https://maps.google.com/?cid=17932396721799967558", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAgcBiCBY2CKLHFRygS144ltICEa3Ndnebj7g-l6Rqyb8RXGzltXSEYXiSDlb-54-07ry8_vrsPgvEF4uIZP-c-XmOKuhJaKKCt2-LPZpNuL8kxe2g0DVETkgxmf6eRZx1bKFxSMfwpyid35zE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB3iUjG2gAFQ1luuWBXLueGoAIOxaItQgVHKfHp_j1zuoA9Ps08UK_j3N-VWPYllTa5oxXgqiDFYVM3jCBXbugqS2Z5u2NLcEgaHthyOlzz8MeY2hH4QRVivpN__pTIITMbVqcvA3sQwjmY1A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCCVbRvjXo2RPrS08OkAkVz_LFoNGUneDX-UZVxUtv874QH0tyhypXDSiOYWyH0AvOHMa5KniegWzjrHrcEo5GKFjTibi7VNm3Iuoa-8N9HyjgqG6nPsQ2ia7z7spUYv7Vir5kMYczJRPrSzKf2nihoOA=s4800-w800-h600"], "a": ["Marta Sanchez", "Igor Jovanović", "Marie Christine Deneufbourg"]}, {"c": "temple", "n": "Tournai Cathedral", "zh": "Hainaut · UNESCO", "lat": 50.6064691, "lng": 3.3892417, "m": "4.5★ · FREE · from 9am", "d": "Five Romanesque towers rising like a crown over the city, with a Gothic choir grafted on — the contrast is the point, and why it's UNESCO-listed. Free to enter, rarely crowded, and Tournai's belfry next door is the oldest in Belgium. One of the country's great underrated sights.", "g": "https://maps.google.com/?cid=1661211053636143018", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB6s2IWhxmaVL84dicG3UBi9NWAjQeJsFOPf-7XxFAmqh9BsvM68IeLI784iBRMpNarqLMKJEWw_YCFHc6p3efWqOELiJS2nJLg_pY2M_-O5a6aQkc1XYzqGOGN5iZt6oXBqxX3u997gG03Sw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjATEJnPwzDiIt3wnHxgBgvpniCXNDzfjlZfD33XUz07H5X-fq-mvjZTN7I8JGHb0BDERYsifuXa4q4sDNqWtnfzMGmqcJnuwe-dCKdmnMBz8EyYP0t3vp1uxeDi9jx9_DQn673iuwRBc2c8MhAI4pQgGw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCTjg4rlYI7V2DUZuzga3OSas6C-fe1p-5VxPlBkMqd628bvq-NX0eEiDU_1jbeFZyHsVDiiPavj_k9WgWaDf62-P5LhdN42bfnN5GotQjqrwywHX7EhxTee074hDsDejspBZd59rzQETzURw=s4800-w800-h600"], "a": ["Robin Bertels", "Rudy Brijs", "victoria nyaga"]}, {"c": "temple", "n": "Scourmont Abbey, Chimay", "zh": "Hainaut · Trappist", "lat": 49.982434, "lng": 4.3372286, "m": "4.3★ · Free · silent", "d": "Where Chimay is brewed — but understand before you go: the brewery is closed to visitors and always will be. What's open is the church, the cemetery and the inner garden, all free, all austere and genuinely silent. People are on retreat here; keep your voice down. Beer is 10 minutes down the road.", "g": "https://maps.google.com/?cid=17936631346907546915", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBk1ABQzIcyQlLe2WjwxC5y5559ivo4QKq8Yjm3NwV3yiwu7QMI9TSQZKGIEoQMvgedOkljy6oNKMf6Eex5WykK-aHluPsBsGWpP2m5MNrhCt3yN86QQGj4grH36-5EhTK0tEfaHv4OSU0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDUCpH6N9ypwyRWVHYzYSpGWyZiSzbCNzC6yunbMf6Vcbs7CIMtTRQG1LzQEFunj3tdVXyqIjiAgCfZI3h7Wv4ugMS8p7jZQLgVa3hHUdD8COTNQLx9926s2XIJiDFQYAUDM3O2uw57J46gJA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBL-_WqLJfRdDPCP4oqTU_NgXODtpghFBIaGbEfQSaZI6a1HqHz6PghQKBEcGdM2bS6KNjNI8zA2X1yavjzCoK83bUb6Q2X6LMqvm2ihw9fsJoCaf28q02SG2xla78ncSEtKtXqFnpB6UG_lg=s4800-w800-h600"], "a": ["Claudia Burkhardt", "Povilas Zukauskas", "richard Dethoor"]}, {"c": "beer", "n": "Espace Chimay, Poteaupré", "zh": "Hainaut · Trappist", "lat": 49.9886792, "lng": 4.3421084, "m": "4.1★ · 10am–6pm (later Fri–Sun)", "d": "The abbey's public face, ten minutes from Scourmont: a beer-and-cheese tasting flight with the Bleue, Rouge and Blanche, plus the Chimay cheeses that go with them. Gets very busy and service can lag — the beer and cheese are the reason to come, not the kitchen.", "g": "https://maps.google.com/?cid=15577242575539807445", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAC-VZdL3sPpo9-vAh8eYM7S7PhY0VHiquOIswDdyUZCppejblWCYuE-Cs-LbwtU0xEft9gbIOW3FxmJcO1LxRH4v6k9IRBZCCzrKqum7glzM8TVEsDOLPGDT_9NybxtkoufR0KAzoaW222KsU=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDuMjc8KEJBP0awHj8Oed4Jiw3lYVnqbjLFiqgIAmJ3glJam-Db6odnamevpr5DTia5yulBWLYV2gfDSLfDZ_fiqnWGz2n6ajuh9liMoHJiVp_9e1HaKI_WwVcqllWW8llRvH0mX4KPELKbXA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBQgehZCp6hRddXK1B5GQva6vvFZqSkUAA4-kDXN-pcG_cj9sFdGNEeAa1x_E4J95obXcVKljUheQPrbJUz1GGdV7Z3fZzNBamo9WHi0eXGUk_MeWW9RJNVgljJkIpQXJvwLXY7aGEjWq2zQCQ=s4800-w800-h600"], "a": ["Espace Chimay", "Espace Chimay", "julle vv"]}, {"c": "heritage", "n": "Canal du Centre Boat Lifts", "zh": "Hainaut · UNESCO", "lat": 50.4813901, "lng": 4.1372259, "m": "4.5★ · Free · 24h", "d": "Four hydraulic boat lifts from the 1880s–1917, still working, still lifting barges bodily out of the water — the only such group left anywhere in the world, hence UNESCO. Industrial heritage at its most improbable. Free to walk around; boat trips run in season.", "g": "https://maps.google.com/?cid=11846239986163008505", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBmnxefUbLLhuxdiB0muUuUBmyrO__S0rQFFjTruqzJ96dkjEsop_MCVYWaBpH56SYxYI5Bi3kZnvNNfQPro8AjjUouunx_3SSTxw-4bWE3xpT18le3G9VWBdHXQoyGzlI2OqrThfJzQkjkhA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB1UvDQ0wxAbDuLjSnQ0fcJckx51lcW_jcF5vYIEBzZSwHaGggigQeD_nZ7i3TawNLiKi3haWyiGoQ4Ott-zFjoTe6NEIwNcEdhWaNQKPesqgo-ycwQN0eBt4E2l9hbt4xT0fAZQbt5CCzG=s4800-w800-h560", "https://lh3.googleusercontent.com/place-photos/AG9NLjCyrqam4iXHOkgbU44xiwCBitniHo_nhYoBDD84NKUSUdokhpAMr_8JTFpRIHzm4_gstVd7gFmVpRnlsW5BShmTqVROJ3fI6Ey4adD4d-XLX-GDtHVbDAXp92mAiKlwzo3Ir_iJ-G5yycSq3BI=s4800-w800-h600"], "a": ["stefanie van Dijk", "Kévin Vilain", "Aurėliie Bch"]}, {"c": "nature", "n": "Pairi Daiza", "zh": "Hainaut", "lat": 50.5910359, "lng": 3.8898522, "m": "4.6★ · repeatedly voted Europe's best zoo", "d": "Built in the grounds of a Cistercian abbey and closer to a series of immense gardens than a zoo — Chinese, Indonesian and African quarters, pandas, and a vast indoor rainforest that swallows two hours by itself. One day isn't enough. Signage to the car park is famously poor.", "g": "https://maps.google.com/?cid=1169669797830551366", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBq-6MtP7-7ZidRRPLqzSdh4Sn-kKlUIxV_bavMTDRB6-s8J0-QSeQZEpaegciDoJpLR3RYNHVtCi3WwrIMDrAwK26WmJHf_EhW2dDNV1-0XJPI1Ftf_lYfrmbTb4mSLAUBnCknbMgnmU4MRQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjChnSEPGVAoskIxeLja7dJlASKJu95aVJQ1Inv0gcm3EwB3s88ug_P-hkXKm23_QupnUcfwBqlWjbYw5RTg7JTDWoQjv8lFqsJXQyYvn5Zvgk67phTrgw7LaaxgCgH2VxwYIJrbbWzJIiuJxtw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBWLma6R-3NolCrUjxxB0RBCgSSoZvjn1gjUN51Cij6qlUY0tCTfp0EoXagBLP0hywb8MmtTbic8E6aetay5KPRwIi-8H-BKB2AxZKtXeXuCUjwGZILSqqiAMPv87kEzoZYnLjghcCo2WGlaUUBlHB-yg=s4800-w800-h600"], "a": ["Silviu Dobrică", "Bram van Opstal", "Michael Hansen"]}, {"c": "heritage", "n": "Grand Place, Mons", "zh": "Hainaut", "lat": 50.4545097, "lng": 3.9525536, "m": "UNESCO belfry · Doudou June", "d": "Mons has Belgium's only Baroque belfry (UNESCO) and, every June, the Doudou — a UNESCO-listed street battle between St George and a dragon that the whole city turns out for. Rub the head of the little iron monkey by the town hall for luck. Google files the square as a road.", "g": "https://www.google.com/maps/search/?api=1&query=Grand+Place+Mons&query_place_id=ChIJ6w1jjAJQwkcRqQkjjpwFcDA", "p": [], "a": []}, {"c": "views", "n": "Citadel of Namur", "zh": "Namur", "lat": 50.4597979, "lng": 4.861122, "m": "4.5★ · grounds FREE", "d": "One of Europe's largest fortresses, on the spur where the Sambre meets the Meuse. Walking the grounds and taking in the view costs nothing; the cable car is about €16 return and worth it for the ride. Underground tunnels by guided tour. Dogs welcome.", "g": "https://maps.google.com/?cid=12333817873671146107", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjADHi_TH2GpEBMvsufD33zxDOjP42L08ljW5C_PP0rnnqI1ZfFO1Q1LIAeXqiqPW9NwGW1LvHtsFbSKyb-ofqZNC-NIXVyq-mMpQtuGT2FkZQW8QZpZkwZtW810klOa3-UYRQ7Bjr4ZtfmL1A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAwjM4RiOlXadtQ3BoKgyCByXNO_gWTSjj-3ihGQe3Qi1GcGtXox6EDGl18fEUY0cN3h3AJiNLzmN6b0PrxwjiscfWe2d-zkgOGpP6qnCR2SibgkI4Iv-XfW6OX24RuTVRvHdppVC_BVAPeqw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD-8bX8tulaGVczQ9jkQOkp5AWJjD9VZ_YXUZ97436b--htPlKosrmHJN63aDCMZKBm4HZxqFA8l7rHZCxXp_HzArz8Zv5Sw8Ozb0AYOI4I6bCfDh58D4TZmAHYKD02m5A7S7_vkKxmgzK3Pb0=s4800-w800-h600"], "a": ["Citadelle de Namur", "Carine Arnould", "Lelia Le Coquet"]}, {"c": "views", "n": "Citadel of Dinant", "zh": "Namur", "lat": 50.2617271, "lng": 4.9131095, "m": "4.5★ · ~€14 · 408 steps", "d": "A fortress on a cliff directly above the Meuse and the onion-domed collegiate church — one of the most photographed views in Belgium. Cable car when running, 408 steps when not. The iPad-guided tour is genuinely good. Dinant also gave the world Adolphe Sax and the saxophone.", "g": "https://maps.google.com/?cid=18021043775639173302", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC5C_WZ35GyaXFLS3J6efPZeuJ3xQ50xqGw3oM0aaMalJ_0CZh3uGKgkJz6D14j6ZUkp4uK5S_feiHx6vb6IluVzzRZBsi5KXW-BaML4mo8cWX0G0tjF-mwrnNAVK71tsd3qBNHxh0Kvu9M1_EIqicmTg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDjYTQR5Vyczu9TPe2v_zbdUWWLNLy8FtUxWCj18XLBTj-tdtaAo2wvsI3vv0b9VobzagKnIw2LXd_UmN1rE8y4uSOcbt1CbJLZJiZEemP_1tRkZs-zrWBjJCtEQMr_JHXJ9J2psluxV00DQqI=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCh-CtWZxMJMLgGP52Sz3oYj0CvdovABtH0hOT0tM3Wa4LKAhekEq18zv3o1QJVys4bOiqsG4Yg3c2GQu4lI8nk71BzD89dxQFJ7ohC36toTbTqyBAKOjuPzncXms-7O8rqGpmINKQZFg6oVw7-lMpukw=s4800-w800-h600"], "a": ["Citadel of Dinant", "AROUND THE WORLD", "LisanneS95"]}, {"c": "food", "n": "Couques de Dinant — Jacobs", "zh": "Namur · hardest biscuit in Europe", "lat": 50.2601791, "lng": 4.9130922, "m": "4.0★ · 8am–7pm", "d": "Flour and honey, nothing else, pressed into carved wooden moulds and baked rock-hard. You are meant to suck them, not bite — people genuinely chip teeth. A 15th-century siege food that became a souvenir. Around €6 for a small one; buy for the story and the moulds, not the flavour.", "g": "https://maps.google.com/?cid=16384965010934027248", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAUtvy2ZrwTVcHbLxfJA0Z4tbabPmcsDv4b5igr3ouWyeCEcigDtr8p_AyfR2_kyjTuNedSTZnpDBQu6DaJRDdUHMi81L8vf6lnyrcd9Dcc0kcGwVa2IpxUU2zpo3zOWYcj5hfLB6abvXDAykQysiLg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAGofk6Vrhf3XhLo753Tao_bOTWYKBksLcQweVp6ZLw9MJlBtIS7LPjx0HFhZU8utzu1-ODSUCcNEBn1K35pTan5b0ainAabjhy5FovWhJ1XutEvvn2a2632GsP5rUX4N1sl9s41VR8XufTkM13qQ4DyQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBbyF9Z_Es_XNKI9Yvl9MiK9SqOFOMHlt9EkKJA9cGbJHS95v8ZmFxNtN4K3nq5RDtkq4ts8dJbSQKFEZzrOis48iR0GKZPhfIdL9O1MLSFeFGKDHv96Y10MXdAGJ3srQjaUAgk5M8PXD49XA5r_Mh-Kg=s4800-w800-h600"], "a": ["Chimek Neu", "Mateen Mati", "Jose Maria Passalacqua"]}, {"c": "beer", "n": "Rochefort Abbey", "zh": "Namur · Trappist", "lat": 50.1780457, "lng": 5.2196246, "m": "4.0★ · church + shop only", "d": "Home of Rochefort 6, 8 and 10 — among the most revered dark Trappist ales anywhere. The monastery is enclosed and the brewery is not visitable; what you get is the church and a small shop where a volunteer sells beer and glasses at fair prices. Ring the bell. Construction ongoing.", "g": "https://maps.google.com/?cid=11129804481940493335", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD7hQVEhg4TLDnX_fOjLJhb1gauZ0CG0Gl73vHvsIWfkzocDO9-oQlo0qC4kPBx7Ezoqz6vWXvWJ1IB9OrRvi--cQhMAU0x3FSEJjQl-kzy2jjrjpCOg9ho2YOvVnzqkeWkxntfIUoL9_Ox6g=s4800-w538-h358", "https://lh3.googleusercontent.com/place-photos/AG9NLjAyLTn9Iika9CmPcC1-Sh8FZWm45QVNFjWNKBeDiw5PT1PZqWWMGRdvFrODizZu6C3SiS8woHPGSfVQV3rDjmhpYM8RmwQqvRb1UVvXt-5Nc0dHlXJB3nlrbVZD_sgXc1l2_jntNgv2RZ4H=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAckZ_0kSmQtk2TogdE-JaltqebdYj6vQWoLla0c9S08agchEVfGlgIoKm85DuuS4saOoceEkuIu6B6G7NzhjPt2ILpIlriUNjeHjE0HF-uUX2pR29bKpAc1mvBjXdl1DTGoqMUbp_YyRvoH-scO44XIg=s4800-w800-h600"], "a": ["Kevin Brams", "Alessandro Tonini", "Frank Fermans"]}, {"c": "nature", "n": "Caves of Han", "zh": "Namur", "lat": 50.1243404, "lng": 5.1915313, "m": "4.4★ · 10am–5pm", "d": "An underground river cut these chambers over millennia, and you reach them by a century-old tram through the woods. Superb stalactites and a genuinely knowledgeable guided tour — in French or Dutch, so check. Cold below ground: bring a layer. The attached wildlife park divides opinion.", "g": "https://maps.google.com/?cid=15091777210561958722", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDRqk8XwgMP1spTbf-rqOP2JtQgqKo_E0gO0Ww7ldo-7lvEBvVTUk9QXLhV6IhINwmbAxEfdAtU95py3JySkFyNkxy4yYAPCAVIHoblgexUaoLZvjD1Vcv65BYiqPUsaS6EQ3bEkxsjiHFDJbM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBCQdVXmY-t6Y2TVmccYJeqyCub7H3jRCHvUkWVVb2Ds1r-t1JviDMREqhGcneElMdHoubpdf6-ckf1LN2aqg4YtKwLFt2FPJmiLz4rxq0vC-99rNkjEgFtxRyhMSs06Y19wqTc6gpRGiKk9dU=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBSJOJput6n1JTzkR5jDODKd-FITBbqnUTk76u3gkhlpMboDcVfl8BnubA--_Au3Tqy_zx1yxU95FR_liWR6dODXfwNlvYUXs_jfI1a9xJ6ZCpRVz0zHscDrAFzgxQZY3iA-d7BHR2kxXvOnG0=s4800-w800-h600"], "a": ["Domaine des Grottes de Han", "Kasia Pochron", "Victor Freij"]}, {"c": "food", "n": "Maredsous Abbey", "zh": "Namur · cheese & beer", "lat": 50.3022948, "lng": 4.7666738, "m": "4.4★ · from 11am", "d": "Benedictine, neo-Gothic, and best known for Maredsous cheese — a washed-rind cow's milk cheese still made here — plus the abbey beers. Set expectations: the abbey interior and cheese dairy are not open, only the basilica, shop and a commercial tavern. Lovely walking country around it.", "g": "https://maps.google.com/?cid=9591932944390526428", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDzHdrysYeIb8i-4Sf3e3pCMOxWlpuGW4CROxkarJQJE1-w4U4wxts-DGmX1lGyGkaV25FRRXqQh2bWr8SrflGaJahouAjWa8YSKdSA96gtFHIorg6FQFioLFNzCXxqSgxc5FzcHcUSIR06c0-OzGgeMw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDgRTb7-sIHxOKJgBwXKIKfdkJWDkb8-AM7FtUaxDxE4Jd2vX94oj5EStaKNnpfQKY9ZFof5dkhuSju70iXb6W-PHgg9Hf9XvXVasoGy-mBxJeRlNDrVSJwo34og4NQ4s1NvwrgntPQ6adi=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA4smpKZbhgkOPClGy94QF_aLcp_98wzmKzik9CL3sbc-Vrko-rBkr3dsy1QdtGewBH49s8ty3YPa8SZQbh5qtgqZqVu9NxgWaqWo_zjwqZzboqTRnEWmhhzrwTbF2-mACjEr4HG7Q2gxCNyg=s4800-w800-h600"], "a": ["Stephane Corbesiers", "Nathan Decant", "Estelle Leroy"]}, {"c": "food", "n": "Une Gaufrette Saperlipopette, Liège", "zh": "Liège · the Liège waffle", "lat": 50.6463263, "lng": 5.5765808, "m": "4.7★ · 7am–10pm · cheap", "d": "The Liège waffle is a different object from the Brussels one: denser, made from brioche dough studded with pearl sugar that caramelises on the iron, eaten hot and plain in the hand. This is the local food-tour consensus pick. Vanilla or cinnamon — take the cinnamon.", "g": "https://maps.google.com/?cid=12259195559142670244", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAnIJwzR0W70lwBur8crL2LomLP8uPuG-qI8sB8O-5d2AzGy83r5lM2rtYXAg8mnDiH2XuNFnwZLmjberhu1bqsPEERm_yy1rT9QjPrZ5SmAsd6Wysz-xT8QCvoBNq2NfPBfb9mzRb4_9kzCx0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDFqjCRyGWcv5N6ZiDoZVq095HMAZDTBH6_FpCFaEFRAasqGT8tD8haK5d6bhH59nrweJ37c7AFz9Z97sSOLNJsVFkSZc_3DMy8qjFktDMpzczBOIvLkbJ_pYWgMysffZF56tm3c3lDxvnNeUiDGzguDA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAeOLJo0X0bQr4VyvbTevQFIPa3g2xmR9KPVHL7jX8aL-tiy1EY_nFUaolVxBLPIfMFIbMwbpCFk0BrxlcC_jlb-8iqr_8255xa0u5FLxAxZLTJLBNyL9qnkoX9MmSraZKmx8e-O7TOeQVXqQ=s4800-w800-h600"], "a": ["Une Gaufrette Saperlipopette", "M Fischer", "Une Gaufrette Saperlipopette"]}, {"c": "food", "n": "Amon Nanesse — Maison du Peket", "zh": "Liège · boulets & péket", "lat": 50.6448905, "lng": 5.5761893, "m": "4.2★ · to 1am", "d": "Two Liège institutions in one: *boulets à la liégeoise* — meatballs in a dark sweet-sour sauce made with sirop de Liège — and *péket*, the local juniper spirit, served flaming. Warren of small rooms in the old quarter. Generous portions, and the fries are the point.", "g": "https://maps.google.com/?cid=15969018715875005066", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBQRDzTG7bJ2JQ_CYygkxDWx52RyXgLmL2gwEwznmAcNy3ut7mZe3IqilSmFQAVehSTwWpBn8NSazGCeuH5rIp5DP9v_M8RR79uTu5fU_FkuptRx-4jOtLd0CbpavR5yHr-sgvDuZxopR1XPg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAbxnDexs_JOqIfElID-WlM_gUsR4aPHy5wkLNT61XsTkiiNjLhsR4UZhpDHZyMLewCLgJuTkSez7r_DsOD0UnQG2RZ3zCaSZAt9ZpxJWhOoUqDAagWff9AMIQ8O2yJHbzFGdtvxFJsT1D78Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDACh38ETR4DKNEsERb9nxEhIUqSA6UIwh9CvXzvgtrM-b_AexnhUMk61cjtn76-XiFaBjeUr4iWIcoWs32f18sf1we5KanHLUTuqRAk_hMd_6bxIuBAtzNWRGD8FZeUOtuHqpBhVfMEtPcKfyTv9FRZQ=s4800-w800-h600"], "a": ["La Maison du Peket", "La Maison du Peket", "Reseñador Pro"]}, {"c": "market", "n": "La Batte, Liège", "zh": "Liège", "lat": 50.6444023, "lng": 5.5783922, "m": "4.2★ · SUNDAYS ONLY 8am–2:30pm", "d": "The oldest and longest market in Belgium, running 2km along the Meuse every Sunday morning since the 16th century. Food, plants, livestock, clothes, junk. Go before 11am — after that it's shoulder to shoulder. Pickpockets operate; keep your bag in front.", "g": "https://maps.google.com/?cid=15776109859654810569", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDF9-Qlrjgys169sxaope1o_C-h6VYcHuJk9mZ_OJbgRmkcgN6xndZVHygTaaXyOVhhYvxFX_ejc4T3Ea4TKBsylBZPKVuG4X1jcubqJoOyUnCWyKdYIRiwq4rrokbcRwIqxKfwVaAWMV9bhzzA8uUr5w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAlyz91kdIubDHk7t3IHD90bA-ZxBNWga3iV0C0gCuusavoSuacdsoBZQA__oIqLcsrGvIFEOn3f0LlNuDXdpsDFJ3VoOju1bAXyalp8YP78TmPXz6qh-VeOkgXgytNKchuEte858WyPy6hbA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA4ROr_oubqrhh09ni8U9Y4xce1qHD4J5VUF8n9LtFPPXVWXqEesoH4t2eiAa_5dqo9TuYeEpYrROAu06_lBEaHvKFDEZNmO6eP0xfkzjablBQIy4OqYGMA4YvTVxXolI3FZ8AgO10gyopb=s4800-w800-h600"], "a": ["Ted Potters", "WMM1966", "Maria Delisavva"]}, {"c": "heritage", "n": "Liège-Guillemins Station", "zh": "Liège", "lat": 50.6244335, "lng": 5.5667081, "m": "4.3★ · Free · 24h", "d": "Calatrava's cathedral of steel and glass, with no facade at all — the vaulted canopy simply floats over the platforms. One of the great modern buildings in Europe and free to walk into. Notably less pleasant late at night, by several accounts.", "g": "https://maps.google.com/?cid=18031525767428909756", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCeC4CQGdanzM6CyAyOUgn2bWaCvrFKppLpT3EMXr6_2MDVlLkVzl6tnBZ6lIbvUmEjis04dYbpvFQcuJAA6aoP26eSifh33nwsprY_OcQ887MTtJabZW5DmchIbMBMi_J_WpdiklE-sioxwzBBeXsC8g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCMTDsXIpdnWg29Zwi9GP-GoMbXg_VGnHPHItwYvTDZBteNB5F-RG-xpP7UfMmhPWZQl-Hw4zXfRUG4DwarjCHgOc1p6m8qKI4WkY4rrXj_srYZFQWnNz0nGLgv60ez-Ie-FZyJUbKBPzNn=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCjeXEQQ_kraYqXh-F8YjlbPN5MTl2e23h6IdW0TKvGMaAUKmdYfevTQD1o6PxAmXGRQsiIf_YjG0AoMIqYgee9v3piahc2cN24dOt6iNUalTjkMveZsLqJiJ3X5vY_gUSvKACSQ_fVidknAg=s4800-w800-h600"], "a": ["Danny Cox", "Didier Bertrand", "Symmetry Hunters"]}, {"c": "museum", "n": "Blegny-Mine", "zh": "Liège · UNESCO", "lat": 50.6865248, "lng": 5.722588, "m": "4.5★ · UNESCO · ~€9", "d": "A real coal mine you descend into — one of four Walloon mining sites on the UNESCO list, and the only one where the shaft is still accessible. 10°C down there, so bring a coat. Guided tours in French or Dutch with an English audio guide, which means some standing around.", "g": "https://maps.google.com/?cid=17317678278712901608", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDXYq7CjwVWizQCepQjT9K_WFvhGJXJsaNR71YQYjGIuIYDk8c8gFUIq_66ft99B4_7H56RlyDWrXFRxGsBCGTdJf0zPwgg1uqwGwIyDhKRa9wn-pYWn4Orb7SjROaR-nQWpI1aw4CNdcJDBYA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDdUUX-T_8vhvmcfFnznV85sS4ucqdtyTfRZem3UXwoYV0AveZSe4GM75Vo4XG4VGS0Ie1nAZhezhNYTCUQhHW_sVRb6_0acrjZfvjLec358D0mIxL117mUJzo-QAIW64PPdTvQDZlBYpkSCg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAz3JmsbxIv3sPTXxkL3itzTqXcMhGmMIbM4d_mWP6EhU0l8KV6NNHXf2wlfzWv4U1NSkXo2i2AMaBIYDIgZNzqBoCPa0AJQF28o0M31US_abchoAcnqHW4uCtW3e9_bU2rucOtJYM9TXNVnQ=s4800-w800-h600"], "a": ["Blegny-Mine", "La vie est belle", "Marie-Louise Coppens"]}, {"c": "nature", "n": "Thermes de Spa", "zh": "Liège · the original spa", "lat": 50.4942814, "lng": 5.8640616, "m": "4.1★ · 9am–9pm", "d": "The town of Spa gave the world the word. Modern thermal baths on a hill above it, with a funicular up. Be realistic about it: reviewers coming from Hungary or Turkey find it modest, and the water is warm rather than hot. The setting and the carbonated baths are the draw.", "g": "https://maps.google.com/?cid=1884719387248476807", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCoyCH6MgZQYXq4OrGdrOAH2FqE9etableFEC7VZSjTiqqPgIwAuDzRNAKyVwC1jqblwTVnD59GZVasB5RyzYj-iMPu3zhhLkpd8rJFvgICOLao7Xn2LpeE6SjcT0wB177dvYQJTw=s4800-w600-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCRuVrepsEsg97KEcujfY9627-48FCcuJ9pXJU45_gBzOHqDDn4hI83IoOehjaoxvZeZXgNVz6ZP4Lz2R5kyej1uTqTW5S-3yqo-1vPjGXiu3C5FaXVqI9v1acnq1HcmDPDv7wNXDMNcyMV=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBh8RP_aXrKU2ZJWul3loP3yuwHEvGzlVF6GHK-KgirdkkhD92XMvUwKj7HlYoU7N9B2uk7qMTuGBTZNdpn05NrLIc7LB403XDLqO_DMOMd2aITCRMLbSMv7i2jGoweNDQNxKnPK16KOB91Rg=s4800-w800-h600"], "a": ["Chris Schippers", "Ina Lietuvninkaitė", "Boonthong BE"]}, {"c": "heritage", "n": "Durbuy", "zh": "Luxembourg prov. · 'smallest city'", "lat": 50.3520176, "lng": 5.4556519, "m": "Ardennes", "d": "Granted city rights in 1331 and never grew — long marketed as the smallest city in the world. Cobbled lanes, a castle, and the Ourthe river below, in the heart of the Ardennes. Very busy in summer. Google files it as a locality, hence no photo card.", "g": "https://www.google.com/maps/search/?api=1&query=Durbuy&query_place_id=ChIJZTw_PllOwEcR2yZ5vxPuStQ", "p": [], "a": []}, {"c": "war", "n": "Bastogne War Museum", "zh": "Luxembourg prov.", "lat": 50.010694, "lng": 5.739088, "m": "4.6★ · 9:30am–7pm", "d": "The Battle of the Bulge, told through four real people — a German soldier, an American, a local teacher and a boy — on headsets, with three cinematic set pieces. The Mardasson Memorial is beside it. Buy Bois Jacques tickets here to walk the foxholes the Band of Brothers held.", "g": "https://maps.google.com/?cid=3664553062698683255", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAHo8RJ1MCVgmAQJ2cMSSPq23QTY793_clnPVOrRD3YDh0QHtc3C31WzztKmK5WI-r75V27bdrpJ077871Ue9GS1fmgN8WKhuXZ4lHPBmoLNLI-FFm_ESYTrZysF-cuI42xDkQOQjpf_BI8cCE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBQS06A-l1cMxE07agoIZ1O1NmCdG3N0c2Y-Y2u2ZV_3wSm7RF9EaZB_gKgUDuPYw9RgWYhqLEjngGPuskVIdGAGyl2lxZZky4xGJXnkbtRGFqUnhUl3CHlA1gV0pnvKylFoCTPRJ2fhrRqO6w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDVlU2V_JLmxuchaEuUIpBKh4mMM5hq0KlbApI3sygVJ6b7oyYe15f0e5AOUHktkqL3BvbAyFfPbvcM7YXgjsJwqGQk4q2047FmJbnJ5kUmcvafM-kyYFIhgu96R_P_mak087Eoai6ETsLiLHs=s4800-w800-h600"], "a": ["Bastogne War Museum", "Jurjen V", "Warich Nathtigoon"]}, {"c": "heritage", "n": "Bouillon Castle", "zh": "Luxembourg prov.", "lat": 49.7938959, "lng": 5.066774, "m": "4.5★ · ~€16 · 10am–6:30pm", "d": "A vast rock-cut fortress above a hairpin bend of the Semois, seat of Godfrey of Bouillon who led the First Crusade. Climb from the river side for the best approach. Check times for the birds-of-prey display and the evening light show — visitors who miss them feel short-changed at the price.", "g": "https://maps.google.com/?cid=13226855497074828683", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCsey_maJ22JqbB3-CD9o0c-4LMIcuXjFOBu0geqvBuGA0-juQP0ClwYS1op73i3bI-mj--ysHeVoJCtAhcKumCM4T8C7Rd90qY82GnSZJboJn3zHr5hNyqZNym8DlPnrAhWaIQFMAHGUOcexA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCbdnRc131Kfc1EWBOfRpHTLJwPJDJ0NoFuMnfyt8BGgECMWZ7OBgagq58-hPhV5d-exrRpAVuC86Lrg7NWGlAbrPF4CDhB6tMzPvz5LSP2z4V5YBQva2l8gFCl9sUzSTE6s7dib9H3h5wHXA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjChqm0QsoYUWlqDH5jPCZNu68Ahy5FqRzZp-ZdvAKmif8AKv6rMJIeP8gRTQMWkbamBSXmJUbwMTV937aHkRiQ8gtfbME-Tle7KxoouLuM2gPDa6gpXHWiXGKBYOF_m6hn-_s6HHcVMjXyQxIHeZ8uhvg=s4800-w800-h600"], "a": ["Château fort de Bouillon", "Olivier Housset", "JJQ Rood"]}, {"c": "beer", "n": "Orval Abbey", "zh": "Luxembourg prov. · Trappist", "lat": 49.6388599, "lng": 5.3479503, "m": "4.6★ · ~€8 · 9:30am–6:30pm", "d": "The most beautiful abbey in Belgium by common consent — ruined 12th-century church, herb garden, and the legend of the trout and the golden ring. Orval beer is unlike any other Trappist: dry-hopped and Brettanomyces-soured. The cheese is arguably better than the beer. Brewery not visitable.", "g": "https://maps.google.com/?cid=9688112538069640254", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAMF7tPKQhgu6_019kjsBRQY8p4O6SJMrBVVybOqnfYUIvDH4DMmTgLVpU-HJn-BsDJu9MxqW_oaBW3Su3Ja6LJZ_CiqZXjZk02TNYNCwMRLd0UTiKDpO8QfCrzyK0ohmnJQeUAKAUJGYS9ty-P8tXK1A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBTLXiujUJCTZ0SL-kjjARGoSXaJTxAOtmqILKae-R6MKfxgawJ-8nkKVc_WALT7VuIIZsFlzFgJDWEtD9tMFwF54xjYe8wZ_cGPFmzEf_Dsq7sNGly0bAd3Vt-f_T6eC6SwyhCm-8gpzqaMw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBiskYtX22-ZZv9HZ22z-6n0hke0iKReCLfNduweGd69Cy0jmtRpBdduwa-XHCvektbqzDwf9B9BQCC_t8ZTnPZ81KASAfkoSPx6XWlRePzhk90SyM74IGQ4JSeux9Q95mk11B1fXlM8kGJGA=s4800-w800-h600"], "a": ["Jozef Dubiel", "Romain Welbrich", "C. Agustin-Grün"]}, {"c": "views", "n": "Tombeau du Géant", "zh": "Luxembourg prov. · Semois", "lat": 49.8210572, "lng": 5.043316, "m": "4.7★ · Free · 24h", "d": "The Semois loops almost back on itself around a wooded hill shaped like a burial mound — the Giant's Tomb. Belgium's most famous natural viewpoint, free, with parking and a picnic table right at the overlook. 15 minutes downhill to the river if you want the walk.", "g": "https://maps.google.com/?cid=3551311278677434012", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBXcIoXmOXA9AIqQIm5gwFUOgFMwqZajPX5Kzib8QAocvtnkA1YlaxnhN-v7jx530JXKjSWAGeUnc4I9A5trXGuVL6CQ5ZwV-BIzzaIwQnAVTWEwCQ4iAfYAvYDoG0JXDNpe9iivzrmtuc57w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBVmVYGrBEehhTn03VHggMD3O7_0LFzR-SzrOaDExqUWmE8dU7UxAf6JKMvsAbUt8zR_osTwkM0C2dn8JEa4V7-9X4bbDnIg-5kzXbkS0D8ZT6xANqoLHEeD5pgP74X0n-p7vJsK3uQ0NRb8vA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDOgsu0pB_h65RxGTe5YKJIBlaQ3jQQHwkprXmrZJ5aMxy5ugkG7RVqELOz9aKxFI3DQtj8UEjOaKlrVZ8RZYRjlibDB2kdP0xAne4R2fx0ngMVJk9jLL4j1si5ZDuHRE68i1C3QDtq5Of8=s4800-w800-h600"], "a": ["Hervé Godart", "Marc Lejoly", "Gerry Kompagnie"]}, {"c": "market", "n": "Redu — book village", "zh": "Luxembourg prov.", "lat": 50.007593, "lng": 5.1609851, "m": "4.0★ · check season", "d": "A hamlet of second-hand bookshops in the Ardennes, twinned with Hay-on-Wye. Charming — but be warned: outside the spring book festival and off-season, most of the shops are simply shut. English stock requires rummaging. Worth building a day around the festival rather than dropping in.", "g": "https://maps.google.com/?cid=4649170945805092034", "p": [], "a": []}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin" style="background:'+CATS[pl.c].color+'"></div>',
+    iconSize:[21,21], iconAnchor:[10,10]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch" style="background:'+CATS[k].color+'"></span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng
+            +"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.add('open');
+  map.panTo([pl.wlat,pl.wlng],{animate:true});
+}
+document.getElementById('closeSheet').onclick=()=>{sheet.classList.remove('open');selected=null;};
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>

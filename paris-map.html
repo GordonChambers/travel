@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Paris — Where to Go</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{width:21px;height:21px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Paris — Where to Go</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Photos are traveller submissions from Google, shown as a swipeable gallery — swipe if the first one isn't helpful. <b>Directions</b> opens Google Maps walking directions from wherever you are.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {
+  views:    {label:"Views & peaks",     color:"#E8590C"},
+  temple:   {label:"Temples",           color:"#C2185B"},
+  market:   {label:"Markets & streets", color:"#F9A825"},
+  museum:   {label:"Museums & arts",    color:"#6A1B9A"},
+  nature:   {label:"Parks & nature",    color:"#2E7D32"},
+  harbour:  {label:"Water & coast",     color:"#0277BD"},
+  heritage: {label:"Heritage",          color:"#5D4037"},
+  food:     {label:"Food & nightlife",  color:"#00838F"},
+  themepark:{label:"Theme parks",       color:"#546E7A"}
+};
+const PLACES = [{"c": "views", "n": "Eiffel Tower", "zh": "Tour Eiffel", "lat": 48.8583701, "lng": 2.2944813, "m": "7th · 4.7★ · 9am–midnight", "d": "Unavoidable, and better than its reputation. Book the summit weeks ahead or take the stairs to level two on a whim — the queue is far shorter and the ironwork is the real spectacle. Sparkles for five minutes on the hour after dark.", "g": "https://maps.google.com/?cid=10222232094831998944", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCqgYLeaSFnxx2lpMnwk3sRDqlFvkeCj3ApVgmlzCIY9DXc17WHkCnwnsLEYsFe7OqEx1mL-rfrL0aEnjMlF3za0r2khGrI7gbhpK9Kw3BDk9jkt5OBaAsRv-RuqAnna3Kd7vrSs7pljUxEXls=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCANnDem0X-WvUDS9FWxlzVdWu6cS-MQ6fLMkZ5FwZH5o_qr9-5GDAn6Ot-fL_mIXn4jDZm-AmHerQA1YiiTs6tRPIK5M9u-naSntfOtxgEUJGxdYwzy_EiiVcTn2HgBU4RRX7Y8qNFB1wpvYgBQrlMEA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAPX64e731hZOFDZgBgZ2N7t6sYvAzYMpZ4HJ5lvZf5qT_W7VZPN-gRx1iSIeREAPfN2eT90mc9-QRoZASG8INWQAjmnb9LUim1r0j4Hm_wbrLVrAkaqXWCAx0ZuO7Wj3SyVIi8m1dDBd-N6BKK66O2lA=s4800-w800-h600"], "a": ["Sampoi. kz", "Nathan Lhuillery", "Aitor ARfoto"]}, {"c": "museum", "n": "Louvre", "zh": "Musée du Louvre", "lat": 48.8606111, "lng": 2.337644, "m": "1st · 4.7★ · Closed Tue", "d": "Too big to 'do'. Pick two wings and accept defeat on the rest. Wednesday and Friday run late to 9pm and the crowds thin considerably after 6pm — that's the visit worth having.", "g": "https://maps.google.com/?cid=13363865620386383060", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD-gXrYo8rO_URS8QJBXTf4jUUslDrW0SWzykpgNjFs9ofpR8tlzY3jY3j4XWEnlGUCH-fq0PKq2zhTg0LyPn998skWkXo1ydzRj3jK1nbtDrLOAhToIKEKH6WPByvahXF_gueTwLHPiZCOBzk=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBhWaqRf5cLL4CoLwRwm7Kc3IPAo947EJIvRK3mQuM704a0p67EG2P2icBsiHITB4GOTv2-RTs8_XiwiCMjJfFk5zlxio7hqB_irGFBkk05Uft019wAZQsSWv6SuVMYYR4BleoSG_8SwoxEwgfRxnvzBw=s4800-w750-h562", "https://lh3.googleusercontent.com/place-photos/AG9NLjD5ZKUQ5XHwr9iU-N5Y24xzGZUtKIp39v6sjpyKtia5RXJxqFWHzgpxdIWNAM3Q9PI5G5qRAfEbYnn2TZmyBAEsdR8XpfO9jBjNmbpBpNBiq6w9BrjIqprHDNC0vD3fCDxMHfnBB3mBrpymZQ=s4800-w800-h600"], "a": ["Chien Ping", "Asad Ziar", "Cuadros J.A."]}, {"c": "museum", "n": "Musée d'Orsay", "zh": "", "lat": 48.8599614, "lng": 2.3265614, "m": "7th · 4.8★ · Closed Mon", "d": "The highest-rated museum in Paris, and the one most people prefer to the Louvre. Impressionists on level five, behind the great station clock. Thursday runs to 9:45pm — go then; half a day is the minimum.", "g": "https://maps.google.com/?cid=15019994644224418776", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCd9fYDzAM9HB485be0q3d5tEliD4iKcJUiW6xioz0gakyWJzHiQqnadh-NGdZMNYQ0aXqqoFZiBzkyaCh--qJKIQc5N2EvHbMSsEOLy9L_Vfhl5gUeJpJBORkYbyvJZf6w-8PMfP0WYXKCDQnbXLFO3g=s4800-w750-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBu8-rJcNkZL6tdtg8HqtxWuh4YnMEF4nnWCVmUHUzcW8iBX6F3QMPoTAO9jwUq8nJj5ukE6CGnBoR2mEbMTzoiFxC-VOlK5JKKaJ3nvinbvs89xB3NL6MDJZKzBgjH74Pq5G95VQUJIvT7=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAFFFw0F7yv9jl10pCsgZsQofRwInM61VKJ311ntoqzb_gWkSvDRAazxtINtvOgjRrMdD9xvCGwcGahPIsjh16UnoAk1d5ksrZCv5E2zxIhfyWi3tibTyo-ZRJqTEGomQmLDQpSOqARP6B0t58=s4800-w800-h600"], "a": ["Asad Ziar", "Michalis L", "Mihael Ioan"]}, {"c": "temple", "n": "Sainte-Chapelle", "zh": "", "lat": 48.855375, "lng": 2.3449609, "m": "1st · 4.6★ · 9am–7pm", "d": "Fifteen metres of 13th-century stained glass on all sides — arguably the single most beautiful room in Europe. Go on a bright afternoon. Even with a timed ticket expect 25 minutes of security queue; evening concerts are a lovely way to skip the scrum.", "g": "https://maps.google.com/?cid=3743689731647743848", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA1087zdCSIbO6OQHR99tOwjBELMVf_10PDeX_EV-4Lwf_voCH94tRAlSo81jdC2AKz5wriMhmPdmV5G9jNEAcLXiKAg1OQe2jRc0x8vYwQJrifph0wsai5sGKu04VhoEek-jZvcCXXpWt2CA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAifG3i5vse3eMOxmDEUt69HhDWmcErBEF2-rh6X5DSGFl-QElmJS6DhxJ9v8De1XMtFUQPX4T9yT_sxGKGxlQGDd2c5bMbEX0DnGIiCs3gSoNux_GcqbigmgDcfPjgRhnQtJQ9CkTZuIXpq6iNzyll=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDYtMbeCp7YR0l8xWT2oL7WI7X4jx2dFjYQWwwpuMNced8-D2AvWGEOqtSWp4GluTcwFBTeu4wK6xiQD38EuywaigTk9MbYuAnTLgdnVAMwRte2SPYi5EWNX_A0qrqiDPllATwukK__OVaogw=s4800-w800-h600"], "a": ["Julian Grijalba", "Muhammad Farooq Saeed", "Eurostars Logistics"]}, {"c": "temple", "n": "Notre-Dame", "zh": "Cathédrale Notre-Dame", "lat": 48.8529682, "lng": 2.3499021, "m": "4th · 4.7★ · Free", "d": "Reopened after the fire and, by most accounts, more striking than before — the cleaned stone is far lighter than anyone remembered. Free, but book a timed slot on the cathedral website; the walk-in queue moves fast but the reservation saves an hour at peak.", "g": "https://maps.google.com/?cid=3909157082539624077", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDJ8j_OAWJ1vmLUDE9sSn7d9TNZz0R3Pj1j8a7mj2mOpP_J6C23hmy22mUis55RqdE1qo1lkYf35R5csQq2bOsO5jEHyUX7gcedZ2U6lAU8O_prwssm2RZQNMB-AB5x8MTu9otyHGhTNaIPeUk=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAy34BWoduXQ_haIjwSZISHK8NF9Gify6KnOEIhmhiDrVlNxKSx3TVX6cIFdrAD-xEawQw6pzIChTouawhezniOP8yg3bzxGgiDjz0eRZmxQYr3oKic1TsTuWsLVB7BBmtabJ3b9OtDOW1w8N7Rl1-e4w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAxlIPqOZTNzX9Avlw_cva2GkvRdwCqcsQRMI4jO9acIZO4kT85VfMYRfePyJi5MBNc1ia2fgPdax1R-wPOaHML4IrNQPiAB0hEgZDx6PtWIsfkx53Ehlm9avGRwO7VG9UEvZjwZ0TdVq0fHKJXVPSSgg=s4800-w800-h600"], "a": ["Bülent TEYMUR", "Adalbertus von Malapane", "Michael Clark"]}, {"c": "temple", "n": "Sacré-Cœur", "zh": "Basilique du Sacré-Cœur", "lat": 48.8867046, "lng": 2.3431043, "m": "18th · 4.7★ · 6:30am–10:30pm · Free", "d": "The best free view in Paris, and the steps below it are where the city goes at sunset. The funicular takes a normal metro ticket if the 270 stairs don't appeal. Wander into Montmartre's back streets afterwards — the tourist crush drops away within two blocks.", "g": "https://maps.google.com/?cid=14970958066519606553", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCAUbsYZhTJSVqb-xIcuxqcBc_VFvTLP8bpR2NbkbJEnOjIXsIQk24Ik67ySMnlg2Bwr7JWwdQs3h1FM9mN67So3c0NVlTdupPWg_i9t3uZfwJ-ID4R1klIA4OTwg1xy6xqEaNpCefMwEkmUA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB4_3HbgnVn77MrysgbYQ6T4o4tweqCHbzL4YhRRNUTFb8m29zoSf6Mg6LvAM0jdeVFX5kNACINTmUsfHSI9qpXZrbavWIeTB3u2pf8ybR3ysUkqQBu-NWxzT055yFkwqHroYsz5660BT_tfA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB3GtP1xnRi_sU5_jkrvyjGCHLwzVqGivPdZf1GyNU0XyuCOlFyIixu8FBKwFCoIBwMjNam1Fw_AUUecd_nLEeYHp1yXKvEEsotE7OeJhTN3XcSWXBwc4u7pzoOX7Ys1bClWBi8j2OVTYNKEuk=s4800-w800-h600"], "a": ["hiszpan400", "Sebastiano Vasi", "Peter Martinov"]}, {"c": "views", "n": "Arc de Triomphe", "zh": "", "lat": 48.8737917, "lng": 2.2950275, "m": "8th · 4.7★ · to 11pm", "d": "Better than the Eiffel Tower for one reason: from up here the Eiffel Tower is in the view. Twelve avenues radiate below you. Use the underpass — do not attempt to cross the roundabout.", "g": "https://maps.google.com/?cid=15687558599447307325", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDEed0_YJmuaHTYOBNoODmKx6dPgKqpAV0t6lQin4yXgXq8Sypj_6pyvh4feYVw1r2vuizZj7CNdjv8OCTzAMHW3XiHQf85O1dLpKSE3GOp3rLMRZ8gEAHncjxVrnHF7clszsBsa4VSJzHg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDcRdiveL5OCDNVfm9IgavUQYiU0-2o9bp-4HCd1e2CLUSn3rIHVf67WLbQvlkUn0-_RKqTriK7mdlv_B-jrFP5bupt2KaGDFU8fG1lkTZmonGfoo0obpxiNVrTRk54oybkXUyt50qBIfG3BA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjApHYsrlJurshERusQlU_Xfys5aBm1pyN7BuHpdaDHqCpMIoIW_1YUbLzIR_-gZBcOBhxnvR_76n-emfx1nUjSktrE362LZvOwHq_XnIVsVeHpDCtPPUtnCd3PHU9J2FcQrkEY9OsccttSDAg=s4800-w800-h600"], "a": ["Oscar Mac Rory", "David Henry", "Fabienne Malka"]}, {"c": "museum", "n": "Musée Rodin", "zh": "", "lat": 48.8553072, "lng": 2.3158354, "m": "7th · 4.7★ · Closed Mon", "d": "Consistently the favourite museum of people who found the Louvre exhausting. A mansion and three hectares of garden with The Thinker and The Gates of Hell outdoors among the roses. There's a garden-only ticket if you just want an hour in the sun.", "g": "https://maps.google.com/?cid=7235270467978162264", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBQ-lBjtT6vnQZ5F03Hf-9E30Ore-j5jWV1Lx6k4-WACvQeCbzYGQXrywyT2MBh_BgWE3wkbqlXxSx7bXgnI4iXBCqyswzx-EyHr65ceqLJeRraLuGf8JgVbc0VdC6RMsbFQhFHMnI-mxdlMQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDtdyXF_AhNwkkD_s2OQ864w9rvTQ9TWvJXDhZ9eU-SFiLpWB2bxyf_Qa_jpgvPcidZ8emAfcSaYJCOCe913BJGohRRyBzMT-gPUTbsaf4bDrxPMSUIZAcRv7rZao139y4AXt0CO7UqG3RCWoCSU1NE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBtTB4GKv1uMQHt5NInITcfTa-fvfAG8SlPjD-vVHitfESxxqf-NZu8Uw6yHoWETBbcMiu_UOKggGx-KU-cLGw8VeVVdxDhZcwfuI-VbVfljd_mi3p2AVm8VB3VrYrsaVMyhrRRJqlw5qrAY1U=s4800-w800-h600"], "a": ["Josephine Pacate", "Gustavo Go Go", "Julie Marmelade"]}, {"c": "museum", "n": "Musée de l'Orangerie", "zh": "", "lat": 48.8637884, "lng": 2.3226724, "m": "1st · 4.6★ · Closed Tue", "d": "Two oval rooms built to Monet's own specification to hold the Water Lilies, and nothing else quite matches it. Small, so it feels crowded fast — first slot of the day or late afternoon. Mandatory cloakroom for bags, including small backpacks.", "g": "https://maps.google.com/?cid=15870632905802880522", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB9-0dr5HJIQbFptebd4W1kq1Yz6jgQOycLaeE3izgXeJValqJvuGpLBMexfUU8zCwgyxJUFV_vXUrB5Vfn0WDPEaDBUYI6nXD8kQBZdt7BJUO7-vn6vuiTTxFkDmhoSWuXQA7hSyY9H4Zl0A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD82x3upEU33RSQHsLn6Xj_8S8ZDQzeTGZif6vF1pDYE9MzlFEUPGVi2vEn2xDqFIKs1sDhE1DE5-Y-Fk79b9Pvv7w0tfuKFVXF_F3bed_QwNIGkUNlG1AFulN11GQ4XDBcaMjffTnC9yuxePgIxJH1Jg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBYnKYQ_m4QpqQIdrmmbrQfjETDZS1M82mbjeE42aEK3KrbMzDBWDrh9cg1uCRfDAmdYfvb-LlaA7gn6qWP4cei4uMPYb4zWNgH74fsLvZ8LhpvCymq_fwc29B2BVRXx_AgbjKKH-p0DIM=s4800-w800-h600"], "a": ["William Cheng", "Amit Gupta", "pascal V***56"]}, {"c": "heritage", "n": "Père-Lachaise", "zh": "Cimetière du Père-Lachaise", "lat": 48.861472, "lng": 2.3934725, "m": "20th · 4.6★ · Free", "d": "A million graves over 44 hectares of cobbled, overgrown hillside — Wilde, Chopin, Morrison, Piaf, Balzac. Deliberately left wild, which is the point. Don't hunt names; just walk and let it happen. Grab a map at the gate.", "g": "https://maps.google.com/?cid=11659644781810377753", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB0f1qMNOr6XMOyTPos1vO6DZibqf8rNPso50DFBvpUINMm_VkWUPS07ZEVUF-CfMpXd7iFLKR0ve3lkQWWZ2zjDhECTcskjd8AT_2-64aTg-w9kI9NE6LgNnqn1tFxh2qu6vamJtD8Z_I5Cw=s4800-w800-h459", "https://lh3.googleusercontent.com/place-photos/AG9NLjDZdPwsjfa-MseT_q6w7pVq002ve25v6L-Hvq1Kv7oAm5mrHZ_jAHVVFtygj0jHEy5d1ABpYTiePj6AgCmuhEfElyYK3QUgxRFj02d3NTSZTTRvwsNKvVakJMmTdbsVUUrPTwkIPFb408RJ64jdt_Oj=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDtG7KHBF1kKUUkojwYDvo4R8rJ_oN-ftKIB0A9v3U-vQhWe2tqOE8MZWE9-uG-kn4Mxratxou0yeSnEHmstjlxGg29FqTp7xW2bmIUOmux8YByTDZViQjHhdnzDNWjJ8M9o0a3OtAqz29Y0Q1KsxIc=s4800-w800-h600"], "a": ["Père-Lachaise", "Kirill Stroganov", "Paula Andrea Armendariz"]}, {"c": "nature", "n": "Jardin du Luxembourg", "zh": "", "lat": 48.8466144, "lng": 2.3363309, "m": "6th · 4.7★ · Free", "d": "The park Parisians actually use. Green metal chairs you can drag anywhere, model boats on the pond, parakeets in the trees. Fifteen minutes' walk from Notre-Dame and the best place in the city to do nothing.", "g": "https://maps.google.com/?cid=545460441531939211", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBwoyHd5OAiptgSVHKyUEhdP9lLA55LByHR-e0u_YuiqD1DjRsiHI3bBxbXOrj5m70URFkTLOn8_r86bKAY-xPEoO9HlbyhFvE7gV_dpQnJ0JWTrIiakVKwRgTFWHnyhds7-QCLm189tV1GNEPMl2I7=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBYPhYKNtxY56nhhmuNA2Yg583P7kF1eTT6FVXBg2Esuj5iRnRBSc_0faO-TXEO6O4-ewx0zdZuLhkDw9wkvz15zjGjD7uAF8rMdti5iqmYoHT8JF4_HUngQyUa78zRFlEZ3Tz0uDX3CdGgXzDYUczwaw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAjJwLilcoC3w2GeYUOGNCAtvfO4S5lCb-OKG1C0uIT5bGh0A0G8OW95JKgNjOShWYxKJOydGniNdh1nxas4E7KkAVyn-yHZCy_INMe9bifipAVXD_DgJoGChpYDm4C0SddnthQ3SubH8KpLH8=s4800-w800-h600"], "a": ["Youssef Elaouni", "Liavontsi Ananka", "Mihail Enache"]}, {"c": "harbour", "n": "Canal Saint-Martin", "zh": "", "lat": 48.8689404, "lng": 2.3671263, "m": "10th · 4.4★", "d": "Iron footbridges, plane trees and locks that still open for boats. Young, scruffy and the best picnic-and-a-beer spot in Paris on a warm evening. Not the cleanest stretch of the city, and there's ongoing construction — come for the atmosphere.", "g": "https://maps.google.com/?cid=14702898989517840751", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCBnNYpRVO-9KmoJCes9g093ONjtKrosUcV3YGWlxORLMIRiPwCPh2wPhammXjN8JGHAdCHsIjSeI7IBHkU5Pu_gU_JUf6MrnamO4GQbeoWaob35jSABXeUb75wB0ttwO6WaLPCmnHiTgtC-Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDIulgMkxuIt-N9v0lp0C82Iq_m-L9UETe_iOGBebGEa_ESsjqlCyUEULZ5M91546riz48oIDN74xCWVjDger4f20Hrlf-XSkqtQX_6Jw1vPME1LQzOq5517K4WfNdagmRxp9NDgyderl9eUw=s4800-w640-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDtPLrC4wwsC6jrytuQ71-ik6EwP8xq83fsIJJk_aQCZp9wYeoun5OU3mzaIIefRYc0R-QzTLKb-CDQKRxb8tfNeAuhMvKyzMOpQhvMKRpcTkoaRDJNpRj-iBTdbT5zxJEL9fyaQ4pdg9sdXAPIC4aaIg=s4800-w800-h600"], "a": ["Gianluigi Vulterini", "Julio Fernandez Casanova", "Walter Rijk"]}, {"c": "heritage", "n": "Place des Vosges", "zh": "", "lat": 48.8556114, "lng": 2.3655266, "m": "4th · 4.6★ · Free", "d": "The oldest planned square in Paris (1612) and still the most satisfying — identical red-brick pavilions on all four sides, arcades below, lawns in the middle. Victor Hugo's house is in the corner. Spectacular in autumn.", "g": "https://maps.google.com/?cid=7266689551849442472", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjASzsnxr-KoTym4KG8izzmz8Pj3idgqg1f1iDyckjkUFBPDpl1CXvstBqNrcu9DlcXarCKT4yjyrcm-D_Gg2YbIRLoDQqO5jQ6X8RC48fBLN-VcAV-N1yqrUBvXu0BP7isy4XQT2ovJTh0UdA937asBcQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBm6KHWAex-TC3_Oo15JCgjTQYPXlI9PtfPLImv_gonX6UiJmKJIv4KV8Ofiy-LHILkspTODfhCELvkdFN34nowk_6NFQt0_LN18A3DPLR31ghWAMil-vjTb0fNbKCTIw_xrxW9z6dw9aqTyg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCg5gW40vCia6_9f0RfQv5ZFGhzGizVJyDBeLRo7MRqscMb3s_75JvpINPt7Aue-P-Jnc1lktEGNkwZ76uHZoG8Qal340IPB1MB4O8ZzR4wvlvpjIJ-EHrN8S76Ji7Vg69qyjKJ3rUwY1JgE_U=s4800-w800-h600"], "a": ["Antoine", "Chris Pierce", "Laurent Sun"]}, {"c": "market", "n": "Shakespeare and Company", "zh": "", "lat": 48.8525632, "lng": 2.3471303, "m": "5th · 4.6★ · to 8pm", "d": "Cramped rooms, wooden staircases, a piano and a reading room upstairs — and no photos allowed inside, which is precisely what makes it work. Buy something and they stamp it. Facing Notre-Dame across the river.", "g": "https://maps.google.com/?cid=1385046964796084915", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA8q2JvDLvFuDS0XTvMKESYM9GTHfgUsDKmBfqGX-6dAsQ8C0A5LDjqWp27R0cyoHrZkCtZZ75-UajzSz55xOOmlCQ-kDcRjaVbw9CnB0pkFNN07Jsbd6Qkbppf6R7opj_OAuLB9Ei4IQXwBQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDXRTCa5l42QGJ-WTJwP0P3GfWmNE2beN_BTB9LCVAsfM3hDtT1Wu8DIXnF3kQZD4K8pEOgNQ8Izxg3_q_TWjHhBfy46Nm08TfU0mBMMCUJV35PTr30jXkji836XeXV5TV5FDBNt6LkdqNTxxM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBpDU4J528EUxocu_-ShIKBwpbOy8po-CDRsMnnfBp3glzOhfwL584iRfIMTZLFeXYEIVhNmmUS1fLB0R_86GylDffgMx0u7wYwBjeLFAJ54Aofb63kBQGnY1vrjUX7prb5bxbW0W7-jeRY6jc=s4800-w800-h600"], "a": ["Shakespeare and Company", "Scouser1965", "Roel Kramer"]}, {"c": "heritage", "n": "Palais Garnier", "zh": "Opéra Garnier", "lat": 48.8719697, "lng": 2.3316014, "m": "9th · 4.7★", "d": "The grand staircase, the gilded balconies, and Chagall's ceiling over the auditorium. Self-guided tours only cover a small area and it gets tight — a guided tour is markedly better, or just book a cheap seat for a performance.", "g": "https://maps.google.com/?cid=12226131816178583399", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCWwGTlxfYHEqyZkp6SbHs0weW31IotlLAlUURypZdPy0eZh49VJ6OsFVhMMk1oRZmigVu9Scrz_UHq-Ul_ROAAoCE11YMtkRDPv7HZ4nUeam1gq7N5V1HGjiPKxpMuClfdt92Xr6uH1s8uuQ=s4800-w520-h520", "https://lh3.googleusercontent.com/place-photos/AG9NLjD4hzyCEgrJGFm3jbJUs1FujJoCs_Zb_SJH8dbamU6C3mb1Z5h2ZXPXPJ84pwf-NvWKGc0SdUbdkGW2G5lqjusFjQFOoUSnmWg6uz9RkdjNxIVzbAD6EJQwH3sARn4vCLVVyJ_P1Ryj1A5YFiVddNy9=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB-VYd_5fK_Zksnjn2Bk0XDe-cOBJ0oFa7M9y-hbJomaLMi1b6IHkJqgwqxE66Hs-9o7CK7y2BdMNvqJPrb6oyifhoN0EMzkk3Rasml5irzakS4dRAo_b8aLl51OxYhJCWlLRre6DDt-CJwlw=s4800-w800-h600"], "a": ["aryan Verma", "Tyrone Wassing", "JB Perraudin"]}, {"c": "heritage", "n": "Catacombs", "zh": "Catacombes de Paris", "lat": 48.8338325, "lng": 2.3324222, "m": "14th · 4.1★ · Closed Mon", "d": "Twenty metres down, the bones of six million Parisians stacked into walls. Handled with real seriousness rather than as a horror show. Book well ahead — it sells out. Spiral stairs both ways, uneven wet floor, firm shoes.", "g": "https://maps.google.com/?cid=14472300308152104115", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD5MCyHjVaU7-ffwOqin5JD5c9_EN4rongzWEhoKgLQxHdaQppGx0gY67K89-97Ku14VR-_gDwzGWiUdQRkpDYazA-FmlH421ohb9hTvnN5kf4WV4RsdDT33NO5XY6lqeyVZO7ln0XQ39TMShc=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC0HzMJF8ykd0-QB5EX5OgATOywtNJBblTPMhC_rM1YbYltEkm79sH458cUCmzhLXAh4rFohJeNAYgztnKoV4tXQ_BzufkeFdIDF6pO3aoVB73muMwlKsdSr4cD0b2Rks_uiU4maci-NRr8yw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBcOP-vOpoXXQ0nGfVfileeXuk5sRHq50jPtpgBRCaEVuaBlmjYkyDHjR3ghxsAuaieZyM8xrlsjkAM-JiVVYqUJ06DJ3jJxbIwa9B3MssduXvPjUI88uJ9IO5vk68uHvcUFqKKwBcUFMlMQg=s4800-w800-h600"], "a": ["Eric Lawson", "Abies Concolor", "Christophe Jacob"]}, {"c": "market", "n": "Marché d'Aligre", "zh": "Marché Beauvau", "lat": 48.8491053, "lng": 2.3778158, "m": "12th · 4.5★ · Closed Mon", "d": "A covered market plus an open-air one plus a flea market, and far more local than the tourist-circuit food streets. Buy bread outside, cheese and charcuterie inside, then eat it at the tables at the far end. Best on a Saturday morning.", "g": "https://maps.google.com/?cid=8624913594124141542", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAYWt5NxBe3mPzSKB1NXIlREaoET_fqsnxIBcy4YkbJ2rDgUerijOKcBsUlgvJo9G4vpoDzrCP_i5-Pe12ydcGhaU1ErxCXdcWyuOlUp33Z-Xn4DWEQFKMz1BUi3Drih2ydNkfbuuENX_rtUCk=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDMJ1ASDwYhdJZh_3qG9IhEpgazArfbrX5Qpx0GjCJN_WN-2WTUf1eqEirAYq7wCK5kNg0lSoasUz6rBTrem4gj3tpsDk9CFkTSA7SXRN7m6Ofw_fevmeMlwwQh8lrorjhDSqsCoWxjm4mst2E=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCNpLMeyLTCYp4Q0BaunyOJpvMJPgykeC_hAMuddgiVx3r6gJhGoqFH5j3ntskd-v9kD32cAfJzNw_kldgmZmxN-qFARp9kvzxsUQteByww5XIEN839-a0KPhdGOpN0x1v_sVwzAWbu0W-CTw=s4800-w800-h600"], "a": ["J K", "Kristian Mikkelsen", "Yaniv Altovski"]}, {"c": "nature", "n": "Coulée Verte René-Dumont", "zh": "Promenade Plantée", "lat": 48.8494548, "lng": 2.3714863, "m": "12th · 4.6★ · Free", "d": "Paris's elevated railway park, built 1993 — a decade before New York's High Line, which it directly inspired. Nearly 5km on a viaduct, looking down into streets and hidden courtyards. Enter near Bastille and walk east.", "g": "https://maps.google.com/?cid=10817063450747993987", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAgPSe-AGyhWfZTeNxuTsrDVh2dbQ9OZM8WFW3GRC1wI9EIFqjMJ5RLad2hXXAMq1ZKjx-wvs3Et1FqKDmrtSnH-582Pm0BmipmKCbVF2Fy7lxMGRNB_iAr6n0OuTK_O7M9NMrv9tx6-Dbi4A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDTp7PAi8--_Az2p0-6xwJBFQY8T92g4WACQa0utE-mOfn5TzDRpJW29sNpixU4YRetWrulev_-dOZI4H7nodsyWKy9gPm_aCA3k9VXfL1NFG614U-onJUVUf6iHkVySLLcibHphHs7RpNXyg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBds_EPi3-nk-r2JGXFQtbrxuAQP3sl-BzpzYKmKDrfVKLy7GtwXklK5Hb933Sa0JMBk3MoVg-79LSwpMYNMJpBUzKH1RGPR7bjAS7BIZE7GIMbzZ-qjzwq-fx_TJs3LvCLvppVshvRkU9law=s4800-w800-h600"], "a": ["Agnès", "Muthuraja S", "Nik"]}, {"c": "museum", "n": "Musée Picasso", "zh": "", "lat": 48.8598775, "lng": 2.362285, "m": "3rd · 4.4★ · Closed Mon", "d": "The world's richest public Picasso collection, in a 17th-century Marais mansion with a staircase worth the ticket on its own. Manageable in a few hours, unlike the Louvre. Don't skip the basement level.", "g": "https://maps.google.com/?cid=13948169879979585015", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB3IxH-O53gzHzv-m9udbPPxH9bCztsCAOZQf7uXO4Trm0f8J7f3moIhnmlzVgZWAAOTGKu0IGCjozq_9p0qvfeLHdExXm4dxgGIYkhgabZZ2Sv8dFKEYGSeneuqWJhHyzhkEKOIHxKGgUC=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjALb0QV4HmMYGPzy25JQtYTxSUnKaMl21ZVD-oJwal8_v_TQ_T-RIH4lzl5ppkNV2_PVatfw06ELZt6HrLvQj4Ga-G3qB0L2RJJdGfIOf9Km5z05iXdBzjNYuXbOgXpPI2vzlR1o-yMfddNWGdjNYYSKw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCV1jwbNSDDZBNCy7pV1yQ6uI3xIQ2_iEcee6Hkip4_0idDuuOEI2xVrrz-FgYiVHkuRvof_lkBO4YOhWZm3d6WNUaN5R0dwR8nIH9iGQHRJXU97G4hXrHbrfTzqSvdb2TYWfhJdC4gnyF5MiZb3USgYw=s4800-w800-h600"], "a": ["Franck Diverd", "Maria Luisa Garabelli", "Lipsticks and Backpacks"]}, {"c": "nature", "n": "Parc des Buttes-Chaumont", "zh": "", "lat": 48.8809496, "lng": 2.3827609, "m": "19th · 4.6★ · Free", "d": "Cliffs, a waterfall, a lake and a temple on a crag — built on a former quarry and the most dramatic park in the city. Steep enough to be a genuine run. Almost no tourists.", "g": "https://maps.google.com/?cid=17468316578248758417", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDLLPckQjyc1Diol2W5Oo6Jp6u6-FXslDcihA7eR8-hyMrJI0R1kBapsDD3wt7NpohRwS7lGWJeTUyzFviXgXOnOZHb2KIeXRr-5iaOfhPjei7wfko50mO3e2VtfJMU2DSgLLLrTM0hQy4xHg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDsNq995bKsAEB1_spnN5CWLxq0BussM_Kno9a-SKk-6-4JHaUlRWN5KqPS7M0AvUzPyncP0JOUzGjrfZ8p3reLw2VWPCHBoffhzfoLAPvOZL61gkbipNtjYNZ_tAUguZKY4p04ew5M_uYl-yA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBfjDq8RWFWArtVkPTvfpBRXtQcvE8aH0YVrmpXPGVcT9ax_8pEH4TrNN8o4mpCoHWn2RIP8SixFfER7xsTG7ecugDuOgt7uh5TghKLYWGxlHhG70pV1qeY9jdvfjrdrQK1jdx8Gy0MKkDzZQ=s4800-w800-h600"], "a": ["Adilson Guaiati", "Devon Bertholf", "Aghiles R"]}, {"c": "museum", "n": "Musée de Cluny", "zh": "Musée national du Moyen Âge", "lat": 48.8504833, "lng": 2.3440808, "m": "5th · 4.5★ · Closed Mon", "d": "The medieval museum, built into Roman baths — and home to the Lady and the Unicorn tapestries, which are worth the trip alone. Calm and uncrowded compared to everything else on this list. Two to three hours; opens 9:30am.", "g": "https://maps.google.com/?cid=420644880708383615", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC0Vs4V4Sdig77nqFAxagxE6iI7s_DhwUcjd9f3Ix7y74qA-3pP8hAncIF04f2PZ6vseEno4y-chj66FMBzqrsikk900qRCXkG43VEeU5GQAiUKKNMhvPcwX-pjidZkYF0uFFfMGJiH4ecRlOzT8CF8Fw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAT-dtZbQo8NNOssgoxp-GmbpYnwGNuOrv0vffnoPRTVssNUVDL0R0wIB9_7twkpZ0M8hG_tG6qxKxy-J5sMPa7Suc5ST5cFe60prjVUSi7hMB8z-2xQtC19S4etqh0lmZu-oidD3XbtdbBOQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBSApOJd7fNaGVfE3XLluL_nxlUX2T7ptUIoNQd6LlPFVYUtkWqe9dDuoM7EOenMHjK0QRDhP1u10AC6K4oj_0ZQZ_nSp0W8haPRgaoSbCUHfOLM6GL54QHMUqiMIeVi5sU1im0foUmNEGs=s4800-w800-h600"], "a": ["Jessica Knauss", "Franck Diverd", "Sundar Dorai-Raj"]}, {"c": "museum", "n": "Fondation Louis Vuitton", "zh": "", "lat": 48.8766453, "lng": 2.2635239, "m": "16th · 4.5★ · Closed Tue", "d": "Frank Gehry's glass sailing ship in the Bois de Boulogne. The building is the main event; the exhibitions are usually blockbusters. Book ahead — queues get long. Entering via the Jardin d'Acclimatation side avoids the worst of them.", "g": "https://maps.google.com/?cid=9643972601059128781", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBiP8uzO1CMeZelFLBJ5Rxv76SrNVyHAH5_un54Q0jXz-zQF0n7OhKI_fGe0V8pdTLs0aanyAbYm9xQqv4pTHCMiNFpBPLWoqumfMot4nvPDZABatLO1yBZIxLKYZtw_cGM7eArtAKfqXqKLA=s4800-w728-h435", "https://lh3.googleusercontent.com/place-photos/AG9NLjDuHCDsNZwsPXjEh09VTO1NNNKCe2WCFFcpJRi1J4q0S-OeP573qIOsEvLBg5MUrEAhQFk3tf-yBDZtkDlbgpw3-zIfh9qRUcHP8lDZ_5KfUo6ttq31M1sStOgbeospAWgL8DPyF1T958XTcUcvcocI=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDyq0_kyIwg1ALvIjL43a8r_T_tZeDmXMoIKXQyKLI7kNttCXfqIcYOFwvPXa_bRot66Ghk_a3U4vVnmoTGjgzuSnAlwpZq3OM5IohkEgfK5h7FZMvsOX3X6LreXN5l9BF9cVcj31Y-P014L6c=s4800-w683-h600"], "a": ["G S", "Soli", "Daniel Boyer"]}, {"c": "heritage", "n": "Versailles", "zh": "Château de Versailles", "lat": 48.8048649, "lng": 2.1203554, "m": "RER C · 4.6★ · Closed Mon", "d": "A full day, and genuinely tiring. The Hall of Mirrors is the headline but the gardens are the better half — free on most days, and vast enough to lose the crowds entirely. Rent a bike or a golf cart. Go early or accept the queues.", "g": "https://maps.google.com/?cid=376328476344045199", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjACXZBMInyxrDj4URV3kOfxb2kMm-rvTvWSMY5noqwOM0poebdBKO1lyfMpVqppFWUPcRF1OUs261YMdA2tJhhjHbSe2aDdIm2ykDUYavTBIUk04obNFCT31h33vKfrsNTFGYTEcHdfzp33AO0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB0Kcz6jfN3h2zptvJFmZqu3AY0487lOM-rjihL51F0XLJ6TMaEeCzpxuvwXsqOPdIQQECGWsX_dGhSj3QS7n9NzflU6XS1J1IBtTlVQU6o20R9IBeZFVXYR0EO4p7WlOB8dTE8YQzROEVglQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAXV7L__-cOhMZSESLb6iO4_uhVKADbilvgEIKxxC8T1hefZZAYJgORNL0C7Qdu4uYyWssdiZCuJh0-sZbPYid3ClEx6qev75MnEMLvtQsdVoMGmy4jpyXiSdcPfnjd3EOCM2ebyz1sMQQriA=s4800-w800-h600"], "a": ["Leandro Freitas", "Trecător România", "Jeffrey Fonseca"]}, {"c": "museum", "n": "Musée Marmottan Monet", "zh": "", "lat": 48.8592613, "lng": 2.2672282, "m": "16th · 4.6★ · Closed Mon", "d": "Holds Impression, Sunrise — the painting that gave Impressionism its name — plus the largest Monet collection anywhere, in a quiet mansion well off the tourist track. No queues. A superb Berthe Morisot room too.", "g": "https://maps.google.com/?cid=5676612582406522188", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAfm1aT23IqlrPeMf8ElMqtqt9p8pTeiKlwOxbB0oMn7kal6ImhtbsA4zYlJEwycAuwWvYOOdbBmnojO1GXrwln1dDLOkJ5yQlN_1lsgXS8unkgRwLwW-VuqT2aLCA-8EurSQ6IiWmLZr5SbYM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB823yBBan5gFHvDhstV3_DJiJOMeeDX4LOM7pzVWO6v4Am8aPwY9OsOQpG9hW_pHfZ6BCpDj1gfo5lCu61428PRkWI-rKXJB-LcxFJ6LkPPWUZYW_wTzlpO9utxEeq1p69a-Om2dNNs5lEdUzYH8H4=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBREbXks7CutEcC4gNsVYJqKeKvMfL-R2psfR_YfpSkoajBqTYTiwfAQjhRpKwJW1ey4XJHmlwv926QY2Vm0S_sHjayEB7b7z0eX3qYPBAqwMR04Ss4Cms4KKAoHDhuv_UhvZDfegWvfx01=s4800-w800-h600"], "a": ["Portinari Giacomo", "Edward Chen", "Vallier Catane"]}, {"c": "views", "n": "Institut du Monde Arabe", "zh": "", "lat": 48.8489257, "lng": 2.3572313, "m": "5th · 4.2★ · Closed Mon", "d": "Jean Nouvel's building with 240 photosensitive apertures that open and close like camera irises. The free rooftop terrace has one of the best Notre-Dame views in the city — go at sunset. Exhibitions are hit and miss; the roof isn't.", "g": "https://maps.google.com/?cid=13750991344241872500", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAeDQiUozoPTpD1ZB2xXH_zIhUEQtQ17TuSrLHDu39XOKaVtQ3zznVGICLFlsRQvhh5XZcMVGjKMuUEINtrxeRvjoUzaBX88F-sU2tv-ZnCzodG9n15OsBwLA--UvExCceLyWcbk_hnosj3ag=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDjjeOd6tGWRIaQgqQ5HIOpSo3VFBb4JjH6kjqZwr2-zaljuhbMVrZqNsDR0Gx9J2ISnRaCIcBmZr27RTcsagf2-6U-NGXfomL5erlsVbheUAoCpGcmgLHv_AWB2392hzJkcqjXIfg2hZeejA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBzxz4ynONcLmzEixHbX4_Rayd1yussJJKrjsSyUAObBzokPW1SwPacJ6cs-tvISiApXTBy7aghBJrVHsLJJW66U-H5DpOyBnI59kEkUqAC7LYvq2-q26-_R2Fc55JVMFtc8AGxjfWhrTs_Cb4=s4800-w800-h600"], "a": ["Carmen Pérez Sánchez", "Shakir Ali Khan", "Francisco Mortágua"]}, {"c": "views", "n": "Galeries Lafayette", "zh": "", "lat": 48.8736224, "lng": 2.3321099, "m": "9th · 4.5★", "d": "Come for the 1912 stained-glass dome and the free rooftop terrace, not the shopping. The panorama over the Opéra and out to the Eiffel Tower costs nothing. Rammed at weekends and holidays.", "g": "https://maps.google.com/?cid=16606804023406433683", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBwodYEjhWT5OjSoII4Lh-lwlHQ4jTrm138kyfdcL8lFgNo8UZMLVSHNci8KZIl3HBv0eTAncYgBSliiHfUUURwVJ7YnmSSSytwofs_d00oKD_hDQqNW8VI2j7J5f4FrMjt9cIaC5AaYbw2xkxO9vpKZA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB_2NBVyMoluniM1enC1NVgiXmKr_jU-KYjap5PVPeTHKH7MKROGTNXk9nF4ZZCFJnQNgc6YRflsYOBYGQdz5Yeo9PMVKzoRYLoQ2piJ64X0QK8_UIswylSvsX151f7T6jDacTsYArziuP7Mnk=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDd50Udx4-XB0ip3wc9_A65PPj1NRjQ6Q8-bQ0Mxw3Bq1NUxXmGZkvnUb7jqHu8WdTiucE2pcCGxLI7v3LrEGhxmMS_weE2Lqhn_D3oMs44dd37J2fPTN8ev756gQ9HLnaoyow4Qhlv53caJYk=s4800-w800-h600"], "a": ["Galeries Lafayette", "Denis P", "M Naoko"]}, {"c": "heritage", "n": "Île Saint-Louis", "zh": "", "lat": 48.8515572, "lng": 2.3574207, "m": "4th · 4.7★", "d": "The quieter island — one street, 17th-century houses, and Berthillon ice cream. Ten minutes to walk end to end, and the riverside quays below street level are the best place in central Paris to sit with your feet over the water.", "g": "https://maps.google.com/?cid=6251001683330364720", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAdXbvHUlyRoL83YydH2D8Q3sDGq5CbAmLOsWttAusqFCOoezldtham_l15EIO7m9ujJWBkZzN6Y5KnCLKwd5IjnPAyHTbZbwEpGDaWRWGpMFDvCSlU0-wlM2HvUEcxvf8JDbGwd-HipJWMfg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCYQZgvCisz0eEeqwOr_epwyd_c0vkVjXx3wOZM-9x4XXO5k8ZlDnlT24PphYUql1aHVM6dAOJ4ZaqjiJSQtPrNC36tSOUZumd_UCVwhH6vML9WmYrm_6zmqDW08SbI7QaZcueIp0QhWekjN0k=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCJMRV-t4rgY3AxKyNih5Jff4uUk67XsV0EosFZrGaR8cE9YsUUJZ0xKro6g0cc2YazyIADvx59XV0_w_sCa_KS5MLgmaMinA1XW5D3QdLkgl-HW7cehKf2X2KgGLYQXm6g-Ql3JFzJJF1udDHGA8RvZQ=s4800-w800-h600"], "a": ["Jaime Vives", "Zig Zagueur", "José M. Pinto"]}, {"c": "museum", "n": "Grand Palais", "zh": "", "lat": 48.8661091, "lng": 2.3124544, "m": "8th · 4.5★ · Closed Mon", "d": "A 1900 glass-and-iron hall that has hosted everything from Olympic fencing to Chanel shows. Worth going whatever is on — the space is the experience. Currently also hosting major Pompidou exhibitions during that museum's closure.", "g": "https://maps.google.com/?cid=5303909227487010923", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCTrSVknKek5Vjpwaifqtaio3HbdsQifdjmZjXbya3nYX_mdo7muAB1Qa2v8V-6nufu3RQa_YtOwJDoQlN-JexCliif4OnQX51zra1bRTiDVNQ-ivCnel6bpyPuJQ7AXs_5KKpGt2VzUcQUwU9GtbRF=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC9bnooRvqEAo7lo11_NGueCodPA0kjXQ8CCmzXIEje1O-4ld8BSnNcAC26jnPpnEzYSp0UJ6JdXkcUvQ9NAjvWWM80TRZHwFFMQ75y-pumwtAm_0wGlAlEGEX76mu7UQT4Z5p9aef0uRkl__iBB_UpUg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCXt3ibYjGD2BLlV0bK0jJHV9vK0B6zxxyql1DRDxTNO2_J9LD1WRYwHWFHendTTqSIPDMDlupOWoywst0jkwLJp80fFaVg1sSd351D2ulbNJ4vYEaXpljxcSoruONK__LaMJGCXqP019CbHQ=s4800-w800-h600"], "a": ["Jean-François Roux", "Alex Explore & Review", "Jaime Vazquez Murillo"]}, {"c": "market", "n": "Rue Montorgueil", "zh": "", "lat": 48.8647834, "lng": 2.346804, "m": "2nd · pedestrianised", "d": "A market street that never became a tourist attraction — bakeries, oyster bars, cheesemongers and cafés spilling across the cobbles. Stohrer at no. 51 has been making pastry since 1730. Google files it as a road, hence no photo card.", "g": "https://www.google.com/maps/search/?api=1&query=Rue+Montorgueil&query_place_id=ChIJwUCsQRhu5kcRLgoASQ1fQyQ", "p": [], "a": []}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin" style="background:'+CATS[pl.c].color+'"></div>',
+    iconSize:[21,21], iconAnchor:[10,10]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch" style="background:'+CATS[k].color+'"></span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng
+            +"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.add('open');
+  map.panTo([pl.wlat,pl.wlng],{animate:true});
+}
+document.getElementById('closeSheet').onclick=()=>{sheet.classList.remove('open');selected=null;};
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
