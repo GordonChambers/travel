@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Brussels — Where to Go & Eat</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{width:21px;height:21px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+  .pin.food{border-radius:5px}
+  .pin.drink{border-radius:3px;transform:rotate(45deg);width:19px;height:19px}
+  .swatch.food{border-radius:3px}
+  .swatch.drink{border-radius:2px;transform:rotate(45deg);width:10px;height:10px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Brussels — Where to Go & Eat</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Pin shapes: <b>circles</b> are sights, <b>squares</b> are food, <b>diamonds</b> are bars and breweries. Food is banded by price, so you can switch off the expensive ones. Sources: Google, French and Flemish food blogs, and the 2026 Michelin guide. Several of the best places take no reservations — check the hours line.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"heritage": {"label": "Heritage & landmarks", "color": "#5D4037"}, "museum": {"label": "Museums", "color": "#1565C0"}, "views": {"label": "Views", "color": "#E8590C"}, "nature": {"label": "Parks", "color": "#2E7D32"}, "market": {"label": "Markets", "color": "#9E9D24"}, "cheap": {"label": "Cheap eats (€)", "color": "#00ACC1", "shape": "food"}, "mid": {"label": "Mid-range (€€)", "color": "#F9A825", "shape": "food"}, "splurge": {"label": "Splurge (€€€)", "color": "#C2185B", "shape": "food"}, "sweet": {"label": "Chocolate & waffles", "color": "#8D6E63", "shape": "food"}, "beer": {"label": "Bars & breweries", "color": "#37474F", "shape": "drink"}};
+const PLACES = [{"c": "heritage", "n": "Grand Place", "zh": "Grote Markt", "lat": 50.8467887, "lng": 4.3524356, "m": "4.7★ · Free · 24h · UNESCO", "d": "Gilded baroque guild houses on all four sides of one enclosed square — Victor Hugo called it the most beautiful in Europe and few argue. Rebuilt after a French bombardment in 1695. Come twice: once by day for the detail, once at night when it's lit and the effect is theatrical.", "g": "https://maps.google.com/?cid=12699083725240192950", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAtuEdTXyrm2OCB6M6mQxcnN4QI8g8ojB2DEfvxuva4OCeA5u0GOfT8VtBzCHBgxIcfb2w8Wsz4hvbnK72cAlioDrCddTiIfqgCxxxCdqMfAoBy_hYL48tgN5SDSlwdQ2I2Xvh5JBufHbGmPA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBPVL12yskmNSMbJlZ4E76ZQOFsuGSXYqQuz3pHUwytRSenvblsoesmiL04G-MC7FsMxKiGcy1rmKmhB_I_DPA8pznHsNRo-0WX6ElIOmKBwWUc-6Ru6bRBW7XqElufesflGf744d4uwAGiew=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAty7PW6f_rheHJQ9VIBsHHtTGa-yo0yamQs16HfE_sQL2tk-EOFlY6gOovvnCVj_JYI6yiPNdJ_jK8j6CnS5hIqmhXbugE_C80L0KcgIoe5PM1uDGarupcZVx7RneQnOtQmAMqxqwaL6s-cl4=s4800-w800-h600"], "a": ["el. KBe", "Günther Hiltrop", "Alin Alin"]}, {"c": "heritage", "n": "Manneken Pis", "zh": "", "lat": 50.844993, "lng": 4.349989, "m": "4.0★ · Free", "d": "61cm of bronze urinating boy, and by some distance the most underwhelming famous landmark in Europe — the 4.0 rating is honest. Go anyway, for two minutes, because the city has built its entire sense of humour around him. He has a wardrobe of 1,000+ costumes and is usually wearing one.", "g": "https://maps.google.com/?cid=1709187140844306719", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBEL9brz7aQU922fKQ9i0w9eYwaCvBOvhpovDyTKiVc3Wbnd4qC5Mzt2zM7zcfog_9i4ugbX8gdsa2zpWDGosFjXh4FOkTFzoFdRiabQwUQ1qwi3XUIZgg7mKDcWCvqtaYAVzKRR1ufjzjgGuyvL1zH=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAB6D3x-gyEddZhuJ778k04PTyyWCYorn5xFxMmZkAJezoIDjDZq2hZCMYghMl6bZlolodywrmCjNwX_2cCpcZEOmuxqu4vGv0teyjQ39j6Pbbji1ePatodcK-G5FNyoccBTp3jLyiL9VpN5w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBZXUCxC40TzUaW1RG8ya4UPornNuvJ3B_VR5gos0UiRTShO2XbPChPEpI-JIxSg7IoFYvfaVp_N91ZvFFcTkRiYvZgZRqfq-Dc4afiLvhVwGPBjsRaWJq3g9M6aS_ZF4PlnDRN_Xn2NPUzkA=s4800-w800-h600"], "a": ["ann o'nyme", "ROGER Adrian", "Zeliha Kose"]}, {"c": "views", "n": "Atomium", "zh": "", "lat": 50.8948787, "lng": 4.3415547, "m": "4.4★ · ~€17 · 10am–6pm", "d": "An iron crystal magnified 165 billion times, built for the 1958 World's Fair and never taken down. Escalators and lifts run between the spheres; the top has a 360° deck and a restaurant. Queues for the summit can hit 45 minutes even with a ticket. Parking is easy and free.", "g": "https://maps.google.com/?cid=5950107355577726729", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBV6hGKsl8pawN50pZ3G9ejqlbWVCYBGIS3ONZaEGhVYlmnzckMp9NjMRfvf0Oi6DNr4PtTGRvEZ0sGLpQqsa9Os-iE0dn4fRslk08SN1rDs9lhCrpYqvCCyNOn5rT0JUbDVzOfyWwsVQXYnw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAq7XYXOOLk-LE-BoA6cMeOxolUdanZUN-1GilkWosNYaTgutFju9KgUVIrq2caf9_0Hj6O98YznP-PdpjcAB5gKCEMPfqPjx9Nt6_Kz6U0BWT32D4WQrq7A8aIusNqm5hmjSmA9uSptBpHCw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDwjVqOYCJh2It466GpHgCd0B3Av-T-iVjhddEW5pf6eBdb1x9hMbm8JfKi4QEvXPJ0OqSYRofzgNSpCte7uKq5sson2yjxdN375phewQ8gC6Dpnfj6sO9OiRFIwX5O-bA6e0zJgLGbwj_W=s4800-w640-h600"], "a": ["rome_muc", "Stefano Riguzzi", "Juan Manuel Orozco"]}, {"c": "museum", "n": "Royal Museums of Fine Arts", "zh": "Musées royaux des Beaux-Arts", "lat": 50.8416199, "lng": 4.3581793, "m": "4.5★ · Closed Mon", "d": "Bruegel, Rubens, Van Dyck and David's Death of Marat, in a huge and rarely crowded building. Buy the combined ticket with the Magritte Museum next door — same complex, one entrance. Two hours minimum.", "g": "https://maps.google.com/?cid=3690637680322037596", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDu6K_V_6gW4-i7toW6Teo3maOQlMVCrqsTV4l_RAPpl9dlM4cL6Xo06Pj4SWSZnHYCAVgCkQKSXdPP55biNrZTmiKp7O7Lr67-WDtcSvvpx0WyY4CZyM06GVCB-oWCyxYXWyoT63gsJj2PWg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBcUkPimxNzLlzgVtnNQAwOcPl7NKBU1ScXUKhtEvhzCeB1oDUeW7wioSIY-1hkXM14lC3SMLzOsok8LJBEVgFUXFdBPnohOGnZjjbKSI6oIwoWNIZ3tlFjTAJPsARJfz7yeovywmmqw-3UKQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD_08VTKglVRsppm7znbL8bLBGArsM5yhpdb90ynWRnpHbMn_HRVZT4_DxUTXhHuypk51galbih-V5mdMPKzSXBJyz4R2O14QrEdTC33Y_Uod9nLJ6HuHW0lHDq-Yi-s7WJniW3JAWiarpBiQ=s4800-w800-h600"], "a": ["Vitor de Oliveira", "Ikboljon Soibjonov", "ASIRPA"]}, {"c": "museum", "n": "Magritte Museum", "zh": "", "lat": 50.8424057, "lng": 4.3586407, "m": "4.5★ · Closed Mon", "d": "Over 200 works by Belgium's great surrealist, arranged chronologically — start at the top floor and work down. The biography threaded through the art is what makes it land. Reviews split: some find it deeply moving, others underwhelming and awkward to navigate. Entry is via the main Fine Arts door.", "g": "https://maps.google.com/?cid=2653440051672643206", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAi2_KQq57dV30Rmtbgy4jlPgPp2PduEYx9bSBXK5OGL4wczrnNtqSf-6cgWtC5WtsTvy4XB1-1NJcLUr0O1A4HEQORzG-G9DTTNAwNg4oW1qaZBgGFe6fR-I4W5lr7zPHMLzlbdg9GyiOgXOdhYw6d=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD0PxfIvOsQpKVx09ZC0lOtZqDr1v6ZQ5JVn5_nWSmIO-H_q2nFOYVvmIILnYjGmEAWTdBYc4zCGUcq2pIpwpCW9S2-eaP07xQ_6bt0LNS-8XMjWfEz9eK7Rg5Qa6OU2TcD8h-4CnRRuFRqYXo=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA22umY1zybaTNWsO9RLS2EMsJg6nOVzzWPnI-zxwQcdKJhz7LuVkn780emCkioIymGpMwn8qLPKkYdlNJa3LzEXoZ_D3p3p8ShWagbQYvrcOx2eZKs9J5miUL3eea4eKBXtWv7NmbD7kIF5YE=s4800-w800-h600"], "a": ["Dimitris Siskopoulos", "Raquel P", "yukie saito"]}, {"c": "museum", "n": "Horta Museum", "zh": "Musée Horta", "lat": 50.8241396, "lng": 4.3555171, "m": "4.4★ · Closed Mon · afternoons", "d": "Victor Horta's own house and studio (1901), and the birthplace of Art Nouveau — the light-flooded staircase is the single most important room in the movement. Worth knowing: recent visitors report ongoing renovation with parts closed and scaffolding on the facade, not flagged at booking. Check first. Reserve; it's tiny.", "g": "https://maps.google.com/?cid=14932894904051102937", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCWFjyxYZNWtO0TiagkT0b6lXO9H6RJJxpbb4Tl-6SfTa3FDF2FoVxIZ09UlKe680sv9umt0lyAdXSv04PDPtQSjiYkcOSJ_OyRAnw7wBzPMj8X1Ri-Gi3UuTAWSXYoLv_BBKTcraihpkOG94RkPEp7BQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCK1OngPuuSC_MMPKvxXp2V0eu3d6QbI5cg3-EIYUjX6B2b4lWYdqyT_EWYLJcxK_255wBm8x9cQs500b_6BfljvF4GF42D7BD04m53A3wbQlFpmHx_nL9o_kf8Q2uIGbIBJOh0JUC803zV_dY=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBd7M98j1atwp4wJUSLB2l95ATmPYom-h0VtLaWmTmP7v0qJHLxO-UrxB4hBUzjAYNvMnRJugIPT7ujviTyh0ZT-rZ0mZVJCrNjIz4uUA0Piu1YBYV9LiiFdurSLgdgNzH666Un5G-eTsj4bA=s4800-w640-h600"], "a": ["Ivan Kachalov", "Luke Tsekouras", "Thierry Papail"]}, {"c": "museum", "n": "Comics Art Museum", "zh": "Centre Belge de la Bande Dessinée", "lat": 50.8510292, "lng": 4.360146, "m": "3.9★ · ~€14 · 10am–6pm", "d": "Tintin, the Smurfs and Spirou were all born here, and the museum sits in a Horta-designed 1906 department store — the building is arguably the better half. Reviews are mixed: several call it dated and light on the famous names, and note some galleries contain nudity. Fine for a rainy afternoon.", "g": "https://maps.google.com/?cid=11586917235780094978", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDXTfW4oNkEpLIzvKDg44I0QPO8Jzr7IG8ZDCRpy3lVtOeeOqtCY9XUjQ4lyLQ_ahwO_GyOuQuCi8Cr8cgXAP_7-qsLsZJO0nq5MemiWfpDSMya7UoipgKXtuAjylIOUaiZMqQHdnLqgPTqzA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAwnAuSI-dm9wXZg6dec_kkfRFSl89oLdzZQ3t4TLaQyItjGcV9PIro2UGls_c9GeG-_tXs0hiLKb4pY1RrADnVELmQ6Hq_slJZ9g-pIU3SX7wPPk00aENTj0VCFdM5onqqBiFQtDjTByWo=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDDtjqHloXiDfR1qzVp_3iqcIt_wMOdFlS3-H1YpjxLQwDXtkLUDAObyhGB5pxRY18mCmTUMOlu3ioNPf0xf7bZpCLZSXH2TpOW1xVd29vbSy8ZB3xNKTb1iy-gkW19QTiX0AHYZv-NuzNEbg=s4800-w800-h600"], "a": ["Nicolas Morandi", "Grégory Babonaux", "Itay Roisman"]}, {"c": "heritage", "n": "Royal Galleries of Saint-Hubert", "zh": "Galeries Royales Saint-Hubert", "lat": 50.8480832, "lng": 4.3552506, "m": "4.5★ · Free · 24h", "d": "Opened 1847, one of the oldest covered shopping arcades in Europe — a 213m glass barrel vault over neo-Renaissance arcades. Neuhaus, Leonidas and Pierre Marcolini all have chocolate shops here, plus cafés and a cinema. One minute from Grand Place, and free to walk through.", "g": "https://maps.google.com/?cid=1377546416257750832", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDb0DPnn4uxeTUtN6b4_uCgRMOQ_9CSVHG16mF_yOzW8T1qnQfog3USLytB3VnAHOJdWVJ1Ev9SqLHHqRFn3kR0vyaZJmR1fxVvkyGOcr3plquFiwDFvCc6-dnAJxKyHTqWz7cQIzXMglxnHQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBIagQyXGBIujuuuMuvDVVoiZsOa-6WcDpfxW6bJ2ahJR1L05GoCg1_YauDqyK7nFKsiQPGDlWRMoBVc7vQ-t0PMZMwH50WE-m07CJTS5nvxBzhU0MqUtq1lD7NZXyhb7dfY72zw-S09j-r-bRuFh3T=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBz-1MVoYYuKKr26k_5tsfmsAAKbUjShSKqWfaZXP8mXCIpiR_oelO166bpo4odULXtjsuQcUG629LqT2TWyySUB8LMyskEO-qVoMw2sVEWptLbG8TlwPj0OS2x3jZ_hl8Ny_YI9nEjRTHK=s4800-w800-h600"], "a": ["Arnab Das", "Florin Hodoroga", "Pacita Consuelo"]}, {"c": "nature", "n": "Parc du Cinquantenaire", "zh": "Jubelpark", "lat": 50.841393, "lng": 4.3904833, "m": "4.6★ · Free · 6am–10pm", "d": "A triumphal arch and colonnade built for Belgium's 50th anniversary, with three museums under it — Autoworld, the Army Museum and Art & History. You can go up on top of the arch for a view over the EU quarter. Big, green and good for a run.", "g": "https://maps.google.com/?cid=12610910165714547290", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB2wt4kM5SmAClx9ExH-ESQ5ivyyFarMtHHeqwH2QrWYahO9F9299-Mt_sPBNKpn1b5t3q1-SwkaxDk5bZgisbj4URtwLpYdzUZt7jDNe4HPeYxIQ_BhGvJM2LIqTrCZ5_7Y-xfMMimP_VWujJ2M4VIGA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC9CxQh4-h4nzuukHLFmhDjgYaK2APXiqlsfmaE2TTZmv4WsANX9im0dqy9Y-cnV5h2MLp7hrS4GaGIpSyvfgikw07M69dGIS-kzNO9npQwMnJsBPZerI8usi8i7Ht8ELewuF5BSX24o_IR=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAOs0cyVxXkMHEvC7GxAsmB_mkw50Mbl9TJIstR_DgLIb6VwrCab8b124EPt3Qe65VdYxpkztfNAvq1oYBJraJfHCif4GOIDPDX9uTuPqZpHPMVZ7KyOdpz1gYjWh6AzvSe8Q0hfrGgYA74sA=s4800-w800-h600"], "a": ["casino10", "Romeo Rum UA", "Marcelle Goldner Cesca"]}, {"c": "museum", "n": "Musical Instruments Museum", "zh": "MIM", "lat": 50.8428875, "lng": 4.3590038, "m": "4.4★ · Closed Mon", "d": "Housed in the Old England building — one of the finest Art Nouveau facades in Brussels, and worth the visit before you even go in. Inside, five floors of instruments and a headset that plays each one as you approach it. Rooftop café with a city view. Genuinely delightful.", "g": "https://maps.google.com/?cid=2675650556125767267", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD8cBpxCgkX5qlKHyjSm-R849i-Q8RiWO9XEoc-bVia6-i6rTi8qnwOD70J7BbWPDNSvskq0APwxwmOWcmMThi2myV95RJU41ZeOfvybCOf2NPInYwrNdM0A83an_E0jU2dDvEdVLUO0vrRNoM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjArhiG2OBJlRFsjruTh3y3BpvQt8c66SdFNTISm66z3FYvhVaglLVi0OnfDOLRV5kwTGWP4sBWP2cYLK2T4Fti8nxALN8uLDkJtvFjI725fwS6EIaFZx9qGmVe9Wm3D7vWpozzf3uo7l-qp3A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAYe56Kvjhz-ZKNEVLhyzpL1Xk1of-ABQBju1M0UEHSv4udrH7A0ynZkNzh_ZNqlR-B4mTCOCuHO9pOgVWpPVmehXN4ETHFoNw8EY0w159n9f7IOGGc6Y3mlEX9XTwjHh2SbkMgd4G_Qt4s_t7nSNpF1A=s4800-w800-h600"], "a": ["MIM", "66 Roberto", "Dana Saari"]}, {"c": "views", "n": "Mont des Arts", "zh": "Kunstberg", "lat": 50.8434789, "lng": 4.3574205, "m": "4.6★ · Free · 24h", "d": "Terraced formal gardens on the slope between the upper and lower town, framing a view straight down to the town hall spire. Free, always open, and the classic Brussels photograph. Sit on the steps with a coffee; the museums are all within two minutes.", "g": "https://maps.google.com/?cid=12952040027227282553", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD02RMMmPClKHa6WLb7f_k1HQ4yvasNiJL1SO2lKvdGjX7Zxg7cpeIPN_xt8xkcarnTHC2u5ZcxiMCW67qBR7z6aF-sX5K062XzLW8uu4Kj6aR925MlaXlFu8CAeMO75O9hESCppKhuzL5jV-Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDufRZnf3vPFnv7nIBFpKwampull85n4e4m1bgMjqIC7ofTQmsAwxCxISuGv_BDW7qHvACj2vtA4e_AvNX4N9RYdZwQTjzu2ss8oCxXFnQ7nsgKBJXivKYwYLuyeiy8KDcyER0nlwV5tLolh44=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBl1uknjm3mokm9fGIV5a9N495FJIM61S80LBMG6RcSBSfsbbDG8U2eBTl7wOupt2X_qHtlg7PZYPFcTj-C-G1GM61nOJ6gUd2ogZn5rz7qDLAQk1xmHKL6VhvZeT9Ht_RYvx3drhARFQrcstlCXaDWqg=s4800-w800-h600"], "a": ["David Camacho Ruiz", "Veronika Georgieva", "petrica chiriac"]}, {"c": "beer", "n": "Delirium", "zh": "Delirium Café", "lat": 50.8485002, "lng": 4.3538834, "m": "4.5★ · to 3am", "d": "Over 2,000 beers across a warren of cellars and bars down an alley near Grand Place. Touristy, loud, cheerfully so — and the range really is extraordinary. The tasting flight of ten is the standard order. In the same alley: Jeanneke Pis, Manneken's female counterpart.", "g": "https://maps.google.com/?cid=2801788919440003730", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB0uVsLOX4lZVTPPCDOYLSTRzBP4-1U5xv7ToGLlBpOyX2DQ-ayMvw9kNdr0CJxpK7VXV71YvEfC9qEYvda0mleFJLBv4baLn2DOAArq_ECZD2MQ-6xhPmOiVdgcW0DsDXYNgUVuoL2_sbaDg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAxg_9fEFjZAjZUmbtp4RnC3L8mZCNpntI6_QcAvjFA-2us40tDRy92f14f4qUzbOVC6wq7Ati0ahvsOnbRILYJ2s2BmZGC1ob4FUkdtj0i4-BK3WFOskQA-Y-mLrH4c-KAjuZ9_HyXSmuYkXEyLuWrGg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDTuUbyLTGAamHsttGK_BSrqP_jSiLkp9Wel_z4-SgTjl5uyXGWF3xckkHrwn6zDyfdgM5uotTJ00ppyS5qphPCOgwkUj8JruQTzHYpFMY7fN8o-SY837nzpkYRtJ22BFSfoHJqV26SLLYuxTw=s4800-w800-h600"], "a": ["Delirium Café", "Alex Sophocleous", "Stas Sokolov"]}, {"c": "heritage", "n": "Place du Grand Sablon", "zh": "", "lat": 50.8411521, "lng": 4.3549844, "m": "antiques & chocolate", "d": "The elegant quarter: Wittamer and Pierre Marcolini chocolate, antique dealers, and a weekend antiques market on the square. Walk down to Place du Petit Sablon's little garden of 48 guild statues. Google files it as a road, hence no photo card.", "g": "https://www.google.com/maps/search/?api=1&query=Place+du+Grand+Sablon&query_place_id=ChIJ46EatH3Ew0cRmugnyVXe8Fo", "p": [], "a": []}, {"c": "cheap", "n": "Maison Antoine", "zh": "€ · frites & mitraillette", "lat": 50.8368324, "lng": 4.3814748, "m": "4.1★ · daily to 1am · EXPECT 20–40 MIN QUEUE", "d": "The most famous frites kiosk in Brussels, on Place Jourdan by the EU quarter, and the classic place to try a *mitraillette* — half a baguette loaded with meat, fries and sauce. About €4 for a large cone. Honest warning: the 4.1 reflects long queues and occasional bottom-of-the-batch fries. Ask for a fresh batch. Surrounding bars let you eat them with a beer.", "g": "https://maps.google.com/?cid=13393396966857217460", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA50ZSmk3g0Q06kfGxU2UyLnwjxOTmQfkqIJRWsItdjLKMT_tLd_NRzdOZrC4DnBe8AkpX0VNc2ndFh6szg-Ioq_UIB3kNWxkm_Ls4mS2ltTAlFc_vmwWzrmhyQd9WXZFRLE-3eTb5sH_3obw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDDOZXy3B4P4uvVAx_dR69CFQBtVnoCmJnVL_ixKp7W3QPLB0AtGntZcpTWs0M3KQ5g7rqvwF3-Ohbmr9EwcQvD75hZm7URQQQmMIPcqwTik2q6VIse2dq40SEsC04wsP90cOV3aglxOYZySWxxstMBbQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCnBXlOOou8y1cmzWiNarKHCPrt81kygQ_QcDyhtr3si-YNmc9oGLyTyFBx_1KwjqgF8EdPNF34fLLoXbepD10t84tGyS0IsvR175cHaHm5y7xoKYxOIj3s3tyhK-lnkCEf8l5QGrgWAxW_FbtfwTkHgA=s4800-w800-h600"], "a": ["Maison Antoine", "emily p", "Caro"]}, {"c": "cheap", "n": "Fritland", "zh": "€ · frites, central", "lat": 50.8474174, "lng": 4.3506551, "m": "4.0★ · 11am–1am DAILY · 2 min from Grand Place", "d": "The central alternative to Maison Antoine, beside the Bourse and open till 1am every day. Fries fresh to order, big sauce list, and a decent *boudin blanc*. Rated 4.0 across 11,000 reviews — squarely tourist fare, but genuinely good fries and no trek out to Etterbeek.", "g": "https://maps.google.com/?cid=15791470714497003971", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD2JOMXfLZte83tZA950tEidPy9IcxRaBUV0nMhCoLuhSQGtdwe-JIR2OSJD3pltm0uSimYQpFNORbmCrAqs5yvWbR4xf38A3cZO7fsPSrxOGTeDc1d3tFgVPQr0vXNKly0d8jSavVlBfV9ww=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC1Q0s3ldP8JiXj2ET2RUjmCrPqStcSrHbkmUlVjVi9tIuuVoG_Y25gVG14z-PjA1SyLM9hpxKkt4Ee8IpcHzazgZLgKdXgbF1B8IaTTY1LGIjFKuZCMJTlwCtgAsImZwXZCwc3OdD5Q5vf=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBTHpfVXhGhAUc4muuDU1-Q3wrEJoicj_s0IVb-6OVCP7TnUFynJFp6P0I1S33zHXeKj4XN0B2kgmtN_BqqUQvHjo9hySMF4PLxPnOz5j6VlYfFLFOKF4RV6udlJd-go6Us8cIjQHuPPzPZU6D6DCCqaQ=s4800-w800-h600"], "a": ["Kayla Thonesen", "juae", "Sandra González García"]}, {"c": "cheap", "n": "Noordzee / Mer du Nord", "zh": "€ · fish counter, standing", "lat": 50.8502933, "lng": 4.3476576, "m": "4.6★ · 5,000+ reviews · outdoor standing only", "d": "A fishmonger with a kitchen attached: order at the hatch, eat standing at high tables on the square. Croquettes, razor clams, grilled sardines, herring in season. One of the genuinely great Brussels experiences and not expensive. All seating is outdoors and uncovered in parts — a gamble in Brussels weather. Drinks list is minimal.", "g": "https://maps.google.com/?cid=16000364705007904239", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBXdUsdjuyMt3IFfAn4vJTZKyKzUkgkAUjMIMmBPBGTrW30EQOUt-hcTjlm_mHgcsSUwp43zZv_FcQXlXKXBMxJsuHMVLI3jVWlQd0E4Pk7aW8L7HU23gx5xiBOg6P8m7IyvJ9yVKvDsniAhg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD7rOW5qOBnUGKlS1SDzsiMrUrEehToyTT5f4v35sGrnKKlT5fAoYuXJ_qPoPJIG7aSCvghumWsaUXNOg6QSCLZsmvQzWG3kVW0KK99ILJAvn5xDSlYdcc5TmM3Tbelr7_MDzPlxh0Ws_hBHg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAiJwfoKV5mY7YXvuFRZixfTX88_bnoL-UXMuAm-F5bNMjg7SgZLfKsEyc0e5kx4RMb2okyDNNYei5XbDuyxUC_usgbb14o42yyOuy-2O7LxoWU7ZrfKVl7D7u3MLmqmB-aKxpGBG3O-x5OtPuUPKy2=s4800-w800-h600"], "a": ["Mer du Nord — Noordzee", "Mer du Nord — Noordzee", "r a"]}, {"c": "cheap", "n": "Fin de Siècle", "zh": "€ · carbonnade & stoemp", "lat": 50.8489127, "lng": 4.3470991, "m": "4.6★ · 10,000+ reviews · NO BOOKINGS · BRING CASH", "d": "The single most-recommended Belgian restaurant in Brussels, on Rue des Chartreux — the street a local-food guide names as the real dining quarter. Carbonnade flamande, stoemp with sausage, lamb shank, big portions, fair prices. No reservations: arrive before 6pm or join the queue down the street. Cash strongly preferred.", "g": "https://maps.google.com/?cid=3361663999023790958", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDHf8w4bV3_5tmDfS9WvZMchQ3niv0JQyc9f0GNIaZu2-h-dSdJ1tyH-W6Jw7zgBkfmPIYNvMLwkBIdPWWcdbmTaE8wgOju0XemEYOd03ADfQlhqKItA3-YYd2xlrly14lfQJvUErWBJajOMAk=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA22C_cEmXhUJoYPBY2-QU5wuERJEn8jp771ZR8NGX1tnOA0ArkD7eGVG5h8bS2lsQXL5nsTuwi3KFyltImWtanN4RiTEISbP-C4wm_7DioKyFWgZKhnLL1gdL3bpvzp2eF3DwuVsvixrhP-XXsYasNKA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBJJ3zYgSaGujMQAQHIHXWAoJb6fOqLtSwocg4Mvl27qbR_N0cpUT-CzfLZXWGI9YiRk_Fr2lcA2d9wy-wfaOYIJj_A69ZxQ4GX4Movp2ep01ZrDbkdwu8cKLs0pD0Az93ZVBm6u1ToBR45YblT8ZS8zQ=s4800-w800-h600"], "a": ["C S", "Alexander Beribisky", "Adrien Cherrier"]}, {"c": "mid", "n": "Nüetnigenough", "zh": "€€ · Belgian + beer pairing", "lat": 50.8458556, "lng": 4.3498444, "m": "4.6★ · NO BOOKINGS · from 5pm (noon at weekends)", "d": "A tiny, dark, wood-panelled room doing carbonnade, stoemp and lamb with a beer list chosen to match each dish — the beer-and-food pairing is the point, and it's done seriously. Very few tables and no reservations, so arrive early. Several reviewers rate the fries the best they've had in Europe.", "g": "https://maps.google.com/?cid=14687620861537805921", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDdhC7EaJ5xcjEUuJWZInA6nznCDK4-_ssIIfLx3qrr3cIlPUG_Om42ppN4lPrlfxrjjBkI3WWvA1XrL9EdsCJ_YuuEB2L0ZmjGVasPWf7z3wRibceGxOfQh-UpY93CZ5CEb0TAmHRecfAUgw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAVox9UjJ842lQ1y3jo67g_5vG4iGU5a1TO1jGApWZl2GF-1sL1L8mD5NV-HLHI6Ia0bqeFSAzSdb0tayfCI_3XEhZYNqM7yBrxIrzMeTqhaAhl31_eaupuRe1_J9BXkTi-9XARdikHQ9PRiSclpt_WQQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDkefYdw8BnXOCTXA4FTRzx0E7yuzguoVWTIgvH7LZ-ugDuGTwhRNMc6Xr27oUy7o5XVzIDqRKf2mCyVP_14AAcA3zP4s26tIs9jf7fpTqS1yev81ULYmO_1gsJJ1KKBetQ0tePQk3Q1uu6DJksLDwaPw=s4800-w800-h600"], "a": ["Nüetnigenough", "Saori", "Mishal Almudhaf"]}, {"c": "mid", "n": "Le Selecto", "zh": "€€ · Michelin Bib Gourmand", "lat": 50.8527176, "lng": 4.3459203, "m": "4.5★ · 2026 Bib Gourmand · CLOSED SUN–MON", "d": "A **2026 Michelin Bib Gourmand** on Rue de Flandre — the guide's award for genuine quality at a fair price. Modern bistro cooking, well-judged portions, and an owner who reportedly chases down anyone who leaves unhappy. Tables are close together and it gets noisy; that's the trade.", "g": "https://maps.google.com/?cid=248844606317297728", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB7m5UQ_WlVV0W7oW4HsRBKue9t9yp8g5Rp-U0Hc3K54z59DxK6nqAn8HqIDctRZvksRbxxXxoEwHHCRbGvpT7uPtfigMoPtbbS6RG-1qQ_IU1ubf1t9r6gws6rIsrXGZAfv6HkHztOtIU1DQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDWBtyyRKcBYYZsh79VM61sR55WgyX7lCwEem8cb4y179o3jJVR4n8LBw667ypaufZNLO_-e3i6u-xHx6-7losM9AJosnKZtCIC674YTI6ZnInh0WWbe-nDNhqZJdTUZmTwjqbIHK0bR5xCe6A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBmzd_JjZvM51QHkW6dr_EEF-KiiSDHG2A_ikVFX1fcjwDiuSEgF8Q3H4hkbDPnAr14vCr4Hije-c0yjC7Dlwxt_8B1ny5gIDS92sWFfwu8uYhGxPEvty3a5f1u-MimPWmSS0tpg9VtUQMk7eQA9LxDPg=s4800-w800-h600"], "a": ["Crispi", "S V E", "Irene N"]}, {"c": "mid", "n": "Strofilia", "zh": "€€ · Michelin Bib Gourmand", "lat": 50.8530043, "lng": 4.3460089, "m": "4.6★ · 2026 Bib Gourmand · Greek mezze", "d": "Another **2026 Bib Gourmand**, in a former warehouse near Sainte-Catherine — contemporary Greek served entirely as mezze, with an exceptional wine cellar downstairs. Lots of vegetarian options. The front room is sleek and a little cold; ask for a table further back.", "g": "https://maps.google.com/?cid=9297697105373862594", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBe1x4aZW1Ofl44oa1JOgn6nlZKlMOLU-ol-ykrVsothoDvJ4sHRI8r22t3VVyscnW_bHEUhvhXbuYt4K_rXltuXoMvOA9QdzV9iGUDuQM6DPd85B6ycAYtV4zjI-rK-jUjzljD90vbWw_i5sE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDnjgHYj8twN4zhx4xAhZmEfcRCq_cPs0GcDbqDSvhRbDcHMQMiVfdmMMRActGH8nqTvZFR-sTVqlQG0QHvcf-ySvvDRi6FbJBvndgQs7JcyS2984qngQRPAsLpofWXRSoOS69xHAfzFYbec1o=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDPTzmMX5hAw6HrxtAL9edkwrznzui2CC9KlPK4GexJGxemBkoNUhBUT_pL6yVXG3Bf5JxkWOVGtmhYXkAkWxbVCCxDnZRXUPv_Hv6ILDUn0VM8VsP98oM_LLiyH8VxmmFVgoe5Gs1d3qvhQpdi7M7kGg=s4800-w800-h600"], "a": ["Strofilia", "Strofilia", "jack Lumber"]}, {"c": "mid", "n": "Le Tournant", "zh": "€€ · Michelin Bib Gourmand", "lat": 50.8357044, "lng": 4.3696004, "m": "4.6★ · 2026 Bib Gourmand · Ixelles · book", "d": "A **2026 Bib Gourmand** bistro in Ixelles, well out of the tourist centre, with carefully sourced produce and sommelier-led wine pairings. Two-hour table slots, so service moves. Consistently one of the highest-rated dinners in Brussels at this price.", "g": "https://maps.google.com/?cid=8926604299111878223", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDaVw8tmSagEUREHKS5mGuTApfg2YcI9FQdY27vVvcUtgREeyAmXRdvzR6a71zMmozZvTx-B_V2M3aTfWu4Ox_LgV1cqfZjQu78icOp102wHTEXlZ38RhKPEUoMYNhIKVYUDvGKKOm6UIzTRA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD4qLDias7OZT_RxIDahsSdmmrEheMkOc7AC0_kFyeNrRGLRr-AQL4zlL5RNYWFgDF_mte0ffs2VYptWQSxdwfoW3boH45TK3VGeIoXvWZcpRdfgSWBANpeyLt21xi22XfhzN6x20QV6akfAC_WwpnxQA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAOY6ChiCC_6QqVEjbK4WoaEAWZjlTPWGKmRxkF5YZr-hONJtGtw3_pSoVIhxMbISoPZvgK7bqaISlnVNb282DcKPrUTBu0GNBJUUEEn6xJSdHlpG9ZOPz8skbQQ_yUDiFKp6ucfId4rpPSVQ=s4800-w800-h600"], "a": ["Le Tournant", "Le Tournant", "Le Tournant"]}, {"c": "mid", "n": "Au Vieux Bruxelles", "zh": "€€ · mussels since 1882", "lat": 50.8364841, "lng": 4.3639858, "m": "4.1★ · Ixelles / St-Boniface · RESERVE", "d": "Open since 1882 in the St-Boniface quarter, and the address locals name for *moules* — a dozen sauces, plus *anguilles au vert*, the eel-in-green-herbs dish that's genuinely Brussels. Wood panelling and checked tablecloths. Small, so book. Reviewers split on price; nobody argues with the mussels.", "g": "https://maps.google.com/?cid=5959203667120960730", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC3PvPPlBQY36-nSvM20wiFUHP5YQxK38KemOqd3w0V43jgIHgRTJSgMjfk8Wns3F-1G9PnPdULZodC8pMU73DJujwcDsYJ5kdTswC5hqujXKH5R2San1TiH5FaLfzWNXspAuQocuEhuvsm-Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBVEo0zf1nfRzmrgyIVw8bWztizeOtrVlzz0kp7Sl-u5cPGmg0fR2p3-sTeRbwbpny24eX0bRi82qgXmzPjmASy_fEoeF1GbKxF2ecsgxFcoJM0eOq-9M9fk-ItoUWZj0nntHz_t2pAzTf6Pw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAWwyyGVUR3qnkINpueXy-U0C1ip7uvC7QIQSoJklTvdDFAwddJ3XnnoxWU8wzKLr4lFrBGB5n2TRQbcip2PC_sr_b05XkcWZcz8rh3iNl-frsuDrq8c8k4X1JqhM6ie4-unC8IVBfQsRtwt9Q=s4800-w800-h600"], "a": ["Au Vieux Bruxelles", "Au Vieux Bruxelles", "Courtney Wallace"]}, {"c": "mid", "n": "Café Le Cirio", "zh": "€€ · 1886 time capsule", "lat": 50.8483055, "lng": 4.3507131, "m": "4.2★ · 10am–midnight DAILY · by the Bourse", "d": "An 1886 belle-époque café beside the Bourse, barely altered — mirrors, brass, worn banquettes. Order the *half en half*, the local white-wine-and-sparkling mix invented here. Waterzooi and mussels on the menu. The 4.2 reflects service more than food; come for the room and a drink at minimum.", "g": "https://maps.google.com/?cid=11609839682908296694", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCMl5S2J1msWBZ98cSoVhp0NOFlLxY_3856pcHOkGI1zb1Qhe49Z-ISQKtE2kpaAxGw5n1BhlBL3rMwiB1t0Bzj18Ru1EtzX41DK6FQ6wjye5VO-X8tvZK66-V_PzdbzFSSimxQpbzEP2NhLg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBrLF-IYh2aJNK9UgFTT6ELxetjC99PuGyepwermXg8ksZqaWAl_XwIsp1Xg_7QoxctP-T_qGNY8b36snLYuHaVDHTb55Yr2ubCAzIsnE4QB7HiZcO4VQfT1rudcIpB5ePLR1OLowoVOdnK69Ht3BDYWw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBZ8eJAyDFPMqxd9W9paH1QJifcuIg9mDU-44umeKbBu7L_ksQUHBvRchPWCPN-6p-GZjrEKLzsP-I9j-PIZP_D93h7j5TuguaCNFyakME4FmhlHhsJf_aqmEvgy8GJFMstLW6bfLy07Uv9Tnf35WhNVg=s4800-w800-h600"], "a": ["Frank Thys", "Andrea Manrique", "Alice Ho"]}, {"c": "splurge", "n": "Humus x Hortense", "zh": "€€€ · vegetable fine dining", "lat": 50.8294938, "lng": 4.3704224, "m": "4.4★ · CLOSED SUN–TUE · book ahead", "d": "Zero-waste, vegetable-led tasting menus built on local produce, with cocktail and non-alcoholic pairings that get as much praise as the food. Frequently listed among the world's best vegetable restaurants. Not universally loved: some find it doesn't quite justify the price. Vegans are exceptionally well served.", "g": "https://maps.google.com/?cid=6208107336458803868", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBmBUyO42RKJMo9HB4lYS9M76XLCLt_3lbQU0zAgjIYiqEqIGuEAdSsem3cbQJbZrTlYTJWWYYpKbGc9HsGy-4jFPZeaJYkNrw5WIZHmqb2JPeTZBEkTa9rQqQQvD3sHf8MfmIn6E3Sg5b0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD1JgIQJKiFQT_AXM4wh0GIckPAmqDC5mO4hCEG9qPkS3V9qUilWTNvew41Wnos7kEdVnEzkYPvaT5xwHQFy3qVqdNjh3XXqP-wRVvH65wTpZPV9HnppX2TIcwsGr4q-Rn4zFU-duhSJ33p=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDyswNumKIMrIgCFC-nM8c6WXtnD2cpyMdpTXV_hZHjZCNT0kTEn9RjD2adFqlp5lud2-TmKXAmCgu6k7RCOLgL3ogje_N-LSCi_wC2tlX9RtyIw25cvKdyCmRumHkwBI9iexE67DDSNpGqMw=s4800-w800-h600"], "a": ["Humus x Hortense", "Humus x Hortense", "Humus x Hortense"]}, {"c": "sweet", "n": "Maison Dandoy", "zh": "speculoos since 1829 · waffles", "lat": 50.8474215, "lng": 4.3515798, "m": "4.1★ · 10am–7pm daily · by Grand Place", "d": "Baking speculoos — the spiced biscuit pressed in carved wooden moulds — since 1829, and the tea room upstairs does the better of Brussels' two waffle styles. The 4.1 is service and tourist pricing, not the product. Buy the biscuits to take home; they travel, unlike almost everything else here.", "g": "https://maps.google.com/?cid=13502131064590467290", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjADVjXOEHDNiaoyl7miEs_MML5YgguwO7y3XLL8AybeRMqaWjhqHf7ZJLjNjvXPFpMFsPkDctPs6cfjMY4NTnzqsLExULkYva1wDbjjGBcNerZf2EoNIMfThFs-3Jv49keP3nYWJudNLuvskw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBUyaGe4YNi6sY3VyYgDEOyY9rcJ5Q8Gex542-W9w73HmtFyCosiFfdL8Rfzo9yd4s3-QcEyZfCMrfPPm4FMPx-BeMm7et-gL2ebckwIz-8PfuDtZqnrAjHGJe-c3SI4gLiujLWahgk5Kl73-o=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCBaLhqXJT8L-STGm0isGkK1eHLcLSzzcSFhy147fl5GNxWbcyh-_uO_9q3QhEetplSSdhzX0hj3Rs49HMZ3axOBkF6SQxoLKZCQhGOS39Fxi5u_QOvvZbHKj9a6wIV1crSN4XkZ9jKMT-EEpejd4WXDQ=s4800-w800-h600"], "a": ["Maison Dandoy", "Maison Dandoy", "manu624000"]}, {"c": "sweet", "n": "Laurent Gerbaud", "zh": "chocolate without the tourist markup", "lat": 50.8439962, "lng": 4.3586799, "m": "4.6★ · CLOSED MON · sold by weight", "d": "Chocolate made with no added sugar in the ganache and fruit and nuts rather than fillings — and, notably, Google's lowest price band while rating higher than the famous names. Sold by weight, next to Bozar and Central Station. Excellent hot chocolate, and they run workshops.", "g": "https://maps.google.com/?cid=7868823225150421648", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA7fqdPUSTw0WKPZVAj99Ssoipk2xqIq_FprBnc9wUPK7JU81KSZKIaUCx87u76OAcvirkinrFXdJnDTWXRAPJ5FREzKK0t55vgCg_fd-wa0CZ7hdI78pWbEaOncJxFJWODPAOaQBomBGO9F0TYgKgMEg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDazX_LqIjTp4ZHqIZZIZjZBcj8Zf7P4JoIWzS-NkkqYqTN9o8snPF2TVcK0Euu8Y8u1VE0MuUraBvvY2gscgHkxQOrXr0eMH3IWP2KbWiwDHmwlxQSnFGlqmoCx-8NDb2-bP4vLTO8URlOG3U=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBnP_gkKIhqJHGttbtP-M0QEG-ehuq8jxZPwTQX4XrIRXycAMHAyUjZoXnGk1UGehEgx0Br-49Ii6wNRJHg5dIvDJYg8LqLQ8V9sFAPRWSwkniMZH3C1sipu959xpiREqqTs9l9G0ozn1Lp_i2ltJbBiw=s4800-w800-h600"], "a": ["Laurent Gerbaud", "Laurent Gerbaud", "Samuel Sunko"]}, {"c": "beer", "n": "Cantillon Brewery", "zh": "working lambic brewery, 1900", "lat": 50.8415113, "lng": 4.3356532, "m": "4.6★ · CLOSED WED & SUN · last entry 4pm", "d": "A working lambic brewery in Anderlecht that has changed almost nothing since 1900 — spontaneous fermentation from wild yeasts unique to this valley. Self-guided tour with a booklet and three tastings, then a bar upstairs with far more. Go on a brew day if you can. Check all three bottle boards.", "g": "https://maps.google.com/?cid=4434525466995153113", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAuUmdPKL0n1ntvMwpPpMGkSArZ-0-MOCHg1Oc5GHksL5gyLvmx7kdsc2Otz4KzBgBpgp3uzETKqM8S3uviOyXaTzKBsWqJcnWNMH01RasXVsAGaNk7bX4xuN3k4KkYftcWzL5m49uSQhfwWQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAjXm13xxnPE-yNEJJ1NQz86uLXsyQjB4C6O-6o-b6jyTlztBj1fsjuWJZmmnVBCNahRBCh66WUTEc1uFm_yiDZOi8dGzSHSgowHIk_kQKpl40jcXe3GBEc1Vb_zruTYO9KTV5q1nGrm9GjSrd-46qF=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjChfDiK1HCt7_vlSdQaqLUbRaW88lkeP2YzS6X6O-iyHNFnNTCEOuLbRFGdQ1VYILHjEpRYeq3Nd-30CRAtgh1Wuurpbn_tvAO0QxeKPP1KBCq2LWrkroRL_vCfgvdTNy1-U7ddu1AC8Z-WojU=s4800-w800-h600"], "a": ["Aaron Chamberlain", "Daniel Olschanowsky", "Christopher Carlsson"]}, {"c": "beer", "n": "Moeder Lambic Fontainas", "zh": "the beer geek's bar", "lat": 50.8451368, "lng": 4.3469668, "m": "4.5★ · from 4pm (noon weekends)", "d": "The serious beer bar in Brussels — a rotating tap list heavy on lambic and gueuze, staff who actually know it, and aged gouda to eat. Order at the bar, not the table. Rare bottles get expensive fast, but the draught list is fairly priced for the centre. Cat on the terrace, more often than not.", "g": "https://maps.google.com/?cid=15856210285536974603", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDWN30qFeIjDOR_lsGNKICSmTbRYPA139ivn5D3te1Eaevmx_6a_LZuxzPtxZJeBHy1xUemepj803mX03ZgmftLt9bQqdKD89szXmyZGfClWQ-CkoOeEZxS6zVmL8HyWFbn6gWJ8NNMRng8btbUcXNT3Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBh1o7rdVSSAC875aMMbNe_srlfdhN30qMv6yYWzzNDzmijQQ-IkO97iAQaSmFQJvQfSN33pg-gDpTQxYkbXk4V6eOaCmgiNeiedID5IhJ_XHU8007FZokI3myYnjQfVUsZF440a0UcPrZehQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCqvdLzikEiCDBhOueN3xESwNqVr95v8-Vzk4m2wYfgNaxM9_Zc0FhDvfsdLMrsSSRAthvKnN7i_ekfwwSMg_GYVoVW9JdbKrnOIurruhqX_ndkKOEjet1Q5hnJFNVSuYImRlAMtypkmYY4wiKU_kuG=s4800-w800-h600"], "a": ["Kyungsin Kim", "Xpace Yang", "ozgur tuncay"]}, {"c": "beer", "n": "À La Mort Subite", "zh": "1928 art deco brasserie", "lat": 50.8486244, "lng": 4.3562447, "m": "4.3★ · CLOSED SUN · 11am–11pm", "d": "'Sudden Death' — an unchanged 1928 room of mirrors, long tables and yellowing walls, and the bar that gave its name to a gueuze. Order the lambic or the kriek and a plate of aged gouda. Two consistent complaints in the reviews: the beer prices are steep even for Brussels, and the food is best avoided.", "g": "https://maps.google.com/?cid=10135230689229324934", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAby3WZ26qgIh8ulkFMfaa7M_pTfC8LTiTQ-KaMpw5QC_ntEBOav8JIE8Pkxcgj8C_9VyW23T055u4UDVu3h9YlNgeeEQ31eU9wJBXLYYGvjZEPl_IDM5JRZyInTeHyBgYvFfJ0PTg-RjDPDWY=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB8LhdtwcNN75Yzi0bgobSucCdZ5yevGT3vGLJ0Uf1CDOu8nvWrifNIL807E6SSrTwFPQhxKIwRITzjLRnoXUbOqQN2a8jmvMEGZa2Y6C-eIFHzQWJ5TSi2gBfP4GX1hS_x0cRwQvMbWJdStw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBcPLmUHMSRZb0ba3GL5DaBCCktS1bbjUTInzx4w9HiJX67CqF3MKT1eb7NBb4SWuEir15gcGgDw6QO6XHxh7U7tuGLeTx-83RSq9EGYovvm5hdQxT-mYP3SHkSP3e0uHK5ng430lvekBObgDW21hUDBw=s4800-w800-h600"], "a": ["La Mo'", "Olivier Revanche", "Danielle R"]}, {"c": "beer", "n": "Poechenellekelder", "zh": "puppet cellar by Manneken Pis", "lat": 50.8447426, "lng": 4.3499833, "m": "4.6★ · CLOSED MON · to 1–2am", "d": "Directly opposite Manneken Pis and, against all odds, not a tourist trap — a cellar hung with marionettes and folk-theatre puppets, a long Belgian beer list and generous charcuterie and cheese boards. Staff will pick a beer to your taste. Understaffed at peak, so service can lag.", "g": "https://maps.google.com/?cid=7929211838244056387", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBu6XhzpaHEC-jAn93aWbzb9BeCnM81FGGnwU2pHhSed4QkDjM3xF-O97LT37AKhWvS1wCWt59iJzcdu0eH8bLQIQ03nctY2LIdZ6qyN3jswCTaJpgmDxMyu5hkquvao3K4R1DplC_s99ObWVI=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAM8YyzNhfg6J7UHJALNm8Kwiv1ieWf_CBqdlXvLK9fAF54xMVcvWRPzGWd0WDAqUVWSC4Zts55ZszvPdhuyYsQGJ19ebi4rvtJV75sLiiQ6rqHHDfpXRno-iRfWCscWA3M8DT9nx6yRVwC0GQQDlPO=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC05ZVzOTqF3fQ54XFmioC7jE_CxAIedyFD0ayjfrr6QfnPM8FXBJCbrwMKRTZnIAxRh-6XwbNiiKzUKBpNbGUSo6SBZWA1YrFQhZ4bpRh4Aa5MxhD9E44kD1rDCVSeolLviPwQrcCbgob13RyzP45p=s4800-w800-h600"], "a": ["Graham Short", "Mari Toshtanova", "Chris Miles"]}, {"c": "market", "n": "Place du Jeu de Balle", "zh": "daily flea market, Marolles", "lat": 50.8370477, "lng": 4.34582, "m": "4.2★ · EVERY DAY 9am · CASH ONLY", "d": "A genuine flea market — not an antiques fair — running every morning of the year in the Marolles. Weekday mornings are yard-sale scale; weekends it's the whole square plus packed bars around the edges. Cash only, and haggling is expected. Best paired with the free Poelaert lift and the Sablon.", "g": "https://maps.google.com/?cid=17943856158642991803", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC9HcWjG0dB6XYuogU9Sdx4kn1my1GzEE1-wvAd5a6S4P9j6JHAG6o3kfRNLcKGQDR5WpW-A1ORasQCDl7vHw73mQ1IRq1igZ5iJ5ca-bAQebGwwma1wTfQOnVLpf-MeBjsfVZCWWbhhbGDU_Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCyn_I1dlxrKTt38IrpGRm4It5KQ2zaj1qp_0n5hxvT9YcyYEe7GHwe-udMujWBux6MrtylEORFuwKiZfU2qYQgZ0aprrBHHS3pK8z7dZ9ISsVmzVVijeTzab-PVLt9XsnxOoC5KVJppEwryA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAZ6oYTeqZW507aCGU6P4517m5Yym2hIq9323cbsJB9heDXrDbYsdpxYiJqp_NA_PJwTjU1Dm8qyXr9cxG2G9GLM0UgZfGNXg_bzR8I57iOohl6ix9HeSFDL0jJilnl-fTuNnEOen08UHoq1to=s4800-w800-h600"], "a": ["Gilles Lemoine", "Jovan R", "N M"]}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+'" style="background:'+CATS[pl.c].color+'"></div>',
+    iconSize:[21,21], iconAnchor:[10,10]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'"></span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng
+            +"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.add('open');
+  map.panTo([pl.wlat,pl.wlng],{animate:true});
+}
+document.getElementById('closeSheet').onclick=()=>{sheet.classList.remove('open');selected=null;};
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
