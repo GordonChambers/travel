@@ -57,6 +57,10 @@
     max-height:76vh;overflow-y:auto}
   .sheet.open{transform:translateY(0)}
   @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+  .grab{width:38px;height:4px;border-radius:2px;background:rgba(255,255,255,.85);
+        position:absolute;top:9px;left:50%;transform:translateX(-50%);z-index:2;
+        box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .sheet.nophoto .grab{background:rgba(0,0,0,.22);box-shadow:none}
 
   /* ---- gallery ---- */
   .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
@@ -136,6 +140,7 @@
 </div>
 
 <div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grab"></div>
   <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
   <div class="gal" id="gal">
     <div class="gal-track" id="galTrack"></div>
@@ -270,8 +275,8 @@ let selected=null;
 function buildGallery(pl){
   galTrack.innerHTML=''; galDots.innerHTML='';
   const pics = pl.p || [];
-  if(!pics.length){ gal.classList.add('none'); return; }
-  gal.classList.remove('none');
+  if(!pics.length){ gal.classList.add('none'); sheet.classList.add('nophoto'); return; }
+  gal.classList.remove('none'); sheet.classList.remove('nophoto');
   pics.forEach((src,i)=>{
     const img=document.createElement('img');
     img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
@@ -287,7 +292,7 @@ function buildGallery(pl){
 }
 function syncDots(){
   const imgs=galTrack.querySelectorAll('img');
-  if(!imgs.length){ gal.classList.add('none'); return; }
+  if(!imgs.length){ gal.classList.add('none'); sheet.classList.add('nophoto'); return; }
   const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
   galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
   galCount.textContent=(i+1)+'/'+imgs.length;
@@ -309,10 +314,106 @@ function openSheet(pl){
             +"&travelmode=walking";
   gmapBtn.href=pl.g;
   updateDist();
+  sheet.scrollTop=0;
   sheet.classList.add('open');
+  hintGestures();
   map.panTo([pl.wlat,pl.wlng],{animate:true});
 }
-document.getElementById('closeSheet').onclick=()=>{sheet.classList.remove('open');selected=null;};
+function dismissSheet(){ sheet.style.transition=''; sheet.style.transform=''; sheet.classList.remove('open'); selected=null; }
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---------- card gestures: pull down to close, swipe across to the next place ---------- */
+const reducedMotion = window.matchMedia('(prefers-reduced-motion:reduce)');
+
+/* everything the filters currently show, ordered west to east */
+function visiblePlaces(){ return PLACES.filter(p=>ON[p.c]).sort((a,b)=>a.wlng-b.wlng||a.wlat-b.wlat); }
+/* the next visible place east (dir 1) or west (dir -1) of the open one, or null at the end of the row */
+function neighbour(dir){
+  if(!selected) return null;
+  const list=visiblePlaces(), i=list.indexOf(selected);
+  if(i>=0) return list[i+dir]||null;
+  /* the open place has since been filtered out — step from where it would sit in the order */
+  const east=p=>p.wlng>selected.wlng||(p.wlng===selected.wlng&&p.wlat>selected.wlat);
+  return dir>0 ? (list.find(east)||null) : (list.filter(p=>!east(p)).pop()||null);
+}
+/* slide the card off one way and bring its neighbour in from the other */
+function slideToNeighbour(dir){
+  const next=neighbour(dir);
+  if(!next) return false;
+  if(reducedMotion.matches){ sheet.style.transition=''; sheet.style.transform=''; openSheet(next); return true; }
+  const out = dir>0 ? -100 : 100;
+  sheet.style.transition='transform .16s ease-in';
+  sheet.style.transform='translateX('+out+'%)';
+  setTimeout(()=>{
+    openSheet(next);
+    sheet.style.transition='none';
+    sheet.style.transform='translateX('+(-out)+'%)';
+    requestAnimationFrame(()=>{
+      sheet.style.transition='transform .22s cubic-bezier(.32,.72,.35,1)';
+      sheet.style.transform='translateX(0)';
+      setTimeout(()=>{ sheet.style.transition=''; sheet.style.transform=''; },240);
+    });
+  },160);
+  return true;
+}
+/* neither gesture is discoverable, so say it once */
+function hintGestures(){
+  if(hintGestures.shown) return;
+  hintGestures.shown=true;
+  setTimeout(()=>{ if(sheet.classList.contains('open')) toast("Swipe the card sideways for the next place east or west — or down to close it."); },900);
+}
+
+(function(){
+  const DISMISS_PX=90, DISMISS_MIN=28, FLICK_V=0.55, SWIPE_PX=64, SWIPE_MIN=24, SWIPE_V=0.4;
+  let startX=0, startY=0, curX=0, curY=0, startT=0, dragging=false, onPhoto=false, axis='';
+  sheet.addEventListener('touchstart',e=>{
+    if(!sheet.classList.contains('open') || e.touches.length!==1) return;
+    startX=curX=e.touches[0].clientX; startY=curY=e.touches[0].clientY;
+    startT=Date.now(); dragging=true; axis='';
+    onPhoto=!!(e.target.closest && e.target.closest('.gal'));
+  },{passive:true});
+  sheet.addEventListener('touchmove',e=>{
+    if(!dragging) return;
+    curX=e.touches[0].clientX; curY=e.touches[0].clientY;
+    const dx=curX-startX, dy=curY-startY;
+    if(!axis){
+      if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+      if(Math.abs(dx)>Math.abs(dy)){
+        /* sideways moves along the map — except on the photo, which swipes its own gallery */
+        if(onPhoto){ dragging=false; return; }
+        axis='x';
+      } else if(dy>0 && sheet.scrollTop<=0){
+        axis='y';   /* downward from the top of the card dismisses it */
+      } else { dragging=false; return; }   /* let the content scroll natively */
+      sheet.style.transition='none';
+    }
+    if(axis==='x'){
+      const give = neighbour(dx<0?1:-1) ? 1 : .25;   /* rubber-band at the ends of the row */
+      sheet.style.transform='translateX('+(dx*give)+'px)';
+    } else {
+      sheet.style.transform='translateY('+Math.max(0,dy)+'px)';
+    }
+    e.preventDefault();
+  },{passive:false});
+  function release(){
+    if(!dragging) return;
+    dragging=false;
+    const ax=axis; axis='';
+    if(!ax) return;
+    const dt=Math.max(1,Date.now()-startT);
+    if(ax==='x'){
+      const dx=curX-startX, far=Math.abs(dx)>SWIPE_PX, flick=Math.abs(dx)>SWIPE_MIN && Math.abs(dx)/dt>SWIPE_V;
+      /* swiping left walks east, right walks west */
+      if((far||flick) && slideToNeighbour(dx<0?1:-1)) return;
+    } else {
+      const dy=curY-startY;
+      if(dy>DISMISS_PX || (dy>DISMISS_MIN && dy/dt>FLICK_V)){ dismissSheet(); return; }
+    }
+    sheet.style.transition=''; sheet.style.transform='';
+  }
+  sheet.addEventListener('touchend',release);
+  sheet.addEventListener('touchcancel',release);
+})();
 
 /* ---------- fullscreen ---------- */
 const fsBtn=document.getElementById('fsBtn');
@@ -382,6 +483,8 @@ document.getElementById('fitBtn').onclick=fitAll;
 let toastTimer;
 function toast(msg){
   const t=document.getElementById('toast');
+  /* keep it clear of the card, which covers the bottom of the screen */
+  t.style.bottom = sheet.classList.contains('open') ? (sheet.offsetHeight+14)+'px' : '';
   t.textContent=msg; t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer=setTimeout(()=>t.classList.remove('show'),4500);

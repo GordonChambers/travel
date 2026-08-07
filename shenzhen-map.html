@@ -428,43 +428,102 @@ function openSheet(pl){
   navBtn.href=`https://uri.amap.com/marker?position=${pl.lng},${pl.lat}&name=${encodeURIComponent(pl.zh||pl.n)}&src=map&coordinate=gaode`;
   gmapBtn.href=pl.g;
   updateDist();
+  sheet.scrollTop=0;
   sheet.classList.add('open');
+  hintGestures();
   map.panTo([pl.wlat,pl.wlng],{animate:true});
 }
 function dismissSheet(){ sheet.style.transition=''; sheet.style.transform=''; sheet.classList.remove('open'); selected=null; }
 document.getElementById('closeSheet').onclick=dismissSheet;
 
-/* ---------- pull down to close ---------- */
+/* ---------- card gestures: pull down to close, swipe across to the next place ---------- */
+const reducedMotion = window.matchMedia('(prefers-reduced-motion:reduce)');
+
+/* everything the filters currently show, ordered west to east */
+function visiblePlaces(){ return PLACES.filter(p=>ON[p.c]).sort((a,b)=>a.wlng-b.wlng||a.wlat-b.wlat); }
+/* the next visible place east (dir 1) or west (dir -1) of the open one, or null at the end of the row */
+function neighbour(dir){
+  if(!selected) return null;
+  const list=visiblePlaces(), i=list.indexOf(selected);
+  if(i>=0) return list[i+dir]||null;
+  /* the open place has since been filtered out — step from where it would sit in the order */
+  const east=p=>p.wlng>selected.wlng||(p.wlng===selected.wlng&&p.wlat>selected.wlat);
+  return dir>0 ? (list.find(east)||null) : (list.filter(p=>!east(p)).pop()||null);
+}
+/* slide the card off one way and bring its neighbour in from the other */
+function slideToNeighbour(dir){
+  const next=neighbour(dir);
+  if(!next) return false;
+  if(reducedMotion.matches){ sheet.style.transition=''; sheet.style.transform=''; openSheet(next); return true; }
+  const out = dir>0 ? -100 : 100;
+  sheet.style.transition='transform .16s ease-in';
+  sheet.style.transform='translateX('+out+'%)';
+  setTimeout(()=>{
+    openSheet(next);
+    sheet.style.transition='none';
+    sheet.style.transform='translateX('+(-out)+'%)';
+    requestAnimationFrame(()=>{
+      sheet.style.transition='transform .22s cubic-bezier(.32,.72,.35,1)';
+      sheet.style.transform='translateX(0)';
+      setTimeout(()=>{ sheet.style.transition=''; sheet.style.transform=''; },240);
+    });
+  },160);
+  return true;
+}
+/* neither gesture is discoverable, so say it once */
+function hintGestures(){
+  if(hintGestures.shown) return;
+  hintGestures.shown=true;
+  setTimeout(()=>{ if(sheet.classList.contains('open')) toast("Swipe the card sideways for the next place east or west — or down to close it."); },900);
+}
+
 (function(){
-  let startY=0, startX=0, curY=0, startT=0, dragging=false, active=false;
-  const DISMISS_PX=90, FLICK_V=0.55;
+  const DISMISS_PX=90, DISMISS_MIN=28, FLICK_V=0.55, SWIPE_PX=64, SWIPE_MIN=24, SWIPE_V=0.4;
+  let startX=0, startY=0, curX=0, curY=0, startT=0, dragging=false, onPhoto=false, axis='';
   sheet.addEventListener('touchstart',e=>{
     if(!sheet.classList.contains('open') || e.touches.length!==1) return;
-    startY=curY=e.touches[0].clientY; startX=e.touches[0].clientX;
-    startT=Date.now(); dragging=true; active=false;
+    startX=curX=e.touches[0].clientX; startY=curY=e.touches[0].clientY;
+    startT=Date.now(); dragging=true; axis='';
+    onPhoto=!!(e.target.closest && e.target.closest('.sheet-photo'));
   },{passive:true});
   sheet.addEventListener('touchmove',e=>{
     if(!dragging) return;
-    const dy=e.touches[0].clientY-startY, dx=e.touches[0].clientX-startX;
-    if(!active){
-      if(Math.abs(dy)<6 && Math.abs(dx)<6) return;
-      /* only hijack a downward, mostly-vertical drag that starts at the top of the sheet;
-         otherwise let native content scroll / horizontal gallery swipe take over */
-      if(dy>0 && Math.abs(dy)>Math.abs(dx) && sheet.scrollTop<=0){ active=true; sheet.style.transition='none'; }
-      else { dragging=false; return; }
+    curX=e.touches[0].clientX; curY=e.touches[0].clientY;
+    const dx=curX-startX, dy=curY-startY;
+    if(!axis){
+      if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+      if(Math.abs(dx)>Math.abs(dy)){
+        /* sideways moves along the map — except on the photo, which swipes its own gallery */
+        if(onPhoto){ dragging=false; return; }
+        axis='x';
+      } else if(dy>0 && sheet.scrollTop<=0){
+        axis='y';   /* downward from the top of the card dismisses it */
+      } else { dragging=false; return; }   /* let the content scroll natively */
+      sheet.style.transition='none';
     }
-    curY=e.touches[0].clientY;
-    sheet.style.transform='translateY('+Math.max(0,curY-startY)+'px)';
+    if(axis==='x'){
+      const give = neighbour(dx<0?1:-1) ? 1 : .25;   /* rubber-band at the ends of the row */
+      sheet.style.transform='translateX('+(dx*give)+'px)';
+    } else {
+      sheet.style.transform='translateY('+Math.max(0,dy)+'px)';
+    }
     e.preventDefault();
   },{passive:false});
   function release(){
     if(!dragging) return;
     dragging=false;
-    if(!active) return;
-    active=false;
-    const dy=curY-startY, v=dy/Math.max(1,Date.now()-startT);
-    if(dy>DISMISS_PX || v>FLICK_V){ dismissSheet(); }
-    else { sheet.style.transition=''; sheet.style.transform=''; }
+    const ax=axis; axis='';
+    if(!ax) return;
+    const dt=Math.max(1,Date.now()-startT);
+    if(ax==='x'){
+      const dx=curX-startX, far=Math.abs(dx)>SWIPE_PX, flick=Math.abs(dx)>SWIPE_MIN && Math.abs(dx)/dt>SWIPE_V;
+      /* swiping left walks east, right walks west */
+      if((far||flick) && slideToNeighbour(dx<0?1:-1)) return;
+    } else {
+      const dy=curY-startY;
+      if(dy>DISMISS_PX || (dy>DISMISS_MIN && dy/dt>FLICK_V)){ dismissSheet(); return; }
+    }
+    sheet.style.transition=''; sheet.style.transform='';
   }
   sheet.addEventListener('touchend',release);
   sheet.addEventListener('touchcancel',release);
@@ -538,6 +597,8 @@ document.getElementById('fitBtn').onclick=fitAll;
 let toastTimer;
 function toast(msg){
   const t=document.getElementById('toast');
+  /* keep it clear of the card, which covers the bottom of the screen */
+  t.style.bottom = sheet.classList.contains('open') ? (sheet.offsetHeight+14)+'px' : '';
   t.textContent=msg; t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
