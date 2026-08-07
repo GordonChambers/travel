@@ -524,7 +524,6 @@ function openSheet(pl){
   updateDist();
   sheet.scrollTop=0;
   sheet.classList.add('open');
-  hintGestures();
   map.panTo([pl.lat,pl.lng],{animate:true});
 }
 function dismissSheet(){ sheet.style.transition=''; sheet.style.transform=''; sheet.classList.remove('open'); selected=null; }
@@ -564,13 +563,6 @@ function slideToNeighbour(dir){
   },160);
   return true;
 }
-/* neither gesture is discoverable, so say it once */
-function hintGestures(){
-  if(hintGestures.shown) return;
-  hintGestures.shown=true;
-  setTimeout(()=>{ if(sheet.classList.contains('open')) toast("Swipe the card sideways for the next place east or west — or down to close it."); },900);
-}
-
 (function(){
   const DISMISS_PX=90, DISMISS_MIN=28, FLICK_V=0.55, SWIPE_PX=64, SWIPE_MIN=24, SWIPE_V=0.4;
   let startX=0, startY=0, curX=0, curY=0, startT=0, dragging=false, onPhoto=false, axis='';
