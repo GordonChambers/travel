@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Hamburg — Where to Go & Eat</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Hamburg — Where to Go & Eat</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Pin shapes: circles are sights, rounded squares are food, diamonds are bars. Closing days are in CAPS on each card — Hamburg kitchens take Mondays seriously. The Fischmarkt is SUNDAY MORNINGS ONLY and the Planten un Blomen light show runs 1 May to 30 Sept. Sources: Michelin Bib Gourmand 2026, Mit Vergnügen Hamburg, GPSmyCity, hamburg.de and Google Places ratings, checked August 2026.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"heritage": {"label": "Heritage & landmarks", "color": "#6D4C41", "icon": "landmark"}, "church": {"label": "Churches & memorials", "color": "#6A1B9A", "icon": "church"}, "museum": {"label": "Museums", "color": "#1565C0", "icon": "palette"}, "harbour": {"label": "Harbour & water", "color": "#00838F", "icon": "ship"}, "view": {"label": "Views from above", "color": "#E65100", "icon": "camera"}, "green": {"label": "Parks & green", "color": "#2E7D32", "icon": "trees"}, "kiez": {"label": "Kiez & music", "color": "#AD1457", "icon": "music"}, "cheap": {"label": "Cheap eats (under 12 EUR)", "color": "#00ACC1", "icon": "sandwich", "shape": "food"}, "mid": {"label": "Mid-range (EUR EUR)", "color": "#F9A825", "icon": "utensils", "shape": "food"}, "splurge": {"label": "Splurge", "color": "#C2185B", "icon": "utensils-crossed", "shape": "food"}, "bar": {"label": "Bars & brewpubs", "color": "#37474F", "icon": "beer", "shape": "drink"}};
+const ICONS = {"beer": "<path d=\"M17 11h1a3 3 0 0 1 0 6h-1\"/> <path d=\"M9 12v6\"/> <path d=\"M13 12v6\"/> <path d=\"M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 0 1 0-5c.78 0 1.57.5 2.5.5S9.44 2 11 2s2 1.5 3 1.5 1.72-.5 2.5-.5a2.5 2.5 0 0 1 0 5c-.78 0-1.5-.5-2.5-.5Z\"/> <path d=\"M5 8v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8\"/>", "camera": "<path d=\"M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z\"/> <circle cx=\"12\" cy=\"13\" r=\"3\"/>", "church": "<path d=\"M10 9h4\"/> <path d=\"M12 7v5\"/> <path d=\"M14 21v-3a2 2 0 0 0-4 0v3\"/> <path d=\"m18 9 3.52 2.147a1 1 0 0 1 .48.854V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6.999a1 1 0 0 1 .48-.854L6 9\"/> <path d=\"M6 21V7a1 1 0 0 1 .376-.782l5-3.999a1 1 0 0 1 1.249.001l5 4A1 1 0 0 1 18 7v14\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "music": "<path d=\"M9 18V5l12-2v13\"/> <circle cx=\"6\" cy=\"18\" r=\"3\"/> <circle cx=\"18\" cy=\"16\" r=\"3\"/>", "palette": "<path d=\"M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z\"/> <circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>", "sandwich": "<path d=\"m2.37 11.223 8.372-6.777a2 2 0 0 1 2.516 0l8.371 6.777\"/> <path d=\"M21 15a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-5.25\"/> <path d=\"M3 15a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h9\"/> <path d=\"m6.67 15 6.13 4.6a2 2 0 0 0 2.8-.4l3.15-4.2\"/> <rect width=\"20\" height=\"4\" x=\"2\" y=\"11\" rx=\"1\"/>", "ship": "<path d=\"M12 10.189V14\"/> <path d=\"M12 2v3\"/> <path d=\"M19 13V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6\"/> <path d=\"M19.38 20A11.6 11.6 0 0 0 21 14l-8.188-3.639a2 2 0 0 0-1.624 0L3 14a11.6 11.6 0 0 0 2.81 7.76\"/> <path d=\"M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1s1.2 1 2.5 1c2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1\"/>", "trees": "<path d=\"M10 10v.2A3 3 0 0 1 8.9 16H5a3 3 0 0 1-1-5.8V10a3 3 0 0 1 6 0Z\"/> <path d=\"M7 16v6\"/> <path d=\"M13 19v3\"/> <path d=\"M12 19h8.3a1 1 0 0 0 .7-1.7L18 14h.3a1 1 0 0 0 .7-1.7L16 9h.2a1 1 0 0 0 .8-1.7L13 3l-1.4 1.5\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "utensils-crossed": "<path d=\"m16 2-2.3 2.3a3 3 0 0 0 0 4.2l1.8 1.8a3 3 0 0 0 4.2 0L22 8\"/> <path d=\"M15 15 3.3 3.3a4.2 4.2 0 0 0 0 6l7.3 7.3c.7.7 2 .7 2.8 0L15 15Zm0 0 7 7\"/> <path d=\"m2.1 21.8 6.4-6.3\"/> <path d=\"m19 5-7 7\"/>"};
+const PLACES = [{"c": "view", "n": "Elbphilharmonie Plaza", "zh": "FREE viewing deck, 37m", "lat": 53.5413305, "lng": 9.9844647, "m": "4.6★ · Plaza daily 10am–midnight, last entry 11.30pm · free ticket needed", "d": "The public terrace wrapped right around the building where the glass wave meets the old brick warehouse. Entry is free but you still need a timed ticket: same-day ones are handed out at the pavilion on the forecourt subject to availability, or pay a 3 EUR booking fee online to guarantee a slot. Come after 9pm — the queue has gone and the harbour is lit.", "s": "The city approved it in 2007 at a public cost of 77 million euros and a 2010 opening. It opened in January 2017 at roughly 866 million, and for most of that decade Hamburgers regarded it as a civic humiliation. Then the acoustics turned out to be extraordinary, and everyone quietly stopped mentioning the budget.", "sl": "Eleven times over budget, seven years late", "g": "https://maps.google.com/?cid=12890616232072987270", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDVC-89lxq_ggQKOcazPNrq-mmBDwYH3bvob443inDayCORAPBv0wciUEriQGUPoGk4I06R5wvp1q24a2_K8OfVunl7hyKE5oATxCDKnnnVSrabPS99vXHFk2WDGyQq7YWi0Lb6eMI_GLXWdQs=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCTc-AnercWxUw8mIEeSpjvr6pysd9tqF-ajFclmdgjtqJihp5JOm0TIwIa46W2u3HuoWxLsEqxqm4EL14MQMyKgV7_Cj-_XCFBAZ1BycfoNHyn1cVey4-s65NklRvntGSopRD8k6LoUxQk3Q=s4800-w800-h600"], "a": ["ciobanu nicu", "Lisa Leml"]}, {"c": "view", "n": "Grüner Bunker Dachgarten", "zh": "FREE rooftop garden, 58m", "lat": 53.5565325, "lng": 9.970474, "m": "3.8★ · FREE · summer 9am–9pm, winter 9am–5pm · NO dogs, prams or own food", "d": "A Second World War flak tower with five new storeys and a garden on the roof, opened to the public in July 2024. You climb 335 steps or take the 560m planted spiral ramp up the outside. The 360-degree view takes in the harbour, the Michel and the Elbphilharmonie. The 3.8 rating is people expecting a rooftop bar; it is a park, and it costs nothing.", "s": "Flak Tower IV was built in 1942 in about 300 days using forced labour, and the concrete proved too thick to demolish after the war, which is the only reason it still stands. For decades it held recording studios and was known simply as the Media Bunker. The rooftop planting is now a memorial site as much as a garden.", "sl": "Too thick to demolish", "g": "https://maps.google.com/?cid=17907368362544403343", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDGgc8ntxjWRPE55nAbkPAbfi64Df5dbIBN_thirrn3iPIqqnDD3ouCcto38zI68l87g3le5jspwnqLHC6KReob0-h5ajv7dIB_hrHVpeanj6MxeytQCjsSANM6YBSjVONY7jY-Cn8L7nWH=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBBXgRUe32xniMZuGoLQk15pKJf_PvKELW1zFpfZZAgNb0PZc7GoUuOQG8s418kdARjS2jMuDXWmkYndgQTEDAAHOINQN525lTejX1Q-IXMq5xqoalNjz60fWimBrLUqYSsrHbDBrRGrZc40MQ05GoE=s4800-w800-h600"], "a": ["Marta Kud", "Kai M."]}, {"c": "church", "n": "St. Michaelis (Der Michel)", "zh": "Baroque, 132m tower", "lat": 53.5484126, "lng": 9.9787982, "m": "4.7★ · open 9am–8pm · tower and crypt are ticketed; the nave is free", "d": "Hamburg's signature church and the one sailors used to steer by. Lift most of the way up the 132m tower, then a short spiral stair to the gallery. Inside, five organs and a white-and-gold interior rebuilt twice after fires in 1750 and 1906 and again after the war. Skip the tower if you have already done the Bunker; do the crypt instead.", "g": "https://maps.google.com/?cid=1764669751173991193", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCEPLMVH6x-EQoCaSIYXQK6jISZu1nqI3u_RYFXzwpiVHzorI5NsTToaz6CIAMhUqG-mkkfwBLSHSJcBTItSKoiW3P9WxiVuNK9G5cF2dZrS8ur5EJn8Mr4X8Jls4-o_DXh7k9d_W5YGet6KQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAYYMpsOdEMmt--uppZL-oIDU1lYw_uXNuQKaoPdMUmpT7yBnOf6Mmb_PUHwat6nQle-bAriiT5oYjWZgpdAt9nwYIT4RH5nw0TxDDt2-kHL9AVlJrhq8ntNtelIPWAQih-tP1NCSXrx1zVkoA=s4800-w800-h600"], "a": ["Angelika Trabandt", "Bernd Schäfer"]}, {"c": "church", "n": "Mahnmal St. Nikolai", "zh": "bombed ruin and memorial", "lat": 53.5474603, "lng": 9.9906708, "m": "4.7★ · 10am–9pm · tower lift and museum ticketed · walking the ruin is free", "d": "A burnt-out neo-Gothic shell left standing as a war memorial. A glass lift runs up the surviving 76m tower for a view straight down onto the roofless nave. The basement museum on the 1943 firestorm is small, unsparing and worth the twenty minutes. Do this before the Elbphilharmonie, not after — the order matters.", "s": "When it was finished in 1874 it was the tallest building in the world, briefly. That same spire made it a perfect aiming point: RAF and USAAF crews used it to orient themselves during Operation Gomorrah in July 1943, the raids that destroyed the church and killed roughly 34,000 people in a single week.", "sl": "The bombers navigated by its spire", "g": "https://maps.google.com/?cid=8040297811810408001", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDN_shGwME0_wfGRIOJnCB1nAnor5XeI70XvEeR2CBR4_gFQW1qFVWXj8jOuajERj8MVmeUSgKYT4btGObfYI8C78SAN5tZL9i2dyfmoFFNfjh-t3Qvfn1-iGdYgmg6A2F2Kc9QY2jmuxSB2A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDidVC_IH-6jgmv3751IicwrsbpzRSKSQzAORMwAQz4Xqm27GJAD-qjuP7jmCgerSd8fRNdg1qqT43HSAAueC8ZkB7LPjmuCcMWY7FhcuzsLp1-387occ49EvznvMWZ_J76HJpnYaDndbYgaXWqJAvjIw=s4800-w800-h600"], "a": ["MMW", "Tran Duy Hoan"]}, {"c": "heritage", "n": "Hamburger Rathaus", "zh": "647 rooms, guided tour only", "lat": 53.5504312, "lng": 9.9923335, "m": "4.7★ · courtyard and ground floor free · interior by guided tour, around 8 EUR", "d": "Neo-Renaissance, 1897, still the working seat of Hamburg's parliament and senate. The interior is only accessible on the hour-long tour, which is cheap and genuinely good; English tours run once or twice a day and the schedule shifts, so check on the day at the desk in the entrance hall. The inner courtyard is free and usually empty.", "g": "https://maps.google.com/?cid=4583860333668074083", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB1S-K4F9x27HLQfL33D6w-8bAB2c2mGRS2K5veMULmOI6RbcQF0CjLLLTDpXO74wsARHkKVp_rvFaxrilopvqG254ZTVZrv775rbaT35vEXh9ljh-85De8-HbraBwQu7Wfv4wKwQCmD44pZQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCojsddyP1v0ARN1lVZWhc9aSD4Ks7iBrIWkX4f9gI74-tedb2ctjJcQySPLt7eUt8_c3oLCWd1GGMapvEsqof_YMKDyeIkcLFHUXSqGXw8OrqdlnhfEzaQkwkauOVVyaGNmzNmulSVTKLS5t8fRQWddg=s4800-w800-h600"], "a": ["Christian Buschmann", "Josep Ferrer"]}, {"c": "heritage", "n": "Chilehaus", "zh": "UNESCO · brick expressionism", "lat": 53.5483037, "lng": 10.0029951, "m": "4.5★ · exterior 24h, FREE · offices inside, no public access", "d": "A 1924 office block whose east corner narrows to a point like a ship's bow, built from 4.8 million dark clinker bricks. Walk the full loop — the building changes completely from each corner — then cut through the courtyards of the Sprinkenhof next door, which most people miss. Best light is late afternoon.", "s": "It was paid for by Henry Sloman, who left Hamburg penniless, spent decades shipping saltpetre out of the Chilean desert and came back rich enough to commission this. He named it after the country that made him. The Kontorhaus quarter around it became a UNESCO World Heritage Site in 2015, together with the Speicherstadt.", "sl": "Built on Chilean saltpetre", "g": "https://maps.google.com/?cid=11332151189676183321", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCowUr4xb1GrDIjESKalSo4P5sY97bqaJYjx8UirdtnBMjJO7AOCDs2hdfYD42ARiannhm22iJh0hFQ-HcPy2IhxvzuxNFficNjIti7AqTkwKHbju6vvaDRxIbEUdtaaf5aZzKcTQIyzduHj-g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAgP8cT7_-RN1fI8X-e759bLWqJFgOLOd5VS5Zpxt6v45uj6w2Vj3xX0IvVUkzyugMiUAXu4y18is3DVtmKysqj0e3UaU4p_82TrpV0RixY8AOxfkm74hX4TWGi6EpC0H9_EwZzbTCR5HtyJg=s4800-w800-h600"], "a": ["Martin Ahlbrecht", "Helmut Ebener"]}, {"c": "heritage", "n": "Speicherstadt & Wasserschloss", "zh": "UNESCO warehouse district", "lat": 53.5455514, "lng": 10.0001168, "m": "4.3★ (the tea house) · streets free and 24h · tea house CLOSED MON–TUE", "d": "The largest warehouse complex in the world, red brick on oak piles, and the single best thing to walk at night when the bridges are lit. The Wasserschloss is the wedge-shaped building in every photograph of the district; it sells serious loose-leaf tea and does a decent lunch, though food reviews split hard and a refill of hot water is charged extra.", "s": "The whole quarter was built from 1883 as a duty-free port, which meant demolishing the Kehrwieder and Wandrahm neighbourhoods and evicting about 20,000 people. The warehouses stored coffee, spices and, above all, carpets — Hamburg was the largest oriental carpet trading centre outside Iran well into the twentieth century.", "sl": "Twenty thousand people were evicted to build it", "g": "https://maps.google.com/?cid=8722334710758819001", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjABfINRtOsI0fMDaDs9SbTLQaK4FJ3Wd2_oHwyKNehBdcJjY39JnqGqdsSmY1IHC2orv68KnbxO1pF074Pv6MKHiQxm_dcjeSWCjN7_MTDWDbPLe8Nl0_d41O0YQpGY757Kgs8d2OZw2ttCxA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAq6_2p8DgujDmtUmmB21vT2ZoBeE45mvyQAl-L6vqkOM-c_UAKYmCCVZ_1K9PoPXn1mvObHWTIittBK94FWrxUhXgpToUML5MnvGnT4_GQJvRA1dmaYB8G1_zujPboxjkuEPiqmkl5Zg-BcvXnzH_0Zg=s4800-w800-h600"], "a": ["Roger Scherler", "Carla Bertani"]}, {"c": "heritage", "n": "Krameramtsstuben", "zh": "1670s almshouse courtyard", "lat": 53.548111, "lng": 9.9800161, "m": "4.6★ · courtyard FREE and open · restaurant CLOSED MONDAYS, noon–10pm", "d": "A lane of half-timbered houses from the 1670s, built as widows' housing for the shopkeepers' guild and now the only surviving courtyard of its kind in the city. It takes four minutes to walk and is fifty metres from the Michel, so do them together. The restaurant inside does Pannfisch and Labskaus under low beams; book, and mind your head on the stairs.", "g": "https://maps.google.com/?cid=12032371748651467299", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDyD4fen6QeXuUjb3Plf8jvwWhNpLhKI-I6A1helmiiqDKRs59GtBdRKVgYcp606YNmHCci0B-7t1k5YoZMXUB5EqwNtkHb4yT1pB375hXG8SvsZuseLSkBS9ipCfD5enOVqWOEt_OKc38Liw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCSMQHC5HKxn4sSANp3h1HhkkQ08jHsu8dYgqZgP8-ENZakZtTULC8UbMcXwmeqf_AzTFzK7Oc_wP0sFIhsBR2sebA7PEnWyXa3jEmrb66meUXnwy6LhDSUDPcsT02QseOJnIpKqY7feOBr5Z-bt2Qv7g=s4800-w800-h600"], "a": ["Restaurant Krameramtsstuben", "Jörg Baumann"]}, {"c": "heritage", "n": "Treppenviertel, Blankenese", "zh": "stair quarter above the Elbe", "lat": 53.5578249, "lng": 9.8071467, "m": "4.7★ · FREE · 24h · around 5,000 steps and no cars · 25 min on the S1", "d": "A former fishing village stacked up a hillside in lanes too narrow for cars, now the most expensive postcode in Hamburg. Take the S1 to Blankenese, then bus 48 (locals call it the Bergziege, the mountain goat) down to the water and walk back up, not the other way round. Wear proper shoes and go on a clear day or don't bother.", "g": "https://maps.google.com/?cid=9412243730405853847", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAths2Du7Hmj1906rJBVbTAcQLrQ33M1Dk-QfijSyGL2LyN1Ux4IDcUsPJJqgAkUiiWFKrMYGzZs832SLl3v_DBAzqvPAEptS9Yk6_flH51JFLoClGSJaAAZkmVx9xk1yN8-LjUHqE8xZqmxw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB8yKxxsH2BJaYJlfmt1Vt0UQlx-LLgNLY5GGXpIex4za1Bu8RmhSLBi3EwJkJM1NUS98K4dDgKpichzJOfpVTFUxOte5dMufEQyvZ5hQGnaMkmt692yqvQaJpe2lk14jX8RTCji_egCphLag=s4800-w800-h600"], "a": ["Enrico Ewald", "BoB Beautyfield"]}, {"c": "museum", "n": "Miniatur Wunderland", "zh": "largest model railway on earth", "lat": 53.5438429, "lng": 9.9890989, "m": "4.8★ · around 22 EUR adult, 13 EUR child · BOOK A SLOT ONLINE · opens 7am some days", "d": "Do not dismiss this as a train set. It is roughly 1,600 square metres of obsessive miniature worlds with a working airport, day-night cycles and a Hamburg section that includes the Elbphilharmonie. Book a timed slot days ahead or you will not get in. Allow three hours minimum; regulars take five. The earliest slots are the quietest by a distance.", "s": "Two brothers, Frederik and Gerrit Braun, started it in 2000 and have kept adding countries ever since. Somewhere in the model is a tiny scene of an anti-fascist demonstration, another of a nudist beach, and roughly a quarter of a million miniature people. Staff will not tell you where the rude bits are. Look properly.", "sl": "Two brothers and 250,000 tiny people", "g": "https://maps.google.com/?cid=12055801131382413498", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD3THr-A2rZTsEZ9Ltpf3aKsIrkGCr6OPFhch48UJvyEIRcXElZAKE8X7R5-a0I3BdbJZr6WR5HRFPnYkVRxWCZzkxNJC8z7nBNZw75DADNqeOVjh1iXpPgK4tProcB8Rs4XyT4UsQD64bvqA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCaOPNOFd5AGbUwJcYI-bypRFlH-zLVcKeS7TYUIU0etiQf0FzQpVcRR2GUN2D3nrFGtkPqV22jNKQXgmFxXRxVhyrL1p_Ua8KPsEtAMmDvHUTQuAujjaCZHlv9TssMUwcGlsnP-urh7IXvxg=s4800-w800-h600"], "a": ["Ralf Langhorst", "K. Blacksmithke"]}, {"c": "museum", "n": "Hamburger Kunsthalle", "zh": "seven centuries of European art", "lat": 53.5555111, "lng": 10.0025458, "m": "4.6★ · CLOSED MONDAYS · Tue–Sun 10am–6pm, THURSDAY UNTIL 9PM", "d": "Three linked buildings holding Old Masters through to contemporary. The reason to come is Caspar David Friedrich's Wanderer above the Sea of Fog, which is here and smaller than you expect, plus a strong Munch and Runge holding. Thursday evening is the move: half the crowd, and the Galerie der Gegenwart stays open.", "g": "https://maps.google.com/?cid=10510479139449782552", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDZBNq1rOBsPkqDLkMp3ACfJfGL8erYMYm6m_amSd8TfoS5_GrEtV1dWQp5eVwMTBNX4SIMKo5jyFRO-3Z1vNMVcWq6q6A3GnqKvMria5KoMXmu9ia40-7SporW3h7QEwNITdMzSdJYpvJWQw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDBfzS5ZkSbujuzZI53q41mrVy2wVV5rE5R6LRkI8LOQ7_hUHKLKhg4EIxXTWZjYKEjt5sWSLBiuECbOz3FFmyTg1Z9cllNnEQVyTfUhaiOFm8KJt8PvYKp4KolQ0LqYsBI-b-2O2rdTixs=s4800-w800-h600"], "a": ["Karl-Heinz Dietz", "Thomas C."]}, {"c": "museum", "n": "Internationales Maritimes Museum", "zh": "nine floors of ships", "lat": 53.5433461, "lng": 9.9998111, "m": "4.7★ · around 18 EUR · daily 10am–6pm · in the oldest warehouse in the Speicherstadt", "d": "Nine decks of one man's lifetime collection: 40,000 model ships, naval history, navigation instruments, a full deck on merchant shipping. Genuinely overwhelming, and honest reviewers say so — pick three floors rather than trying all nine. English labelling throughout, which is not a given in Hamburg museums.", "g": "https://maps.google.com/?cid=1666439151965307013", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDaxa3MxxA8A4SDbdgKkRub9kEoS0zxPawW5d5qiJxub0Cx9ko4nOmkor899SitJ2QFvnNt76PW6hUFmoSnPUGqcoNpDujUYG6oIG3nQgdIxvT7Ug5Bo21kckDeW2Gxg9UiRwGp-xY8wgMCsQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCOCGiBExFJL6vsYfgQpTx79c-CFSSM5vLnMupJNdvGZRHrAg98eRpBuj4cvVzxhHM33uIqtTm0miXLLcqzz4CSAaI1AweQRZZjtkl62QtmmNRpX5OfQF-cOxE5yHtVHbZkTxCXFFjHtSG8NAg=s4800-w800-h600"], "a": ["Scubatheworld Blogcom", "Stefano Giovanelli"]}, {"c": "harbour", "n": "Alter Elbtunnel", "zh": "FREE · 426m under the river", "lat": 53.5458861, "lng": 9.9665878, "m": "4.7★ · FREE · walkable 24h · LIFTS Mon–Fri 5.30am–8pm, weekends 10am–6pm", "d": "A tiled 1911 tunnel 24m below the Elbe, reached by enormous freight lifts or a spiral staircase. Walk to the Steinwerder side and turn around: that is the postcard view of the skyline, and almost nobody on the north bank bothers. Look for the ceramic reliefs of rats, crabs and eels set into the walls. If the lifts are shut, the stairs still work.", "s": "Both tubes reopened on 4 May 2026 after a restoration that ran fifteen years and replaced 380,000 tiles — the engineers began expecting what one called a change of wallpaper. The east tube is now the cycle and pedestrian route; the west is kept for walkers and events. A Beatles covers band played at the reopening.", "sl": "Fifteen years and 380,000 tiles", "g": "https://maps.google.com/?cid=15521639541111046345", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB0uSLp2Sg4hWe_ePiwJ3B500ObQGs-TAz38xvyAvnIGyN9ASzlr2kI9avd_8LH_OrBJGvEfwr1qMNcHP0E0stwlGEC_25rv4gvhekw8ABEjrCdVFRouMpSlHDnux5v6NYP52eyhOHnqCAg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBj9DPZ01LYG9DZl-Oi8ElRi9TCD8s9qFCSLMxH_PDV6XUuuooGnxktZyiM0dLHy3F-9loXm9KVuxvL624rIQDm76L51Zgj__7tZNLXttQrSYQb80J2PpLvg7VOyarUMCcs7QaBYcfM30B4Sw=s4800-w800-h600"], "a": ["Dmytro Chaplynskyi", "Andreas Buergelt"]}, {"c": "harbour", "n": "Landungsbrücken & Ferry 62", "zh": "the cheap harbour cruise", "lat": 53.5453799, "lng": 9.9660023, "m": "4.7★ · 24h · ferry 62 runs on a normal HVV ticket, around 4 EUR", "d": "Skip the 25 EUR harbour tours. Public ferry 62 leaves from here for Finkenwerder past the container terminals and the Elbphilharmonie on an ordinary transit ticket, and if you get off at Neumühlen you are on the Elbe beach. Sit outside on the upper deck, on the left going out. No commentary, which is the point.", "g": "https://maps.google.com/?cid=16312874116598132788", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCpemnNlZY6FjQkWErlYY28W2gnQEwlBtpM2FxMuzLcbuA-JYP9wTMky10CnevWNwhenTvHQYcjH24Q4jgqc0iCWMdO0rgVZmvIYviEIRTR75UNgftPtqe4-ibEQ39jWGzMp-qF8aHDYS-Pi1k=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAPyxmC1QdQWtVWSOS6jzxp9y4sXH_wfWjGHlDPMb649kJZznNFxXiMgcJa19bcpiw0JFmU52mjSVds1PYWZs0TvGN5w3xgWciQe-nASIsgAp6Sgfs-UTHS1qMJOSqfV8wb9lXDDXT_Uxs3gg=s4800-w800-h600"], "a": ["Jürgen Lauer", "Sashi Bhusan Yadav"]}, {"c": "harbour", "n": "Fischmarkt & Fischauktionshalle", "zh": "FREE · Sunday mornings only", "lat": 53.544792, "lng": 9.951709, "m": "4.6★ · SUNDAYS ONLY · 5am–9.30am Apr–Oct, 7am–9.30am Nov–Mar · FREE", "d": "Running since 1703, and half of it is not really about fish: the Marktschreier shout sales of fruit, plants and boxes of unspecified groceries, and the auction hall has a live band and beer from about six in the morning. Two crowds meet here — people who got up and people who never went to bed. Come at 6am for the shouting, not 9am for the clearing up.", "g": "https://maps.google.com/?cid=11095777025083006868", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB5EFjXJ4znNIHsdtzLhKIMoXwJm_jq7FNGsyVlFLheqZ1hk67hDvTUv0GdRHHt0xlYWFOrbXE4rIR5MZxnJHQz6Xi5B7tccFBm6-14AJv6tii_lWBCUBslmmoasaJDPLyB1pLsGMuSTLlYvw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCh5kyNKO2iWDE5Fyc48dEtdW2u9I_F6pJ697TUunr6zQzZ4LXsrxPHcUVnQjjaBfbKcQfN4jiAVXpP5GjdBKrDFRi7IJIBpVcA5Brrqmjj-o7eBaoLcGvDfUfooQFzvZ3V8drk5ytI3OubmYu-pYTz1Q=s4800-w800-h600"], "a": ["Fischauktionshalle", "Árpád Szántó"]}, {"c": "harbour", "n": "Alsterrundfahrt, Jungfernstieg", "zh": "lake boats, 2h loop", "lat": 53.5528342, "lng": 9.9942255, "m": "4.4★ · daily 9am–6pm · COMMENTARY IS OFTEN GERMAN ONLY — ask before buying", "d": "The flat-bottomed boats leave the Jungfernstieg jetty and loop the Outer Alster past the villas and the canals behind them. Pleasant on a warm afternoon, dull in drizzle, and several reviewers report paying for an English guide that did not materialise. Ask at the counter which departure is guided in English, or just rent a pedalo instead.", "g": "https://maps.google.com/?cid=18268793520955961592", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBiT-QLvH7EhiYy0Ec866pxdvoheVekNep0HhDmCoIzMrjtX_cMleFcnn23qBrktJAyP6NKBMhibdSJofGm5mzJqHxBtrOcysNaElCa0CYBrrQx_SHREvBB4eEX9rYNOwTl21vhhZIpT6m_Nw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBrrRLs_RMLLClKStBlx2gVWZ8b17sj32ItWFkH1I5d52rRSkEnECYjzkY6dXLTNuSV5rzotdQIvF7Ln5_wPMjt_vP2lJ7JhsH-1Pf9Gzac_lkpPby8xEgXNIAtXiIXG6oMmwvKZOHguoehfQtAXoLiHA=s4800-w800-h600"], "a": ["ATG Alster-Touristik", "Anja Nehring"]}, {"c": "green", "n": "Planten un Blomen", "zh": "FREE water-light concerts", "lat": 53.5620171, "lng": 9.9820652, "m": "4.8★ · FREE · park 7am–11pm · light show 10pm May–Aug, 9pm September, daily", "d": "The best free thing in Hamburg happens on the Parksee: thirty minutes of fountains choreographed to music and coloured light, every night from 1 May to 30 September. No tickets, no booking. Bring a blanket and arrive half an hour early for a spot on the grass. Daytime fountain runs at 4pm and 6pm have no light or music. The Japanese garden here is the largest in Europe.", "g": "https://maps.google.com/?cid=4846613583791337052", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCEwW4Wx7zcTwblsF0z_fWrDtCi19nt2LbmodmL-yLEI8sj8g6FrAyEO7NWf8XDYe0cjSHRl0osVONg9T-4Et4y_kvMsDseK_cUlyq8GlBoivxZd4bTgzUi1GMtLfBgyWRQ_PJtiMEzVxlYYg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB2rnqy15rgrIiN5KUGwF3EapGNxnzPwXPB0eyP5V6ZbDptLi0-9CtDh9ST67o22E9L3bfdjPH6v-dQ6lFQ3qM8OCoDNwKv7Xe52eoCh-i4iUBO0OmDdDbTR89CmC4qBy-ziv8Dpkto-dNexA=s4800-w800-h600"], "a": ["Josef Benedek", "Antonio RG"]}, {"c": "green", "n": "Park Fiction", "zh": "FREE · plastic palms over the port", "lat": 53.5462095, "lng": 9.9572961, "m": "4.4★ · FREE · 24h · buy a beer at the kiosk on the way, there is no bar", "d": "A small terraced park with artificial palm trees and a flying carpet of astroturf, sitting directly above the container cranes. Locals bring a bottle and watch the ships; skaters use the flat bit. Go for sunset. It can attract a rough crowd late at night, which some reviews flag honestly — in daylight and early evening it is simply the best free view in St. Pauli.", "s": "Residents fought off a planned office development in the 1990s by collectively designing a park instead, canvassing the neighbourhood for wishes and calling it a park of collective desires. It took a decade of squatting, campaigning and one very stubborn planning process before the city gave in and built what they had drawn.", "sl": "A park the neighbourhood designed itself", "g": "https://maps.google.com/?cid=17828805516853903976", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBu7I6Q9p1TwavsUirqKvbjAfL3mRKt4kJ596lFDSGZbkDZ9vrxxdwrdvRDY1_xbD2R6kaOQUQlW7g4FCJaES-jIsvFaJkTVuPK2qu8gPxFznqN_z_KfoqAH8cesQcisJP1UlOSCso0gNHjaQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBFe26zZToQ8953niT2eSm4td2Un8d7pdAqZcE3qCzGRwCqtcdJ8fVlbKtn2wvCG8TlBt2GpyP3BwUzVYesdjmrshqW2o1j6piizQf_zyDfSS9mlj9_262OFzDBLXD4ADTBQqINpSA0AnMy=s4800-w800-h600"], "a": ["arwand92", "Silvio Steiner"]}, {"c": "green", "n": "Friedhof Ohlsdorf", "zh": "FREE · 389 hectares", "lat": 53.6197704, "lng": 10.0346648, "m": "4.7★ · FREE · 9am–9pm · TWO BUS LINES RUN INSIDE IT · 25 min from the centre", "d": "The largest park cemetery in the world, and it reads as arboretum rather than graveyard: 389 hectares, 17km of road, ponds, chapels and free-roaming geese. Two public bus routes run through the grounds because walking it is not realistic. Go for the mausoleums in the older Cordes section and the bombing-victims memorial. An hour, not a day.", "g": "https://maps.google.com/?cid=6849892537642406", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCwigAG8tJeUyWWOmkD4IuMra37OyJtgIgXSxUcPjqXDXc1oG9wV-Wk9PRnSVSW34y7r6x1Vu2XK7Z6mYhW_lpYjXXNXy1gJkZRTaIW5x81CKqMBQ4V59Ola_K3JoAkLgRg31VbcNCmVJnEy-UBKDP_HQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDDyHZXJR7qJXI_dzfKy486IhlTJxUjW7uWzUV-9T5WT_mTdAsDClNILPcgT_bHCGEtTNi_9gYz_lm1zPi2ifB3mOLjvy2DHy0c16xDfVl1RJQreXUNmgx2nsnITNZ4avUvolon45WDN3iEU8ocsCGvjw=s4800-w800-h600"], "a": ["Hanse Freddy", "WL-Fam. Balthasar"]}, {"c": "kiez", "n": "Beatles-Platz & Große Freiheit", "zh": "where the band learned to play", "lat": 53.5498334, "lng": 9.9572923, "m": "4.0★ · FREE · 24h · the square itself is five metal silhouettes, nothing more", "d": "The 4.0 is fair: it is a black paved circle with steel outlines of the band, and it takes ninety seconds. Come anyway, then walk up Große Freiheit to number 36 and the Kaiserkeller, and to the Indra at number 64 where they played their first Hamburg night in 1960. Those doors are the actual thing; the sculpture is not.", "s": "They arrived as an unknown five-piece and played up to eight hours a night, seven nights a week, sleeping behind the screen of a cinema. Lennon later said they were made in Hamburg, not Liverpool. The Star-Club burned down in 1987; the Top Ten is gone; the Indra and the Kaiserkeller are still operating.", "sl": "Eight hours a night, sleeping behind a cinema screen", "g": "https://maps.google.com/?cid=9061985229508890929", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBiofWVFyb0TENiQiZozPfzz0VpzMyFrl_WDUhF-AT0B6wdDE0hNaXzcIzBaomd_mSC6Q2pz2Ahiq8q928bFfCjUgalbTIQWdY-9neYuqJtbqnm3eQrKtGYv-O9SThffzOmXWAALYI6J4zlWSVBZ3As=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA3bJqt_nKImfj6_iVY3qBEkcveVd4M_2rppVs29fXgWIqbnqDar_QJsp4Skr9e0VNDPptcAtG1h6Sotj3_Pg551YXxef6q_IwyRgyVDav6cnt2sCToGZyVAMezdqZK9qjMQmwAEYDLvFQ=s4800-w800-h600"], "a": ["Lauren Kairalla", "Erich Edelsbrunner"]}, {"c": "kiez", "n": "Millerntor-Stadion (FC St. Pauli)", "zh": "skull-and-crossbones football", "lat": 53.5545872, "lng": 9.9677539, "m": "4.5★ · match tickets are hard to get · stadium tours run most days, book ahead", "d": "The most politically outspoken club in German football, playing in a ground wedged into the middle of St. Pauli with the Bunker looming over one stand. Match tickets go to members first and street resellers charge four times face value — buy at the ground or take the tour instead. Non-matchday, the Ballsaal bar and club shop are open to anyone.", "s": "The skull and crossbones was not a marketing decision. A fan brought a Jolly Roger flag to the terraces in the 1980s, the squatters and punks of the surrounding neighbourhood adopted the club, and it stuck — to the point that the club later had to fight legal battles to control a logo it never designed.", "sl": "A fan brought a pirate flag and it stuck", "g": "https://maps.google.com/?cid=7383923173610432790", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC2hDSs9cBxdOmyxCk_ITIZ06bwHPfUb6mxAXET2AkmFvunDTbyorz6mOLgiogsTHyDPv5pSw6JxhrAadrEy69KtiraxMwSxSbtfJqpyAa8hYmbMNdCO5xXYBOiwC30qp4VHIteUaQjbatmCQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDON5B0ny_VPTTs9l352XNaPDGZcXSVlrDRdT1hrs3eMJ10Gu8pY4z-I9gGFZPiOLXL-su3QEmG15C9SZEPAp7tLC9su02WEdn098wvVF5FY2k9v7DNIHlVX4hKgMLmZKmoe_mEUMH-7FYG8Q=s4800-w800-h600"], "a": ["Matthias", "Max"]}, {"c": "cheap", "n": "Brücke 10", "zh": "EUR · the classic Fischbrötchen", "lat": 53.5454667, "lng": 9.9638471, "m": "4.5★ · 4–6 EUR a roll · daily 10am–10pm (Sun from 9am) · EXPECT A QUEUE", "d": "On the pier itself, so touristy by definition, and still the benchmark. Order the Krabbenbrötchen (North Sea brown shrimp) or the Bismarck herring; the Backfisch is good but everyone has it. Eat standing at the water. One recurring complaint is the bread being over-baked — if that matters to you, Kleine Haie does it better inland.", "g": "https://maps.google.com/?cid=135184144397501159", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAEuEWNd92blj8Qeu0jqMlFToJ45ST3HSkLb8qOpoLFRN99DPekaENmcE3mXk-jlWNMeULrATdbMYshbW5jmGk_cIekYYKIyUudJMZzGCKH5QLXJc9DjObXtJHqCwddILXeAKaBm5xVtd90JbA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBUBVIFRd_fHyWKSOSmul6MpC2tXVr6Y0BXOzEmOH-Xuww95HRxUEo7Fzl47CQ85k1818ysKZMFyzcQBBm9H6Qc4hIinslxzL6_KE0xaRTkb9rlbswIMMjtNHCJ5-Qbu71PNQvpM2OI5WBTflIFbx3ZvA=s4800-w800-h600"], "a": ["Brücke 10", "Brücke 10"]}, {"c": "cheap", "n": "Kleine Haie Grosse Fische", "zh": "EUR · 4.9 stars, open late", "lat": 53.5489691, "lng": 9.960116, "m": "4.9★ · daily from 10am · FRI TO 3AM, SAT TO 4AM · two minutes off the Reeperbahn", "d": "A 4.9 average across 2,600 reviews, which for a fish counter is close to unheard of. Get the Matjes in the dark bun with dill, and the potato salad with bacon. The real trick is the hours: it is open until three or four in the morning at weekends, so you can skip the 5am Fischmarkt entirely and still eat properly on the way home.", "g": "https://maps.google.com/?cid=5477692342291434927", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCCw5vNM2-CCmnlA-UZKlSD9TtGtAkqiaWuYBDaKOMwTQiqpnsLhJ49RKV2feIcfv2HdeCv93R1uk6Ulk75QxD9z9Sb1nr2B0sOtn9ydjo51aaLEVLJd5U8WeFmgiTK14205CJ7bGopuAsjQQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAEKCFWhJAIMQrkv4iUSrgSRLcfmU_6aNF1t1P4Vy55-UXXcg18OMmMn186jqQ1R4Tw_l9zf2mCG7gFsbLPBLWWO4uVmGJO7Q2qpDBLpPxWdfKx8dY2Vwvh4Pki7k22eGFxE9CE_e1EuIPfQg=s4800-w800-h600"], "a": ["Marco Gaus", "Kleine Haie Grosse Fische"]}, {"c": "cheap", "n": "Veddeler Fischgaststätte", "zh": "EUR · Backfisch since the 1920s", "lat": 53.5292623, "lng": 10.0203935, "m": "4.7★ · CLOSED SAT & SUN · Mon–Fri 11am–5.45pm · BOOK, or queue 20–30 min", "d": "A century-old fried-fish room on an industrial island most visitors never cross to, full of dockworkers and pensioners at noon. Order the kleine Portion — it defeats most people — with the house potato salad. There are no knives on the tables and never have been; you eat Backfisch with a fork. Everything is fried, so do not come looking for a light lunch.", "g": "https://maps.google.com/?cid=15889541690398421813", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDHO5gs1nf8-bQ0cVSg8oEYyLZDwdfpKTVo9Fkr9-_AIr2s2F3p9D4eu5VUbQnPaV6Evg689QDdLGjLfqULeke5__WllmEjc2uSHp0nPnoeJcv_YJFnlfZfOwd5Ve_RI3ui_7eJJorazdj4WA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDLCwFrZ_aPqzlNUXqQj15SDTdgQAz1yICmlkFuSl-6zpbeE_CiHKvMH2bjtsx_EJ4YkHUGMGBV4nZ4HKG1493phmkLcJHlyFiMPKy2eA8whQLdzPsaKqVnUYeWdjMLLNMmIXLXeRXhIoxWqQ=s4800-w800-h600"], "a": ["Jean-Marc Vandel", "Karl-Heinz Karch"]}, {"c": "cheap", "n": "Nuggi's Elbkate", "zh": "EUR · fish rolls at the ferry stop", "lat": 53.5435595, "lng": 9.9148312, "m": "4.4★ · daily from noon (Sun 11.30am) to 10pm · CASH IS SAFEST · ferry 62 to Neumühlen", "d": "A shack at the Övelgönne ferry pontoon where the rolls are made warm to order with herring or salmon, onion and cucumber and nothing else — no remoulade, no lettuce, which is the whole argument. Several reviewers rate them above Brücke 10. There is pea soup when it is cold, beer always, and bachata on the speaker.", "g": "https://maps.google.com/?cid=16163898988476849354", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDTxed0qIxqEDjq2x7PpDrjjebnmYgcnWo3vyTTGr5dD3YjsDg-ajy0Ms5l1F1dLoDxUGRYbw7eehedtac613Tr5Ktt983adLmh7GFrbc7dzeD7VAAhEzoj_ykm9Zn7m3sICMnQ2TifrUD85T4=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBMxU56ll4Us4AL4nWanUfjKXAkoDI0mMTpv1zk-GHnFbEDvyGQ0YxTbiczrFGnZoWmX3qRl9Dos749BfvOpcAhm6HywzN-9IR4czWpcDokzyPtTbI-crPP3vUAqFVfKCGze1hTPBrEnXXXhQ=s4800-w800-h600"], "a": ["Nuggi's Elbkate", "Nuggi's Elbkate"]}, {"c": "cheap", "n": "Backecht", "zh": "EUR · the Franzbrötchen stop", "lat": 53.570645, "lng": 9.9851245, "m": "4.5★ · Mon–Fri 7am–6pm, Sat to 2pm, SUN TO NOON ONLY · GO EARLY, it sells out", "d": "Hamburg's own pastry is the Franzbrötchen: flattened, caramelised, cinnamon-heavy, and utterly different from a cinnamon roll. Backecht makes theirs by hand with Ceylon cinnamon and marzipan, and gets the caramelised crunch on the base that the chains never manage. It is a takeaway counter with a few barrels outside. Buy it warm and eat it immediately.", "g": "https://maps.google.com/?cid=8834272212264728203", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBgqJzwNjcUIxPxfT1-FHBCc0NguZz5i0R7SgLe-pXSLEf66P-Q016EloZMY90DGnnvyRGDWEn5w0hz1fPuLUkXv2uughn5D6-jl-z8AEEYH0C3u5Wqr_GQv6HiQpCmlOOaJZCRnokbO2XyKg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBUK5eVY-4NSfNGOaS8ezenhONtpIvhAEpWJKkCnLAsD_R1SKGxI0cNwNXY1h8IQv5VKjstzwc9XU8MczhLMKtcaQJ03l7Z1pCfgEBKMAR5F_L9j8kpDaDdKktgmNnhMU9bynJhNpZUymz17Q=s4800-w800-h600"], "a": ["Backecht", "Jens Jacobeit"]}, {"c": "cheap", "n": "Badshah", "zh": "EUR · Indian thali by the station", "lat": 53.553968, "lng": 10.0114309, "m": "4.4★ · daily 11am–10pm · CASH ONLY · around 10 EUR for a full thali", "d": "A cramped, loud, permanently full room off Hansaplatz where you order at the counter, take a buzzer and get a metal tray of curries, dal, rice and fresh naan for about ten euros. The paneer thali and the masala chai are what regulars order. Ignore the biryani, which is where the bad reviews come from. Cash only; there is an ATM on the same street.", "g": "https://maps.google.com/?cid=2468347605445550630", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjByvpTsyBYFbC93TFCIJBfbqbqtY6oJfr40_yqp2VYFBdpwJa4_PWUShPfQxyP4tkUx3BHoy03U7vs-ZI77oBWcV7zOAseCkYw1q_-PisOZaHHP4bLfWXmzeFAvx6Es2aywg6OCxW8Ch70Gotc=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA8rOV-iswqbOPZegMZBoaD0d80ZvYWhJDVmEgJx9S6gpOZaGex5bjxzODuNLF2-sQ8SVFU1f-76Nw5hDl-o1_vN1eowLSiIC5VXfsp7YgdWpLtqrllzjbNpX1oeLaF1h5srRIMJdagaQXx2HQ1uZANig=s4800-w800-h600"], "a": ["Constantin Möller", "Martin Kleppe"]}, {"c": "cheap", "n": "Kimo", "zh": "EUR · falafel under 5 EUR", "lat": 53.5644173, "lng": 9.9652312, "m": "4.6★ · daily 11am–midnight, FRI & SAT TO 4AM · basement, duck your head", "d": "A souterrain room opposite Sternschanze station frying falafel to order and rolling it into fresh bread with pickles, hummus and tahini for under five euros. The sit-down falafel plate is about 8.50. The shawarma and the grilled merguez are the sleeper orders. Ventilation is poor and it smells of frying — nobody who eats here minds.", "g": "https://maps.google.com/?cid=13687550222407062319", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAobgba48KPvbTK7MX0JlhiXZuB_hb1Yv2BAwYfWbxy-wpgI4cgetaWVg20WfK5NzvFE_lJKJ80YxKChPGfXBUD0mOjBiRTNcuVPITnmKru_6cHownnJg6KnVZafX2yeNn8C4QHqrHxqChX=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAlh6S4-WnO2lqaflrU5EWZyu9-o5W3sURaiPmI4VKyFkMQBLCe0JkjRTfbQPiUcK28TNYiFHvsnbUnwJmkCmSV9XxPAm24zMMmnt1QOWXGEb96jxvHY8Or-T3ISU92SaavLqEbuVrm1oNS_ZTwQUDC=s4800-w800-h600"], "a": ["Rafah Tchalabi", "Scubatheworld Blogcom"]}, {"c": "cheap", "n": "Kleine Pause", "zh": "EUR · chips, beer, 3am", "lat": 53.5548241, "lng": 9.9621883, "m": "4.5★ · from 8am daily · to 3am, FRI & SAT TO 5AM · draught beer and 3 EUR caipirinhas", "d": "The Imbiss the Kiez actually runs on: chips, chicken, vegan bratwurst, burgers, beer on tap and cocktails at prices that read like a typo. Open from eight in the morning, which tells you what it is for. Reviewers who came expecting a chip shop keep writing surprised paragraphs about the burgers. Sit at the bar; the staff are the entertainment.", "g": "https://maps.google.com/?cid=9932146492727191973", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCfKtq36RGiG2sAnjX8r3cSQfa8KixsFqP3UVyeu35RpKIgw8MWFj_SC-CBL8ap_ldED_HbmQSdb3q7o9g71ra7gpFwzE1bl9AOqJSMlJw3evWXGtJybzu3yR2aBG51un2KkipI_EEM5drH5UkEQyDp=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBUAbCORLoWKkOGJNnICzffIxxPFszX3Ur5KM58O1VYfFNYOa7Tu0gB411PLMg2ieKa3IfPzroC1BHwPEzOUh8gq7vj61flbVVwdoQJeOaMS3azYmieWbNB2EXxpKTPYfIPug35nZACXZCkABU=s4800-w800-h600"], "a": ["GuyJacques", "Oliver"]}, {"c": "mid", "n": "Oberhafen-Kantine", "zh": "EUR EUR · Labskaus in a crooked hut", "lat": 53.5446167, "lng": 10.0069237, "m": "4.5★ · CLOSED MONDAYS · Sun to 5.30pm only · BOOK, it seats barely 30", "d": "A tiny listed brick hut under a railway bridge, leaning so far that the tables visibly slope. This is the place to try Labskaus — corned beef, potato and beetroot mashed together, with a fried egg, rollmops and gherkin. It looks alarming and tastes far better than it looks. Also Pannfisch, Grünkohl and the roast-pork Rundstück.", "s": "Built in 1925 as a Kaffeeklappe, a canteen serving dockers coffee and hot food without alcohol, it is the last of more than twenty in the port. Storm floods have tipped it to about 8.7 degrees, twice the lean of Pisa. Anita Haendel started work here at twelve and ran it for 72 years until she died in 1997; her photograph still hangs inside.", "sl": "Leaning twice as far as Pisa", "g": "https://maps.google.com/?cid=5795398257676251018", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC-Ajjcthaq-HF0YQihOgAKfhQaY24izD1r0P6aV6LNrkRgL3AcmEAuqp_DTzGIj_iMc1FYD64p1cEGjEbyfepmLntzIT3DGv-5P6AqotdOvS9jsx5olZu8tudEkvWBNyUiz2WWTeA4_nWt-FM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD-a-s0FEVgYV3KBbmllaexZFHm2W3dcleQbvzDUtCYD1dDHWPvYQkS5iiynN7r9bgLpIMqa1uXAFtNwg1PbXcpG9Fi0kDwHQgxZDqmSOB6kc1NNFl806F8pfsAsnZOAA2no9LXlrG_XlL1rt2xB4BhlA=s4800-w800-h600"], "a": ["Kevin G. M. Baltruweit", "Kiluu Mustermann"]}, {"c": "mid", "n": "Deichgraf", "zh": "EUR EUR · Labskaus taster portion", "lat": 53.5461321, "lng": 9.9874531, "m": "4.6★ · CLOSED SUN & MON · lunch 12–3pm, dinner from 5.30pm · BOOK", "d": "In a merchant house on Deichstraße, the last row of old Hamburg townhouses on the Nikolaifleet. The useful detail: they sell a reduced-price taster portion of Labskaus, so you can find out whether you like it without committing to a full plate. Otherwise order the Kutterscholle Finkenwerder Art — plaice fried with bacon and brown shrimp.", "g": "https://maps.google.com/?cid=715453418006791663", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjChPCyyaCvWBashsDHz_XhHPBxvUzYs68yRk-LyPfXZsZ7cZXlMbr-hyneH708lag9mCaOoUWuGIxZlupiq0OhQn_WP7zxOIc5mrZVM0wN8NFsp2PeHULw3bAjowxhaZFPQibKmChT9_JwcgxM=s4800-w768-h512", "https://lh3.googleusercontent.com/place-photos/AG9NLjBVRq17VgQxV1CanprpEOl22N1WSNUt-NWMFahRYAopFu3DBnyHOb1FXGh3epPQjMOHPONL5esv4DLhDlGgiqnd_F9SvUnVM2MBk_Q1VJb5geidXMBkFsNybcNQ2vSJ95Z_1u3ReRPUm9eVhalBExFT=s4800-w800-h600"], "a": ["Deichgraf Restaurant", "Joachim Kräuter"]}, {"c": "mid", "n": "Old Commercial Room", "zh": "EUR EUR · opposite the Michel, since 1795", "lat": 53.5482843, "lng": 9.9778089, "m": "4.7★ · daily noon–11pm · BOOK · the plain exterior hides the good room upstairs", "d": "A ship's-cabin of a restaurant that has been feeding sailors and senators since 1795 and is widely held to do the city's best Labskaus. Ask for a table on the upper floor. It is not cheap for what it is, and it knows exactly how famous it is, but the cooking holds up and the service is genuinely warm rather than performed.", "g": "https://maps.google.com/?cid=8484754842821776498", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDOh9hsRZ0RnebjPy5aqvnpRw2r2KC7iu3wm4TniK17HDwVXdZ_WTmDAtzPZyTRFiqzGnUMUuy-5bo4Xuaf7u9cRrd5_UdsaBq9EWAp-yhO942AL8RWNjLKGo4t-exL-nTlFgmk_0WyJoSePJG_kgq5Fw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAIfs4fQft3FSfcxzKfIBJ3ULbioQVf3GUsPjPs6rxPblRbU4Un2pfMXOwfB8gb_zT08XUIqWHZMtGjv9v5hSF_S_zAifajLkTCIhU5i9JbsHiK55_F8Yeb3Tl4lkKEOBV2Qb733th8RO0GDM9g1mEjOQ=s4800-w800-h600"], "a": ["Old Commercial Room", "Benci"]}, {"c": "mid", "n": "UNDERDOCKS", "zh": "EUR EUR · the Fischbrötchen, rebuilt", "lat": 53.5574198, "lng": 9.9659439, "m": "4.7★ · daily noon–10pm · no bookings · go between lunch and dinner to avoid the wait", "d": "What happens when someone takes the fish roll seriously: proper buns, a lobster roll, fish tacos, fish and chips, and puffed potato slices instead of fries. Vegan versions exist and are not an afterthought. Around 5pm it is calm; at 1pm it is not. Two minutes from the Bunker and the Rindermarkthalle, so it slots into a St. Pauli afternoon.", "g": "https://maps.google.com/?cid=6864394683249106635", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjClSe9NNw57HLjHnpkNPQ56c1vsEJ_WiWxGswTCtE2srsBWprdR7UfAgYbTG6HLmY4G1S3V_2_vleXx4fslt5JP-r2UqDsoSQdSF3T2N3LjBrBxKcqQlL6dyV-iZJnts1PhqGCOlZUiyOeitM0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBJFCkfTuVhrHW0ekZvBTQ2EYvxUwbTBZKS9DdpyEqiXktblIMKT3rNgWyiPt0kXsJXD7jkXGIqsBcFgBkIRly_TY2nKBQd8pqnPzOgJ6duN2BAUZcD4o4KebCZofs-8h8hs-T_YPawuAI_=s4800-w800-h600"], "a": ["UNDERDOCKS", "UNDERDOCKS"]}, {"c": "mid", "n": "CYN CYN", "zh": "EUR EUR · 2026 Bib Gourmand · biang biang noodles", "lat": 53.5726357, "lng": 9.960074, "m": "4.6★ (729 reviews) · daily noon–10pm · SMALL ROOM, expect to wait · no reservations", "d": "Hand-pulled biang biang noodles in a plain Eimsbüttel room that Michelin gave a Bib Gourmand in June 2026 — the newest and least-known good thing on this map. Order the beef ragout version and take the chilli seriously; the hottest grade is not a joke. Under a thousand reviews, so it is still mostly locals. Go now.", "g": "https://maps.google.com/?cid=2191260181036032299", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB5yM_oGTI3BB-KG_qzVrRAkDP50Mmn53PnS08PBymGNxSU5wusU9NbUrvGGTPmWB-ksgEPdpKqrN_jSIFqD_YAu-4Wy9sd72IUjABtk0jJZFzinxImAni-u1W89yn4xTPfdrLiBSuXfo5eHlo=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD0SQzxa3GDlcVuV3ez4s6LVR0cIqO0Utn2B0amQogxJUs498E9oOHWuxpP0ONKMpLbA7eVlkl1A0SIfH2pTOIE_iTDfM8yvD-xoXw19SI69hQAQgTJRw5rj0Pw7fkzvR94O6tocnfJ8PROJEo=s4800-w800-h600"], "a": ["CYN CYN Eimsbüttel", "CYN CYN Eimsbüttel"]}, {"c": "mid", "n": "Gassenhaur", "zh": "EUR EUR · 2026 Bib Gourmand · Wiener Schnitzel", "lat": 53.548722, "lng": 9.9633017, "m": "4.6★ · daily 5–11pm, DINNER ONLY · BOOK · schnitzel around 22 EUR with two sides", "d": "An Austrian Beisl in the middle of St. Pauli that took a Bib Gourmand in 2026. The order is the veal Wiener Schnitzel with fried potatoes, bacon and onion, the dill cucumber salad and the house cranberry sauce; finish with the apricot dumpling. The menu is deliberately short. It is expensive for schnitzel and worth it once.", "g": "https://maps.google.com/?cid=8792584898030678144", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCDehVZBM2ZaCdGPKeQq4-KuNgVB0c2uV1LR5hoE93WBUm9pN1uXQroPkjRmQ4vd4-xk6_UU458EbgeRwxjwvvwTt1thM67Lov3qjucpKesVvX34DNWlKyHqffnmcW18R9PVmX_TWXvQhpGuA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC2R42wnw3ULbOosiki7bxLRB3781dzt0lSH2quzdEDL-ahy5x388awnH1oyq69w1tOW-9uieX_vg996UATNQrrLqT4tJzuvIrZsupBqrwGq2OcZSDI9y_Z6e5ajhjE-60-GjSpGXecBygKuogP0jyvyA=s4800-w800-h600"], "a": ["Gassenhaur Restaurant & Beisl", "Trang Pham"]}, {"c": "mid", "n": "Erika's Eck", "zh": "EUR EUR · schnitzel at 6am", "lat": 53.5610516, "lng": 9.9674917, "m": "4.6★ · OPEN 24H FRIDAY · Tue–Thu from 6am · Mon evenings only · BOOK for dinner", "d": "A butchers' district pub with famously deranged opening hours, feeding taxi drivers at dawn and the Schanze at midnight. Order the schnitzel with Bratkartoffeln; portions are enormous and the coffee is still about 1.50. There is no vegan anything and no pretence otherwise. Book if you want dinner — it fills with locals by half seven.", "g": "https://maps.google.com/?cid=16896924532304655301", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDa-zGLNzeAIK1UzuDR3YEU5LfkWZEnIeuGEksoNbr-AtTtjN57ldOI3ACgSm5W-5IYSDprSNdiKbt2eCh7-Gd7GFPORbhg7QLdHnq3gfvax4sX7ETnSvlfX9BSCyDm5G87sTldcbVHUBGvFg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA424fAa_nVe_3qI0Pp_iIpoNVF4dNab5jDPXNnvwT2L56lNgraWnrUjB2aPW2aH-kIiVmabUG4eWMRZHufiBBV4eln2VfJW6OQ7WXYFCNUywg6V-FSEcF8f8pnn4ADojZGp9kjR4JGJB5w-t9qbe-g0Q=s4800-w800-h600"], "a": ["Konrad F.", "Fabian Krüger"]}, {"c": "mid", "n": "Strandperle", "zh": "EUR EUR · the Elbe beach bar", "lat": 53.5444623, "lng": 9.9053669, "m": "4.4★ · daily from 9–10am to 11pm · ORDERING IS APP-ONLY · 50 cents for the toilet", "d": "The institution on the Elbe sand at Övelgönne, where Hamburg sits with a beer and watches container ships go past at eye level. Fried fish, potato salad, decent remoulade. Ordering is now entirely digital, which frustrates plenty of reviewers, and it is packed on the first warm weekend of the year. Ferry 62 to Neumühlen, then walk five minutes west.", "g": "https://maps.google.com/?cid=1038192162845122987", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCwBS25Z-pBoZdbjxtDVMLQLpvAWSmcMx1IfzdiPIovtBlE3wZjjSN_S9Pf4ID_O5IsMHTxBEv6ZqhAC8R77OgKn6JwhU_Wx-IDYFH9iUoYoYMUBIidIuh7Gw8k5cH8UACh2IPk8NzqxgTWC7YSmHNZ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAG9RrMlR6lwVWBG3nl0cSaKRRFnu2kNmLXuOXCNmbyl11LD_Jj-49-QmRc9VHrDPkjYoVggz8gKEnX2-SiYlyV4Lq7CyWO7Kb74v3qZep1Fq0310JWezLLNnPRGIRFkruMbKxue_ww382CGpjPvGh72g=s4800-w800-h600"], "a": ["Sophia", "Carmen Gründer"]}, {"c": "splurge", "n": "Restaurant Nil", "zh": "EUR EUR EUR · Bib Gourmand set menu", "lat": 53.5562931, "lng": 9.9632767, "m": "4.7★ · CLOSED TUESDAYS · dinner only, 5–11pm · BOOK WELL AHEAD", "d": "A St. Pauli institution since 1989 and a long-standing Bib Gourmand: a short seasonal set menu at a price that looks like a mistake for the quality. Vegetarians and vegans are properly catered for start to finish rather than handed a risotto. Service is described as either warm or cool depending on the night; the cooking is consistent.", "g": "https://maps.google.com/?cid=1916277544563382224", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAsAvMOI5rtMEDy9AfUdbO3qU2cPPhUFreHWmxY09ics_QfPrKCS3FwwpMiOJBwqu6QuCEyA8S4IiBT7L6CfKpCA049j4jp4VIA052pqwIAK_Fn08A_1WxgUReB7HXPFDiS-gULft_T9qa6P6D7ormg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCbPpAPmEcuqJFV6D93Olmo48hBt_gWfxMAgUITuB3iuUSctCUQM4-5CNM7bOyNWq6jLC8gJz6hgrhPdigft2DvonoOFrFEbsVFUhySxQyD7cxehUFnJK1g_6Cw9SkTFzloL6mTZbJ0I-aShqM=s4800-w800-h600"], "a": ["Matthias Nitsche", "Bernd Zipper"]}, {"c": "splurge", "n": "Fischereihafen Restaurant", "zh": "EUR EUR EUR · white tablecloths, Elbe view", "lat": 53.5444769, "lng": 9.9359255, "m": "4.7★ · daily noon–11pm · BOOK, and ask for a window table · the Aalsuppe is the order", "d": "The grand old fish restaurant of Hamburg, on the Große Elbstraße with the river filling the windows and a clientele of regulars who have come weekly for thirty years. Order the Hamburger Aalsuppe — sweet-sour, dried fruit, and despite the name not necessarily containing eel — then a whole fish. Service is old-school and unhurried, which some read as slow.", "g": "https://maps.google.com/?cid=10325299203732321488", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAvxtV4GrB8JQ5okk-MGNzBHtRS7L0nQjyojvmIo5lRHO4-4LLR4KrpPbONdg8QeV0sCcS2yzNXy8frRdYhFTXDFYJIvX3KkgLporwNiPgcXjoRByXBwVcp0Q5ZAN6EXnzJsY_KH6zmP63pkg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBzyyR3eMKQII0avPUwj18_971SpmyQmx6dt9HTFZQp5yqylPtNnfxsl1mjX7a_YfPx0HmgiP50yxoSu_CHCxdsOmqLoGBHjJhhl-B71jnBuPJ8I9z9uX_OmDSgrO1BE5yHuyche2qax-Tc8KXZ2C7geQ=s4800-w800-h600"], "a": ["Fischereihafen Restaurant", "Ben's Dinner"]}, {"c": "bar", "n": "Le Lion · Bar de Paris", "zh": "where the Gin Basil Smash was invented", "lat": 53.5501513, "lng": 9.9945869, "m": "4.6★ · CLOSED SUNDAYS · from 5pm (Sat from 1pm) · no sign on the door · around 18 EUR a drink", "d": "An unmarked door near the Rathaus opening onto one of the most respected cocktail bars in Europe. Order the Gin Basil Smash, which was created here by Jörg Meyer in 2008 and has since gone worldwide. Go upstairs if there is space — the ground floor gets standing-room busy and reviews turn sharply negative when people end up drinking 18-euro cocktails on their feet.", "s": "Meyer put the recipe on his blog the week he invented it instead of guarding it, and bartenders in every city picked it up within a year. It is now one of a tiny handful of modern drinks to enter the international canon, and it started in a room in Hamburg with no name on the door.", "sl": "He gave the recipe away for free", "g": "https://maps.google.com/?cid=11580049440989649008", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCdjHNBgwaNEBBQuugaTnJ3IIqwpdAPsICCdtrQT03RCEorEKwfGmj6K1se6CkQodoSicc3EkUcdR_Y-d6lQQp-bW2RlDPe5JY5e0hTG_uV09y_TOeb67x6pQcsccbeHYxoA__CrZodoaKu5Gk=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAEnorlGPygUY7kS6G6j051K6OLOWgoP68CgT84rZUvPSUpvZUCqZLKtLGqFI9hBEFaGwmF2zDHAwz9ceN5jqdWRsrNnBC7KhqmaIWmfueYOCu_v-S1DKKy2zlbmjngqENkPlMcFg59u9_UPLs=s4800-w800-h600"], "a": ["Le Lion · Bar de Paris", "Le Lion · Bar de Paris"]}, {"c": "bar", "n": "Altes Mädchen", "zh": "brewpub · Ratsherrn · own bakery", "lat": 53.5631524, "lng": 9.968057, "m": "4.3★ · daily from noon (Sun 10am) · SERVICE IS SLOW, plan for it · courtyard seating", "d": "A brick brewery courtyard in the Schanzenhöfe with sixty-odd taps, a tasting flight of Ratsherrn beers, and a bakery on site that turns out Franzbrötchen through the day — the one place you can have a cinnamon pastry and a pilsner in the same order. Also a good Labskaus made with free-range beef rather than tinned corned beef. The 4.3 is service, not beer.", "g": "https://maps.google.com/?cid=14600450193727102290", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBJHE4Ho9U3Bxt7pT8oE_TWUWrQl6hx6lv80OCOJx1sHczX7R19FZVC-KOfdYxmARd60tO6cYge-QY6a8aDBepixVqBOqAZGfyydLW2r6EsghdRbokfAmJ0Mhb6_cIh0ecn6NDd56zARsO4=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC76C7EneuWk5dg2cm_tBNbp_c5htlh3bUKFzeQp5wlmO6tTBFttfST9y5YGaGOMl2Ha4iHvdxyY_Mx2xop3wEkeQLa8etl8eLe_gQ0w-6LkyJJi_OSOifNEiXOidYZRb9kT8F_VfifvpnYHg=s4800-w800-h600"], "a": ["Altes Mädchen", "Altes Mädchen"]}, {"c": "bar", "n": "Katze", "zh": "Schanze corner bar · 5 EUR caipirinhas", "lat": 53.5626295, "lng": 9.9618198, "m": "4.2★ · daily noon–3am · CASH ONLY · 1 EUR GLASS DEPOSIT, unannounced — keep the receipt", "d": "The Schulterblatt bar everyone in the Schanze ends up in, known for cheap and genuinely good caipirinhas and a happy hour that runs roughly 7 to 10. Two things the reviews are right about: it is cash only, and there is a euro deposit per glass that nobody tells you about, so bring the glass back. Standing outside on the pavement is normal here.", "g": "https://maps.google.com/?cid=6436520397355593754", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB0kca0IwRHM6vomHsDMb7Uqiky0e9XAJ5qf2-QMUO1u9h2cTx9vd2tUIRxjIR5IiyGbmWNId_f7L1tOMrV76XCr9y9fg9rBFHyvlTT3Obj_CPPJnCoCKOvxdMXV5aqVcxvJflv_33IDHNE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBnDITGe34gEy9KFDnLsvS3NJGsZakKZGYYYvzkz13j8vTQWdy-hJYhBoDYxH9E1FaNMYhi4lQ55T7IMwfQj7qAp3Bwa2H--O4Lh4X8mZQvg1ByAnPWurJ12Pxj0a3Hq3rEvgeJshMiu37S=s4800-w800-h600"], "a": ["Tuukka Varjoranta", "David Schneider"]}, {"c": "bar", "n": "Elbschlosskeller", "zh": "the bar that never closes", "lat": 53.5499129, "lng": 9.9614956, "m": "4.4★ · OPEN 24 HOURS, 365 DAYS · smoking bar · cheap beer · go early, not at 4am", "d": "A single small room on Hamburger Berg that has not locked its door in decades, drinking around the clock with a mixed crowd of regulars, night workers and the genuinely down-and-out. The landlord is a local figure who has spent years quietly looking after the people who end up here. Go in the early evening, buy a beer, do not photograph anyone. Door staff have been accused of discriminatory refusals in recent reviews.", "g": "https://maps.google.com/?cid=3181849728130959130", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjADQRLKqGIwOAQwOV5L4ZHBTHCSAIhFV9IPvhZvQkFAttj76GuUYdEx2QsgMKvcU8DeFDkbDen-nvTFMz1Frn1BLo5XFwc5_Tko2T7H2K1pOBTVw4oM9V1zFszFNdRQI1JlYOgSX34fboNnc-cZbtAqyw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDZj6YzIS7gReSZwgHQdAIVlj_X3nNWJFzbtsRiVUHDViFOAW-T9eNWcT8JaIZKx88PMLUeOsuECW43Oy_GqphoQOh_4QjQuHrZolbGBOCnXHTgtiqW7m3w78R9NNOmPcnh38BDgfQAQOmfGt2xyR6q8w=s4800-w800-h600"], "a": ["Andreas Deibler", "Peter S"]}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+'" style="background:'+CATS[pl.c].color+'">'+glyph(pl.c)+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng+"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  map.panTo([pl.wlat,pl.wlng],{animate:true});
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the sheet down to dismiss ----
+   Touch: drag anywhere in the sheet, but only when it is scrolled to the top, so
+   reading long cards still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    if(sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'y':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(dy)>Math.abs(dx) ? 'y' : 'x';
+    if(drag.axis==='x'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(dy<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=dy;
+  sheet.classList.add('dragging');
+  sheet.style.transform='translateY('+dy+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='y' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
