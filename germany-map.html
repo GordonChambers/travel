@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Germany — Country Highlights</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+  .grab{width:38px;height:4px;border-radius:2px;background:rgba(255,255,255,.85);
+        position:absolute;top:9px;left:50%;transform:translateX(-50%);z-index:2;
+        box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .sheet.nophoto .grab{background:rgba(0,0,0,.22);box-shadow:none}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Germany — Country Highlights</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Pin colour is the kind of sight; tap any pin for hours, warnings and a photo. Photos load live from Wikipedia, so they need an internet connection. Opening hours and prices were checked in August 2026 but move — verify anything you would travel a long way for, and book Neuschwanstein, the Reichstag dome and the Historic Green Vault weeks ahead.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grab"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"oldtown": {"label": "Old towns & squares", "color": "#00695C", "icon": "landmark"}, "castle": {"label": "Castles & palaces", "color": "#6D4C41", "icon": "castle"}, "church": {"label": "Churches & cathedrals", "color": "#6A1B9A", "icon": "church"}, "museum": {"label": "Museums & collections", "color": "#1565C0", "icon": "palette"}, "memory": {"label": "20th-century history", "color": "#455A64", "icon": "milestone"}, "nature": {"label": "Landscape & viewpoints", "color": "#2E7D32", "icon": "mountain"}, "industry": {"label": "Industrial heritage", "color": "#EF6C00", "icon": "factory"}};
+const ICONS = {"castle": "<path d=\"M10 5V3\"/> <path d=\"M14 5V3\"/> <path d=\"M15 21v-3a3 3 0 0 0-6 0v3\"/> <path d=\"M18 3v8\"/> <path d=\"M18 5H6\"/> <path d=\"M22 11H2\"/> <path d=\"M22 9v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9\"/> <path d=\"M6 3v8\"/>", "church": "<path d=\"M10 9h4\"/> <path d=\"M12 7v5\"/> <path d=\"M14 21v-3a2 2 0 0 0-4 0v3\"/> <path d=\"m18 9 3.52 2.147a1 1 0 0 1 .48.854V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6.999a1 1 0 0 1 .48-.854L6 9\"/> <path d=\"M6 21V7a1 1 0 0 1 .376-.782l5-3.999a1 1 0 0 1 1.249.001l5 4A1 1 0 0 1 18 7v14\"/>", "factory": "<path d=\"M12 16h.01\"/> <path d=\"M16 16h.01\"/> <path d=\"M3 19a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5a.5.5 0 0 0-.769-.422l-4.462 2.844A.5.5 0 0 1 15 10.5v-2a.5.5 0 0 0-.769-.422L9.77 10.922A.5.5 0 0 1 9 10.5V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z\"/> <path d=\"M8 16h.01\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "milestone": "<path d=\"M12 13v8\"/> <path d=\"M12 3v3\"/> <path d=\"M18.172 6a2 2 0 0 1 1.414.586l2.06 2.06a1.207 1.207 0 0 1 0 1.708l-2.06 2.06a2 2 0 0 1-1.414.586H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z\"/>", "mountain": "<path d=\"m8 3 4 8 5-5 5 15H2L8 3z\"/>", "palette": "<path d=\"M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z\"/> <circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>"};
+const PLACES = [{"c": "oldtown", "n": "Brandenburg Gate", "zh": "Berlin", "w": "Brandenburg Gate", "wde": "Brandenburger Tor", "lat": 52.5162746, "lng": 13.377704, "g": "https://www.google.com/maps/place/?q=place_id:ChIJiQnyVcZRqEcRY0xnhE77uyY", "m": "4.7★ · FREE · 24h · come before 8am", "d": "The last of eighteen city gates, and for 28 years it stood inside the death strip where nobody could reach it. Free and always open. Come before 8am or after dark: by mid-morning the square belongs to costumed characters and coach groups. The double cobble line nearby marks where the Wall ran.", "s": "Napoleon took the bronze chariot on top back to Paris as loot in 1806. It was recovered in 1814 after his defeat, and when it was reinstalled the goddess quietly gained an iron cross and a Prussian eagle she had never had before — a victory monument rebuilt as a snub to the man who stole it.", "sl": "Napoleon stole the chariot on top"}, {"c": "memory", "n": "Reichstag Dome", "zh": "Berlin", "w": "Reichstag building", "wde": "Reichstagsgebäude", "lat": 52.5186202, "lng": 13.3761871, "g": "https://www.google.com/maps/place/?q=place_id:ChIJbVDuQcdRqEcR5X3xq9NSG2Q", "m": "4.7★ · FREE · REGISTER IN ADVANCE · 8am–midnight", "d": "Free, but there is no walking in: register at bundestag.de and bring the exact ID you registered with. Slots open three months out and summer fills weeks ahead. Book 8am or a late-evening slot for the quiet and the light. Maintenance closes the dome for scattered weeks; the roof terrace stays open.", "s": "When the Red Army took the building in 1945, soldiers scrawled their names and home towns across the walls in Cyrillic. During Norman Foster's 1990s reconstruction the architects kept the graffiti and built the new parliament around it — you can still read it inside, on the guided tour of the chamber.", "sl": "They kept the Red Army's graffiti"}, {"c": "memory", "n": "Berlin Wall Memorial", "zh": "Bernauer Straße, Berlin", "w": "Berlin Wall Memorial", "wde": "Gedenkstätte Berliner Mauer", "lat": 52.5350521, "lng": 13.3901898, "g": "https://www.google.com/maps/place/?q=place_id:ChIJZ0KxF_JRqEcRrLHB-4r-U-o", "m": "4.6★ · FREE · outdoor strip 8am–10pm · indoor centres CLOSED MON", "d": "If you see one Wall site, make it this one, not the East Side Gallery. A 1.4km stretch of the actual border strip, including the only preserved section with the outer wall, the raked sand and a watchtower still standing. Climb the tower at the documentation centre to look down on it, then walk the whole strip.", "s": "The street ran along the boundary: the houses were in the East, the pavement in the West. People jumped from upper windows into Western fire brigade nets until the buildings were bricked up and finally demolished. Underneath the reconciliation chapel here lie the foundations of a church that the GDR blew up in 1985 because it stood in the way.", "sl": "They jumped from the windows"}, {"c": "memory", "n": "Memorial to the Murdered Jews of Europe", "zh": "Berlin", "w": "Memorial to the Murdered Jews of Europe", "wde": "Denkmal für die ermordeten Juden Europas", "lat": 52.5139474, "lng": 13.3787126, "g": "https://www.google.com/maps/place/?q=place_id:ChIJW2oZB8ZRqEcRyFvuEpCnNBQ", "m": "4.6★ · FREE · field open 24h · information centre CLOSED MON", "d": "2,711 concrete slabs on undulating ground. Walk into the middle rather than around the edge: the floor drops away, the blocks rise over your head and the traffic noise cuts out. The underground Room of Names below the field is the substance of the place and takes about an hour.", "sl": ""}, {"c": "museum", "n": "Neues Museum", "zh": "Museum Island, Berlin", "w": "Neues Museum", "wde": "Neues Museum (Berlin)", "lat": 52.5201349, "lng": 13.3976462, "g": "https://www.google.com/maps/place/?q=place_id:ChIJS8OUk91RqEcRNauNAPV5P40", "m": "4.5★ · CLOSED MON · 10am–6pm · book a time slot", "d": "Nefertiti, in a domed room of her own, with no photography allowed at close range. The building is half the point: David Chipperfield rebuilt the war ruin without disguising the damage. Note that the Pergamon Museum next door is shut until 4 June 2027, so do not plan Museum Island around it.", "sl": ""}, {"c": "memory", "n": "East Side Gallery", "zh": "Friedrichshain, Berlin", "w": "East Side Gallery", "wde": "East Side Gallery", "lat": 52.5050224, "lng": 13.4396953, "g": "https://www.google.com/maps/place/?q=place_id:ChIJS6_t9aZHqEcRGCiRSnvpm94", "m": "4.6★ · FREE · 24h · 1.3km · crowded midday", "d": "1.3km of painted wall, and worth knowing what it is: the inner wall, painted after the border opened and repeatedly restored since, so the murals are 1990 art in modern paint rather than protest graffiti. Crowds bunch at the Brezhnev kiss. Fine as a walk to Oberbaumbrücke; not the place to understand the Wall.", "sl": ""}, {"c": "castle", "n": "Sanssouci", "zh": "Potsdam · Brandenburg", "w": "Sanssouci", "wde": "Schloss Sanssouci", "lat": 52.4042017, "lng": 13.0384999, "g": "https://www.google.com/maps/place/?q=place_id:ChIJUXWcySz0qEcRFgU6MTKjVdA", "m": "4.6★ · CLOSED MON · 10am–5:30pm · park FREE · palace ticket timed", "d": "Frederick the Great's single-storey retreat above six terraces of vine glasshouses. The palace is small and sells timed slots, so book; the park is enormous, free, and needs half a day on foot. Half an hour by S-Bahn from Berlin, which makes it the easiest day trip in the country.", "s": "Frederick asked to be buried on the terrace beside his greyhounds. His nephew ignored him and put him in a garrison church, and the coffin then spent the war in a salt mine and the Cold War in a Hohenzollern castle. He finally reached the terrace in 1991, 205 years late. Visitors still leave potatoes on the slab.", "sl": "Why there are potatoes on the grave"}, {"c": "church", "n": "Frauenkirche", "zh": "Dresden · Saxony", "w": "Dresden Frauenkirche", "wde": "Frauenkirche (Dresden)", "lat": 51.0518734, "lng": 13.7415216, "g": "https://www.google.com/maps/place/?q=place_id:ChIJT31SqELPCUcRo6nGHP5ePWM", "m": "4.8★ · nave FREE · dome climb paid · hours shift around services", "d": "Look at the facade before you go in: the blackened stones are original, recovered from the rubble heap that sat here for 45 years and slotted back into their exact positions. Everything pale is new. Inside is bright, round and startlingly un-sombre. The dome climb is a ramp, not stairs.", "s": "The gold cross on the dome was made in London by a silversmith whose father flew in the bomber stream that destroyed the city in February 1945. It was paid for by British donations and handed over by the Duke of Kent in 2000. The old cross, crushed flat, stands inside by the wall.", "sl": "Made by a bomber pilot's son"}, {"c": "museum", "n": "Zwinger", "zh": "Dresden · Saxony", "w": "Zwinger (Dresden)", "wde": "Dresdner Zwinger", "lat": 51.0529962, "lng": 13.7339266, "g": "https://www.google.com/maps/place/?q=place_id:ChIJ4___HmbPCUcRN5Ub3P2ZfmQ", "m": "4.7★ · courtyard FREE from 6am · galleries CLOSED MON", "d": "The courtyard and its fountains are free and open from six in the morning, which is the time to have them to yourself. Pay only for the Old Masters gallery inside: Raphael's Sistine Madonna hangs here, and the two bored cherubs propping up the bottom of it are the most reproduced detail in Europe.", "sl": ""}, {"c": "museum", "n": "Historic Green Vault", "zh": "Dresden · Saxony", "w": "Green Vault", "wde": "Grünes Gewölbe", "lat": 51.0526345, "lng": 13.7363072, "g": "https://www.google.com/maps/place/?q=place_id:ChIJyQbT02fPCUcRe7V_PZODVM8", "m": "4.7★ · CLOSED TUE · timed entry, book ahead · NO BAGS OR COATS · no photos", "d": "August the Strong's treasure chamber, shown in the restored baroque rooms themselves rather than in cases, which is why entry is by timed slot through an airlock and why bags and coats are banned. Book weeks ahead. If it is sold out, the New Green Vault upstairs needs no timed ticket and holds the astonishing miniature court of the Great Mogul.", "s": "In November 2019 thieves cut the power to a street lamp, sawed through a window grille and smashed a display case with an axe, taking jewellery worth over 100 million euros. Six men were convicted in 2023 after a deal; most pieces were handed back damaged, and some are still missing.", "sl": "The 2019 axe robbery"}, {"c": "nature", "n": "Bastei Bridge", "zh": "Saxon Switzerland · Saxony", "w": "Bastei", "wde": "Bastei (Sächsische Schweiz)", "lat": 50.9619502, "lng": 14.0727896, "g": "https://www.google.com/maps/place/?q=place_id:ChIJ8bXk89a6CUcR-DLw8JcV9Nw", "m": "4.8★ · FREE · 24h · FELSENBURG NEURATHEN CLOSED · go before 9am", "d": "A sandstone bridge of 1851 strung between rock towers 190m above the Elbe. Free and never closed, which is why the trick is timing: before nine you may have it alone, by eleven it is shoulder to shoulder. The paid rock-castle ruin at the far end is shut indefinitely for safety. Walk down the Schwedenlöcher stairs to Rathen.", "sl": ""}, {"c": "memory", "n": "Nikolaikirche", "zh": "Leipzig · Saxony", "w": "St. Nicholas Church, Leipzig", "wde": "Nikolaikirche (Leipzig)", "lat": 51.3403205, "lng": 12.378489, "g": "https://www.google.com/maps/place/?q=place_id:ChIJ25PpmyP4pkcRLQzJbPlESF8", "m": "4.7★ · FREE · 11am–6pm · peace prayers MON 5pm", "d": "Plain outside, and inside a startling pale-green colonnade of palm-tree columns. This is where the Monday peace prayers began in 1982 and grew until 70,000 people filled the streets on 9 October 1989 and the police did not shoot. The prayers still happen every Monday at five; you can simply sit in.", "s": "A Stasi officer wrote afterwards that they had been ready for anything except candles and prayers. Demonstrators carried a candle in one hand and shielded the flame with the other, which meant neither hand could hold a stone. Six weeks later the Wall was open.", "sl": "Candles in both hands"}, {"c": "castle", "n": "Wartburg", "zh": "Eisenach · Thuringia", "w": "Wartburg", "wde": "Wartburg", "lat": 50.966154, "lng": 10.3064025, "g": "https://www.google.com/maps/place/?q=place_id:ChIJMR-Kc3CcpEcR0OqU8OullQg", "m": "4.7★ · 10am–5pm · palace interior BY GUIDED TOUR ONLY · shuttle bus from town", "d": "A 900-year-old hill castle where Luther, hiding as 'Junker Jörg' after being outlawed, translated the New Testament into German in eleven weeks and effectively fixed the modern written language. The bare study is the point of the visit. Book the tour; the keep is a separate climb and worth it.", "s": "Legend has Luther hurling his inkpot at the devil in that room. Generations of visitors chipped away at the ink-stained plaster for souvenirs until nothing was left, and the castle gave up restoring it. What you are looking at is the absence of a stain that may never have existed.", "sl": "The stain that visitors ate away"}, {"c": "oldtown", "n": "Quedlinburg", "zh": "Harz · Saxony-Anhalt", "w": "Quedlinburg", "wde": "Quedlinburg", "lat": 51.7891327, "lng": 11.1415001, "g": "https://www.google.com/maps/place/?q=place_id:ChIJY-UCDCijpUcRW0tp7_IQ3aY", "m": "4.7★ · FREE · 24h · around 2,000 half-timbered houses", "d": "Eight centuries of timber framing in one town, largely because it was too poor to modernise and then too obscure for the bombers. Start at the market square, find the Schuhhof and the Ständerbau of 1346, then climb to the castle hill and the Romanesque collegiate church for the view over the roofs.", "sl": ""}, {"c": "museum", "n": "Bauhaus Dessau", "zh": "Dessau · Saxony-Anhalt", "w": "Bauhaus Dessau", "wde": "Bauhausgebäude Dessau", "lat": 51.8389, "lng": 12.2273073, "g": "https://www.google.com/maps/place/?q=place_id:ChIJG5g_QSURpkcRH2Tb0lmVuhc", "m": "4.5★ · 10am–5pm · interiors by guided tour · you can sleep here", "d": "Gropius's 1926 building, the one every architecture textbook shows, and it is stranger and more modest in person than the photographs suggest. Take the tour to get inside the studio block and the director's office. The Masters' Houses are ten minutes' walk and worth the extra ticket.", "sl": ""}, {"c": "oldtown", "n": "Holstentor", "zh": "Lübeck · Schleswig-Holstein", "w": "Holstentor", "wde": "Holstentor", "lat": 53.8661407, "lng": 10.6796886, "g": "https://www.google.com/maps/place/?q=place_id:ChIJrS2izlYJskcRCN7u5pIYUOo", "m": "4.6★ · museum 10am–6pm · gate visibly leaning", "d": "The gate on the old fifty-mark note, and it is visibly sinking: the towers lean towards each other and the ground floor is half swallowed. The small museum inside on Hanseatic trade takes 45 minutes. Beyond it the salt warehouses and the brick spires of the old island town.", "sl": ""}, {"c": "oldtown", "n": "Elbphilharmonie Plaza", "zh": "HafenCity · Hamburg", "w": "Elbphilharmonie", "wde": "Elbphilharmonie", "lat": 53.5413305, "lng": 9.9844647, "g": "https://www.google.com/maps/place/?q=place_id:ChIJT8RwZwaPsUcRhkKYaCqr5LI", "m": "4.6★ · Plaza FREE from the counter, or €3 to pre-book a slot · 37m up", "d": "The public terrace sits between the old brick warehouse and the glass wave, wrapping right around the building at 37m. It is free: ask at the ticket counter for a walk-in ticket, or pay three euros online to guarantee a time. The 82m curved escalator up is part of the experience. Concert tickets are separate and sell out.", "sl": ""}, {"c": "oldtown", "n": "Speicherstadt", "zh": "Hamburg", "w": "Speicherstadt", "wde": "Speicherstadt", "lat": 53.5450204, "lng": 9.996783, "g": "https://www.google.com/maps/place/?q=place_id:ChIJ7aBJqgOPsUcRi5G5n3ppxzk", "m": "Free to walk · best at dusk when the floodlights come on · a district, so no rating", "d": "The largest warehouse complex in the world, red brick on oak piles driven into the marsh, still smelling faintly of coffee and spices. Go at dusk. Stand on the Poggenmühlenbrücke for the picture everyone takes, then walk the canals; the water carries the light.", "sl": ""}, {"c": "museum", "n": "Miniatur Wunderland", "zh": "Speicherstadt · Hamburg", "w": "Miniatur Wunderland", "wde": "Miniatur Wunderland", "lat": 53.5438429, "lng": 9.9890989, "g": "https://www.google.com/maps/place/?q=place_id:ChIJ4ddwbASPsUcRuhjNLkHPTqc", "m": "4.8★ · BOOK AHEAD, it sells out · opens as early as 7am, some nights to 1am", "d": "The world's largest model railway, and far better than that sounds: 1,600 square metres of miniature Scandinavia, Venice, Las Vegas and an airport where aircraft actually take off. Book a slot at opening or after nine at night to avoid the crush. Allow four hours, not one.", "sl": ""}, {"c": "nature", "n": "Königsstuhl", "zh": "Jasmund · Rügen", "w": "Königsstuhl (Rügen)", "wde": "Königsstuhl (Rügen)", "lat": 54.57306, "lng": 13.6625, "g": "https://www.google.com/maps/place/?q=place_id:ChIJB-gBwCVIq0cRsFFMuW3dTzM", "m": "3.8★ · skywalk ~€12 · the free viewpoint is 800m south", "d": "The 3.8 rating is about the ticket, not the cliff. The chalk headland is genuinely spectacular, but the paid skywalk looks at it from above; walk 800m south to Victoria-Sicht and you get the classic view of the Königsstuhl itself for nothing. The beech forest behind it is UNESCO-listed and free.", "sl": ""}, {"c": "industry", "n": "Zollverein", "zh": "Essen · Ruhr", "w": "Zollverein Coal Mine Industrial Complex", "wde": "Zeche Zollverein", "lat": 51.4859625, "lng": 7.0422802, "g": "https://www.google.com/maps/place/?q=place_id:ChIJiZ9p4O7nuEcRGmxbuL9Y9Xg", "m": "4.7★ · grounds FREE and open · Ruhr Museum 10am–6pm", "d": "Called the most beautiful coal mine in the world when it opened in 1932, and the Bauhaus-influenced steel frames earn it. Walking the site costs nothing. If you buy one ticket, buy the Ruhr Museum: you ride the long orange escalator into the coal washing plant and descend through the exhibition the way the coal did.", "sl": ""}, {"c": "church", "n": "Cologne Cathedral", "zh": "Cologne · North Rhine-Westphalia", "w": "Cologne Cathedral", "wde": "Kölner Dom", "lat": 50.9412784, "lng": 6.9582814, "g": "https://www.google.com/maps/place/?q=place_id:ChIJLz2cNqUlv0cRxqnjljiR7Ck", "m": "4.8★ · €12 SINCE 1 JULY 2026 · viewing Mon–Sat 10–17:45, Sun from 13:30 · tower extra", "d": "Germany's most visited building now charges tourists twelve euros to enter the nave, introduced on 1 July 2026 to cover 44,000 euros a day in upkeep. Prayer in the north transept stays free. The 533-step south tower was always a separate ticket and remains the better spend for the Rhine view. Book online.", "s": "Fourteen aerial bombs hit it and it stayed standing in a city flattened around it — partly luck, partly because the twin spires were the best navigation landmark on the Rhine and worth more to Allied bomber crews intact than in pieces. A 1944 patch of cheap brick stayed visible as a scar until 2005.", "sl": "Why it survived a flattened city"}, {"c": "church", "n": "Aachen Cathedral", "zh": "Aachen · North Rhine-Westphalia", "w": "Aachen Cathedral", "wde": "Aachener Dom", "lat": 50.7747198, "lng": 6.0839201, "g": "https://www.google.com/maps/place/?q=place_id:ChIJ-4fwhHyZwEcRw4hn5SMLczg", "m": "4.7★ · FREE · 11am–6pm, SUN FROM 1PM · small fee to photograph · throne by tour only", "d": "Charlemagne's palace chapel, finished around 805, and the first site anywhere in Germany to be given World Heritage status in 1978. The octagon is the original; the glass choir was bolted on 600 years later. His stone throne is upstairs and only visible on a guided tour, which is worth arranging.", "sl": ""}, {"c": "oldtown", "n": "Porta Nigra", "zh": "Trier · Rhineland-Palatinate", "w": "Porta Nigra", "wde": "Porta Nigra", "lat": 49.7596231, "lng": 6.6441659, "g": "https://www.google.com/maps/place/?q=place_id:ChIJq3oH0pF8lUcR_dsvKfOvlo0", "m": "4.6★ · 9am–6pm · about €6 to go inside · scaffolding on the town side", "d": "A Roman city gate of around 170 AD, still standing to full height because the stones were fitted without mortar and later generations found a use for it. Six euros gets you inside and onto the top. Trier has more Roman fabric than anywhere north of the Alps: baths, basilica and amphitheatre are all walkable.", "s": "It survived because a Greek hermit named Simeon had himself walled into it in 1028 and lived there until he died. The gate was turned into a church in his memory, and stayed one for 700 years — until Napoleon ordered the church stripped away, leaving the Roman gate standing bare underneath.", "sl": "A hermit had himself walled into it"}, {"c": "castle", "n": "Burg Eltz", "zh": "Moselle · Rhineland-Palatinate", "w": "Eltz Castle", "wde": "Burg Eltz", "lat": 50.2052269, "lng": 7.3365473, "g": "https://www.google.com/maps/place/?q=place_id:ChIJdbDnFvxpvkcRdAUTVMGLBPc", "m": "4.6★ · 9:30am–5pm · CLOSED NOV–MAR · CASH ONLY · interior by tour only", "d": "Never destroyed, never sold, and owned by the same family for 34 generations, which is why the interiors still hold their own furniture rather than a museum's. It hides in a wooded side valley: park and walk fifteen minutes down, or take the shuttle. Bring cash — the car park and the tickets do not take cards.", "sl": ""}, {"c": "castle", "n": "Marksburg", "zh": "Braubach · Upper Middle Rhine", "w": "Marksburg", "wde": "Marksburg", "lat": 50.271987, "lng": 7.6493885, "g": "https://www.google.com/maps/place/?q=place_id:ChIJI8vbSAV6vkcRecq25-AMTGA", "m": "4.6★ · 10am–5pm · tour only · ENGLISH TOURS ONLY ABOUT 1PM AND 4PM", "d": "The one hill castle on the Rhine gorge that was never destroyed, so it shows how these places actually worked: kitchen, herb garden, armoury, and a battery of cannon looking down on the river. Tours run every half hour but the English ones are rare — check the time before you drive up. Steep cobbles, poor shoes will suffer.", "sl": ""}, {"c": "industry", "n": "Völklingen Ironworks", "zh": "Saarland", "w": "Völklingen Ironworks", "wde": "Völklinger Hütte", "lat": 49.247467, "lng": 6.8450532, "g": "https://www.google.com/maps/place/?q=place_id:ChIJbRRUrnCulUcR41sDddoJWro", "m": "4.7★ · 10am–7pm · allow 3–4 hours · audio guide on deposit · proper shoes", "d": "The only ironworks of the industrial boom left standing complete anywhere in western Europe: six blast furnaces, the ore sheds, the sintering plant, all of it walkable. You climb gantries and stairs into the machinery rather than looking at it behind rope. Rusting, enormous, and quite unlike any museum.", "sl": ""}, {"c": "nature", "n": "Externsteine", "zh": "Teutoburg Forest · NRW", "w": "Externsteine", "wde": "Externsteine", "lat": 51.8686831, "lng": 8.9175067, "g": "https://www.google.com/maps/place/?q=place_id:ChIJAfqlErxaukcRkqBYqPfWYug", "m": "4.6★ · grounds FREE · rock stairs about €5 · parking €4 · 10am–6pm", "d": "Five sandstone pillars shoved upright out of the forest floor, with a large 12th-century relief of the Descent from the Cross carved straight into the rock face and a chapel cut into the summit. Grounds are free; only the stairway up costs. Treat the ancient-Germanic-temple claims with care — most were invented in the 19th century and amplified in the 1930s.", "sl": ""}, {"c": "castle", "n": "Heidelberg Castle", "zh": "Heidelberg · Baden-Württemberg", "w": "Heidelberg Castle", "wde": "Heidelberger Schloss", "lat": 49.4106196, "lng": 8.7153092, "g": "https://www.google.com/maps/place/?q=place_id:ChIJk9tDygDBl0cR6n7pSTYuZ20", "m": "4.7★ · 9am–6pm · ticket includes the funicular · INTERIORS BY GUIDED TOUR ONLY (extra)", "d": "A red sandstone ruin since French troops blew it up in 1693, and better for it — the half-collapsed Ottheinrich wing is what the Romantics came to paint. The standard ticket buys the courtyard, terrace and the Great Vat of 219,000 litres. For the classic view of the castle itself, walk the free Philosophenweg across the river.", "sl": ""}, {"c": "castle", "n": "Hohenzollern Castle", "zh": "Bisingen · Baden-Württemberg", "w": "Hohenzollern Castle", "wde": "Burg Hohenzollern", "lat": 48.3235588, "lng": 8.9674035, "g": "https://www.google.com/maps/place/?q=place_id:ChIJ9Z59XbEDmkcRL1pF2TBwziI", "m": "4.6★ · 10am–5pm · book online · shuttle bus up, or a 30-minute climb", "d": "A neo-Gothic fantasy of the 1850s on a lone cone of hill, and the reason to come is the approach: on a morning when mist fills the valley it appears to float. The Prussian crown sits in the treasury. Go early or late in the day; midday coach traffic fills the shuttle and the courtyard.", "sl": ""}, {"c": "church", "n": "Ulm Minster", "zh": "Ulm · Baden-Württemberg", "w": "Ulm Minster", "wde": "Ulmer Münster", "lat": 48.3985233, "lng": 9.992555, "g": "https://www.google.com/maps/place/?q=place_id:ChIJpWPETMBgmUcRHhenHJBN0gc", "m": "4.7★ · CLIMB ONLY TO 102m for now · NAVE PARTLY CLOSED, scaffolding · tower Apr–Sep 9am–5pm", "d": "The tallest church steeple on earth at 161.53m, held for 135 years and then lost in 2026 to the Sagrada Família by 38 centimetres. Two catches: the top platform is closed pending work for the minster's 650th anniversary in 2027, and a huge scaffold now stands in the nave for a seven-year fresco restoration. The 102m gallery is still a fine climb.", "s": "In 1811 a local tailor, Albrecht Berblinger, built a hang-glider and was pushed into announcing a public flight over the Danube in front of the king's brother. The updraught he had relied on was not there. He fell straight in, was fished out by fishermen, was laughed at for the rest of his life — and his design was later shown to have been sound.", "sl": "The tailor who tried to fly the Danube"}, {"c": "church", "n": "Freiburg Minster", "zh": "Freiburg · Black Forest", "w": "Freiburg Minster", "wde": "Freiburger Münster", "lat": 47.9955824, "lng": 7.8527895, "g": "https://www.google.com/maps/place/?q=place_id:ChIJ80Y_mpkckUcRR7Rqqut2Sx4", "m": "4.7★ · FREE · market on the square MON–SAT mornings · tower climb paid", "d": "The one great German Gothic church whose openwork tower came through the war intact, standing over a square that still holds a working produce market six mornings a week. By the north door, medieval measurements are carved into the stone: bakers' loaves and bricks were checked against them on the spot.", "sl": ""}, {"c": "nature", "n": "Triberg Waterfalls", "zh": "Black Forest · Baden-Württemberg", "w": "Triberg Waterfalls", "wde": "Triberger Wasserfälle", "lat": 48.1283833, "lng": 8.2301744, "g": "https://www.google.com/maps/place/?q=place_id:ChIJSVxD8fXCkEcR8I7_A3sZzA4", "m": "4.3★ · about €9 · 9am–10pm · the rating is about the fee", "d": "Germany's best-known falls, dropping 163m in seven stages through pines, on a well-built path with railings. Be clear what you are paying for: nine euros to walk in a forest, which many reviewers resent. Come early or in the evening, when it is lit and quiet, or spend the day walking the Black Forest for free instead.", "sl": ""}, {"c": "nature", "n": "Mainau", "zh": "Lake Constance · Baden-Württemberg", "w": "Mainau", "wde": "Mainau", "lat": 47.7054864, "lng": 9.195575, "g": "https://www.google.com/maps/place/?q=place_id:ChIJ91qoaNH3mkcRNHDUtz0ESxM", "m": "4.6★ · open daily year-round · EXPENSIVE (~€25pp, more with the ferry)", "d": "A whole island run as a garden, warm enough for palms and citrus, with a butterfly house and a baroque palace still owned by a Swedish-Bernadotte family trust. Best in tulip season and again in the autumn dahlia weeks. Worth a day, but check the total: island entry plus ferry adds up fast for a family.", "sl": ""}, {"c": "castle", "n": "Würzburg Residence", "zh": "Würzburg · Franconia", "w": "Würzburg Residence", "wde": "Würzburger Residenz", "lat": 49.7927423, "lng": 9.9391185, "g": "https://www.google.com/maps/place/?q=place_id:ChIJIXAT0C2QokcRP7mt9f4E7NA", "m": "4.7★ · 9am–6pm · about €10 · GARDEN FREE · Mirror Cabinet by tour only", "d": "Walk in and look up. Tiepolo's ceiling over the grand staircase is the largest fresco in the world, and it is the original: the vault held when the city burned in March 1945, sheltering the paintings above it. The court garden costs nothing and is one of the best in Germany.", "sl": ""}, {"c": "oldtown", "n": "Rothenburg ob der Tauber", "zh": "Plönlein · Franconia", "w": "Rothenburg ob der Tauber", "wde": "Rothenburg ob der Tauber", "lat": 49.3742567, "lng": 10.1801994, "g": "https://www.google.com/maps/place/?q=place_id:ChIJB5blS6-PmEcRW6WVY9o2_jo", "m": "Free · walk the covered wall circuit at 8am · night watchman tour 8pm (Apr–Dec)", "d": "The most photographed street corner in the country, so do it at eight in the morning before the coaches from Munich arrive. The 2.5km wall walk is free and covered. On the market square the Ratstrinkstube clock figures re-enact the town's founding legend hourly from 11am to 3pm and again 8pm to 10pm.", "s": "The story: in 1631 the conquering general offered to spare the town if a councillor could drain a three-and-a-quarter-litre tankard of wine in one go, and old mayor Nusch did it and slept for three days. It is almost certainly not true — the tale surfaces around 1770 and was turned into the town's festival play by a local glazier in 1881, when Rothenburg badly needed a legend.", "sl": "The mayor who drank 3.25 litres in one go"}, {"c": "oldtown", "n": "Nördlingen", "zh": "Ries crater · Bavaria", "w": "Nördlingen", "wde": "Nördlingen", "lat": 48.850652, "lng": 10.4883623, "g": "https://www.google.com/maps/place/?q=place_id:ChIJAbRZ7V4omUcRMyFYRFFiApU", "m": "4.7★ · Daniel tower about €4, CASH ONLY · 350 steps · 10am–6pm", "d": "One of only three German towns with a complete circuit of walls you can walk the whole way round, and from the Daniel tower you see why the streets curve: the town sits inside a 15-million-year-old meteorite crater. The tower warden still calls out into the night from the top, every hour after ten.", "s": "The impact turned local rock into suevite, and the tower is built of it. Under a microscope the stone is full of microdiamonds — an estimated 72,000 tonnes across the crater, none bigger than 0.3mm, so entirely worthless and quietly extraordinary. Apollo astronauts trained here in 1970; the crater museum has a Moon rock to show for it.", "sl": "A church tower full of diamonds"}, {"c": "oldtown", "n": "Altes Rathaus Bamberg", "zh": "Bamberg · Franconia", "w": "Bamberg", "wde": "Altes Rathaus (Bamberg)", "lat": 49.8916449, "lng": 10.8868071, "g": "https://www.google.com/maps/place/?q=place_id:ChIJSR4exxYjokcR8Hgp7XBufDo", "m": "4.8★ · free from outside · 24h · best from the Untere Brücke", "d": "A town hall built on its own artificial island mid-river, because the bishop who owned both banks refused the citizens any ground to build on. Half of it is painted in trompe-l'œil fresco and half is timber-framed; look for the cherub's leg that breaks out of the painting in real plaster.", "sl": ""}, {"c": "oldtown", "n": "Stone Bridge", "zh": "Regensburg · Bavaria", "w": "Stone Bridge (Regensburg)", "wde": "Steinerne Brücke", "lat": 49.0226563, "lng": 12.0972515, "g": "https://www.google.com/maps/place/?q=place_id:ChIJG6GBeqXBn0cR2iwokAbUwLs", "m": "4.7★ · FREE · 24h · pedestrians only", "d": "Finished in 1146 and the finest bridge of medieval Europe for centuries: crusaders marched over it, and it made Regensburg rich enough to build the patrician towers that still stand in the old town. Cross at dusk for the light on the cathedral. The sausage kitchen at the near end has fed bridge workers since the 1100s.", "s": "Legend says the bridge builder and the cathedral's master mason bet on who would finish first. Losing, the bridge builder asked the devil for help and promised him the first three souls to cross. The devil delivered; the builder sent over a cock, a hen and a dog. A small stone figure on the parapet is said to mark the deal.", "sl": "The devil was paid in poultry"}, {"c": "memory", "n": "Nazi Party Rally Grounds", "zh": "Nuremberg · Franconia", "w": "Documentation Center Nazi Party Rally Grounds", "wde": "Dokumentationszentrum Reichsparteitagsgelände", "lat": 49.4339206, "lng": 11.1127118, "g": "https://www.google.com/maps/place/?q=place_id:ChIJ24QK2MRZn0cRVeQyPYtH0Ho", "m": "4.4★ · NEW permanent exhibition since 22 May 2026 · 9am–6pm (from 10am at weekends)", "d": "After five years of rebuilding, the documentation centre reopened in full in May 2026 with an entirely new permanent exhibition — the older reviews complaining about a half-shut building no longer apply. It sits inside the unfinished Congress Hall. The grounds outside, including the Zeppelin field's grandstand, are open and free to walk.", "sl": ""}, {"c": "oldtown", "n": "Rathaus-Glockenspiel", "zh": "Marienplatz · Munich", "w": "New Town Hall (Munich)", "wde": "Neues Rathaus (München)", "lat": 48.1374724, "lng": 11.5754855, "g": "https://www.google.com/maps/place/?q=place_id:ChIJe2rkLot1nkcRUMTTzHCR5R0", "m": "4.7★ · 11am and 12pm daily, plus 5pm MAR–OCT · tower lift paid", "d": "Be honest with yourself about this one: 32 figures turn slowly for about twelve minutes while several hundred people stand with their arms up. Watch it once, from the back near the Fischbrunnen. Then climb the tower of the Alter Peter opposite, which has the view of the square and the Alps that the town hall does not.", "sl": ""}, {"c": "museum", "n": "Deutsches Museum", "zh": "Munich · Bavaria", "w": "Deutsches Museum", "wde": "Deutsches Museum", "lat": 48.1298707, "lng": 11.5834522, "g": "https://www.google.com/maps/place/?q=place_id:ChIJ01CaE2PfnUcRUpb8Ylg-UXo", "m": "4.5★ · 9am–5pm · allow a full day · halls close in rotation for rebuilding", "d": "The largest science and technology museum in the world, and unusually hands-on for its age: a walk-through mine in the basement, a V2 standing in the aeronautics hall, daily high-voltage demonstrations. It is being modernised in phases, so some sections are always shut — check which on the day rather than planning around one exhibit.", "sl": ""}, {"c": "nature", "n": "Eisbach Wave", "zh": "Englischer Garten · Munich", "w": "Eisbach (river)", "wde": "Eisbachwelle", "lat": 48.143478, "lng": 11.5877296, "g": "https://www.google.com/maps/place/?q=place_id:ChIJb_TEzGN1nkcRl8UxJJjzS5Q", "m": "4.8★ · FREE · 24h · experienced surfers only · access has been suspended after past accidents", "d": "A standing wave in a canal under the Prinzregentenstraße bridge, surfed year round in wetsuits, ten minutes' walk from the Haus der Kunst. Watch from the bridge parapet; the queue on the bank is for people who know what they are doing. Worth checking before you make a trip of it, as the wave has been closed off at times.", "sl": ""}, {"c": "memory", "n": "Dachau Memorial", "zh": "Dachau · Bavaria", "w": "", "wde": "", "lat": 48.2679303, "lng": 11.4687875, "g": "https://www.google.com/maps/place/?q=place_id:ChIJqQA5yIp6nkcRBqS5F0ROeRY", "m": "4.7★ · FREE · 9am–5pm daily · audio guide about €5 · English tour about 11am", "d": "The first camp, opened in 1933, and the template the SS copied everywhere else. Entry is free and it takes three hours to do properly; the tour is worth the small fee for the sequence it gives you. Twenty minutes by S-Bahn from Munich, then a bus. The memorial advises against bringing children under about 13.", "sl": ""}, {"c": "castle", "n": "Neuschwanstein", "zh": "Schwangau · Bavarian Alps", "w": "Neuschwanstein Castle", "wde": "Schloss Neuschwanstein", "lat": 47.557574, "lng": 10.7498004, "g": "https://www.google.com/maps/place/?q=place_id:ChIJXaNOxMr3nEcRo7ud02uGpsg", "m": "4.6★ · 9am–6pm · TICKETS SELL OUT WEEKS AHEAD · interior by timed 35-min tour, no photos", "d": "UNESCO-listed since July 2025 and busier than ever: about 6,000 people a day, timed entry, no cars up the hill and a 1.5km climb or a bus. Book online well ahead. The grounds and the Marienbrücke are free, and the bridge is where the famous view actually is — it closes in ice. Only about fifteen rooms were ever finished.", "s": "Ludwig II built it with his own borrowed money, not the state's, and it nearly bankrupted him. In June 1886 a commission declared him insane without examining him and deposed him; days later he was found dead in Lake Starnberg in water to his waist, with his doctor beside him. Weeks after that, his private retreat opened to paying visitors — and has been paying ever since.", "sl": "Dead in a lake, open to the public within weeks"}, {"c": "church", "n": "Wieskirche", "zh": "Steingaden · Bavarian Alps", "w": "Wieskirche", "wde": "Wieskirche", "lat": 47.6805535, "lng": 10.9004346, "g": "https://www.google.com/maps/place/?q=place_id:ChIJy-Zq9QBRnEcRFvIdY-AP8Vg", "m": "4.7★ · FREE · roughly 8am–8pm in summer · CLOSED DURING SERVICES · parking €3", "d": "A plain white oval in a meadow that opens into the most extravagant rococo interior in Bavaria — every surface stucco, gilt and cloud, with the Alps in the windows. Twenty minutes from Neuschwanstein and a far better use of an hour than the castle queue. Go early; the coach parties arrive mid-morning.", "s": "In 1738 a farmer's wife took home a discarded wooden figure of the scourged Christ, and reported that it wept. Pilgrims came in such numbers that the abbey had to build for them, and the result is this church — an entire masterpiece of European architecture that exists because of a rumour about tears.", "sl": "Built because a statue wept"}, {"c": "castle", "n": "Linderhof", "zh": "Ettal · Bavarian Alps", "w": "Linderhof Palace", "wde": "Schloss Linderhof", "lat": 47.5716123, "lng": 10.9608242, "g": "https://www.google.com/maps/place/?q=place_id:ChIJK6r_2Z1VnEcRnBXBq-4dxaA", "m": "4.7★ · guided tour about 30 min, roughly €11 · park reduced in winter", "d": "The only one of Ludwig's palaces he finished and actually lived in, and small enough that a tour takes half an hour — often bookable on the day, unlike Neuschwanstein. The park is the real pleasure. Check before you go whether the Venus Grotto, his artificial cave with the swan boat, has come back from its long restoration.", "sl": ""}, {"c": "nature", "n": "Zugspitze", "zh": "Garmisch · Bavarian Alps", "w": "Zugspitze", "wde": "Zugspitze", "lat": 47.421066, "lng": 10.9853652, "g": "https://www.google.com/maps/place/?q=place_id:ChIJbYcHUe4CnUcRlz0iyutX4jQ", "m": "4.8★ · cable car is expensive (about €75 return) · go up on the first cars · summit cross closed in ice", "d": "Germany's highest point at 2,962m, reached by cable car from the Eibsee or by the cog railway through the mountain to the glacier. Go on the first departures: cloud builds by late morning and there is nothing to see. You can walk across to the Austrian terrace. Take a warm layer even in August.", "sl": ""}, {"c": "nature", "n": "Königssee", "zh": "Berchtesgaden · Bavarian Alps", "w": "Königssee", "wde": "Königssee", "lat": 47.5541796, "lng": 12.9783744, "g": "https://www.google.com/maps/place/?q=place_id:ChIJoRP9487udkcR2FyjnqHt_wI", "m": "4.8★ · electric boats about €30 return · FIRST BOAT AROUND 8–9AM · sit on the right", "d": "A fjord-narrow lake under 1,000m walls, worked only by electric boats since 1909, which is why it is silent. Halfway across the boatman stops and plays a flugelhorn at the cliff for the echo. Get off at St Bartholomä, then walk on to the Obersee and the Röthbach falls, which most day trippers skip.", "sl": ""}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+'" style="background:'+CATS[pl.c].color+'">'+glyph(pl.c)+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = (pl.p && pl.p.length) ? pl.p
+            : (window.__wikiPics ? window.__wikiPics(pl) : []);
+  if(!pics.length){ gal.classList.add('none'); sheet.classList.add('nophoto'); return; }
+  gal.classList.remove('none'); sheet.classList.remove('nophoto');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); sheet.classList.add('nophoto'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const wikiShown = !(pl.p && pl.p.length) && window.__wikiPics && window.__wikiPics(pl).length;
+  const credits = (pl.a&&pl.a.length)
+    ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated."
+    : wikiShown
+      ? "Photo: lead image of the Wikipedia article, by its Wikimedia Commons contributors. Loaded live and not checked by hand. Place data © Google"
+      : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng+"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  map.panTo([pl.wlat,pl.wlng],{animate:true});
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+function dismissSheet(){ sheet.style.transition=''; sheet.style.transform=''; sheet.classList.remove('open'); selected=null; }
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---------- card gestures: pull down to close, swipe across to the next place ---------- */
+const reducedMotion = window.matchMedia('(prefers-reduced-motion:reduce)');
+
+/* everything the filters currently show, ordered west to east */
+function visiblePlaces(){ return PLACES.filter(p=>ON[p.c]).sort((a,b)=>a.wlng-b.wlng||a.wlat-b.wlat); }
+/* the next visible place east (dir 1) or west (dir -1) of the open one, or null at the end of the row */
+function neighbour(dir){
+  if(!selected) return null;
+  const list=visiblePlaces(), i=list.indexOf(selected);
+  if(i>=0) return list[i+dir]||null;
+  /* the open place has since been filtered out — step from where it would sit in the order */
+  const east=p=>p.wlng>selected.wlng||(p.wlng===selected.wlng&&p.wlat>selected.wlat);
+  return dir>0 ? (list.find(east)||null) : (list.filter(p=>!east(p)).pop()||null);
+}
+/* slide the card off one way and bring its neighbour in from the other */
+function slideToNeighbour(dir){
+  const next=neighbour(dir);
+  if(!next) return false;
+  if(reducedMotion.matches){ sheet.style.transition=''; sheet.style.transform=''; openSheet(next); return true; }
+  const out = dir>0 ? -100 : 100;
+  sheet.style.transition='transform .16s ease-in';
+  sheet.style.transform='translateX('+out+'%)';
+  setTimeout(()=>{
+    openSheet(next);
+    sheet.style.transition='none';
+    sheet.style.transform='translateX('+(-out)+'%)';
+    requestAnimationFrame(()=>{
+      sheet.style.transition='transform .22s cubic-bezier(.32,.72,.35,1)';
+      sheet.style.transform='translateX(0)';
+      setTimeout(()=>{ sheet.style.transition=''; sheet.style.transform=''; },240);
+    });
+  },160);
+  return true;
+}
+
+(function(){
+  const DISMISS_PX=90, DISMISS_MIN=28, FLICK_V=0.55, SWIPE_PX=64, SWIPE_MIN=24, SWIPE_V=0.4;
+  let startX=0, startY=0, curX=0, curY=0, startT=0, dragging=false, onPhoto=false, axis='';
+  sheet.addEventListener('touchstart',e=>{
+    if(!sheet.classList.contains('open') || e.touches.length!==1) return;
+    startX=curX=e.touches[0].clientX; startY=curY=e.touches[0].clientY;
+    startT=Date.now(); dragging=true; axis='';
+    onPhoto=!!(e.target.closest && e.target.closest('.gal'));
+  },{passive:true});
+  sheet.addEventListener('touchmove',e=>{
+    if(!dragging) return;
+    curX=e.touches[0].clientX; curY=e.touches[0].clientY;
+    const dx=curX-startX, dy=curY-startY;
+    if(!axis){
+      if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+      if(Math.abs(dx)>Math.abs(dy)){
+        /* sideways moves along the map — except on the photo, which swipes its own gallery */
+        if(onPhoto){ dragging=false; return; }
+        axis='x';
+      } else if(dy>0 && sheet.scrollTop<=0){
+        axis='y';   /* downward from the top of the card dismisses it */
+      } else { dragging=false; return; }   /* let the content scroll natively */
+      sheet.style.transition='none';
+    }
+    if(axis==='x'){
+      const give = neighbour(dx<0?1:-1) ? 1 : .25;   /* rubber-band at the ends of the row */
+      sheet.style.transform='translateX('+(dx*give)+'px)';
+    } else {
+      sheet.style.transform='translateY('+Math.max(0,dy)+'px)';
+    }
+    e.preventDefault();
+  },{passive:false});
+  function release(){
+    if(!dragging) return;
+    dragging=false;
+    const ax=axis; axis='';
+    if(!ax) return;
+    const dt=Math.max(1,Date.now()-startT);
+    if(ax==='x'){
+      const dx=curX-startX, far=Math.abs(dx)>SWIPE_PX, flick=Math.abs(dx)>SWIPE_MIN && Math.abs(dx)/dt>SWIPE_V;
+      /* swiping left walks east, right walks west */
+      if((far||flick) && slideToNeighbour(dx<0?1:-1)) return;
+    } else {
+      const dy=curY-startY;
+      if(dy>DISMISS_PX || (dy>DISMISS_MIN && dy/dt>FLICK_V)){ dismissSheet(); return; }
+    }
+    sheet.style.transition=''; sheet.style.transform='';
+  }
+  sheet.addEventListener('touchend',release);
+  sheet.addEventListener('touchcancel',release);
+})();
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  /* keep it clear of the card, which covers the bottom of the screen */
+  t.style.bottom = sheet.classList.contains('open') ? (sheet.offsetHeight+14)+'px' : '';
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+
+/* ---------- photos, fetched from Wikipedia at run time ---------- */
+(function(){
+  const norm = s => String(s).replace(/_/g,' ').trim().toLowerCase();
+  const PICS = {};      // normalised article title -> [image urls]
+  const ALIAS = {};     // requested title -> title actually returned
+  function resolve(t){
+    let k = norm(t), hops = 0;
+    while(ALIAS[k] && hops++ < 5) k = ALIAS[k];
+    return k;
+  }
+  window.__wikiCB = function(data){
+    try{
+      const q = (data && data.query) || {};
+      (q.normalized||[]).forEach(r => ALIAS[norm(r.from)] = norm(r.to));
+      (q.redirects ||[]).forEach(r => ALIAS[norm(r.from)] = norm(r.to));
+      (q.pages     ||[]).forEach(p => {
+        const src = p.thumbnail && p.thumbnail.source;
+        if(!src) return;
+        const k = norm(p.title);
+        (PICS[k] = PICS[k] || []).push(src);
+      });
+      if(selected && sheet.classList.contains('open')) buildGallery(selected);
+    }catch(e){}
+  };
+  window.__wikiPics = function(pl){
+    const out = [];
+    [pl.w, pl.wde].forEach(t => {
+      if(!t) return;
+      (PICS[resolve(t)]||[]).forEach(u => { if(out.indexOf(u) < 0) out.push(u); });
+    });
+    return out;
+  };
+  function load(lang, titles){
+    if(!titles.length) return;
+    const s = document.createElement('script');
+    s.src = 'https://' + lang + '.wikipedia.org/w/api.php'
+          + '?action=query&format=json&formatversion=2&redirects=1'
+          + '&prop=pageimages&piprop=thumbnail&pithumbsize=1100&pilimit=50'
+          + '&titles=' + encodeURIComponent(titles.join('|'))
+          + '&callback=__wikiCB';
+    s.onerror = function(){};   /* offline or blocked: galleries just stay hidden */
+    document.head.appendChild(s);
+  }
+  const uniq = key => [...new Set(PLACES.map(p => p[key]).filter(Boolean))];
+  const en = uniq('w'), de = uniq('wde');
+  for(let i=0; i<en.length; i+=45) load('en', en.slice(i, i+45));
+  for(let i=0; i<de.length; i+=45) load('de', de.slice(i, i+45));
+})();
+</script>
+</body>
+</html>
