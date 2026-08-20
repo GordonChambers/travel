@@ -23,6 +23,12 @@
   a.card:focus-visible{outline:3px solid #0b7a5c;outline-offset:2px}
   .row{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
   h2{font-size:18px;font-weight:750;letter-spacing:-.01em}
+  .region{font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--muted);margin:26px 0 12px;padding-bottom:7px;border-bottom:1px solid #e2ded7}
+  .region:first-of-type{margin-top:4px}
+  .country{font-size:14px;font-weight:750;letter-spacing:-.01em;margin:0 0 9px 2px}
+  .country + .card{margin-top:0}
+  .card + .country{margin-top:20px}
   .n{font-size:12px;color:var(--muted);white-space:nowrap}
   p{font-size:13.5px;color:var(--muted);line-height:1.5;margin-top:5px}
   .dots{display:flex;gap:5px;margin-top:11px}
@@ -34,6 +40,10 @@
 <main>
   <h1>Travel Maps</h1>
   <p class="sub">Curated places, coloured by type. Tap any pin for photos, hours and directions.</p>
+
+  <h2 class="region">Asia</h2>
+
+  <h3 class="country">China</h3>
 
   <a class="card" href="hk-map.html">
     <div class="row"><h2>Hong Kong</h2><span class="n">38 places + 3 tours</span></div>
@@ -74,15 +84,9 @@
     </div>
   </a>
 
-  <a class="card" href="paris-map.html">
-    <div class="row"><h2>Paris</h2><span class="n">29 places</span></div>
-    <p>Landmarks, museums, markets and the Seine quays — the essential Paris map.</p>
-    <div class="dots">
-      <i style="background:#E8590C"></i><i style="background:#C2185B"></i><i style="background:#F9A825"></i>
-      <i style="background:#6A1B9A"></i><i style="background:#2E7D32"></i><i style="background:#0277BD"></i>
-      <i style="background:#5D4037"></i>
-    </div>
-  </a>
+  <h2 class="region">Europe</h2>
+
+  <h3 class="country">Belgium</h3>
 
   <a class="card" href="belgium-map.html">
     <div class="row"><h2>Belgium</h2><span class="n">48 places</span></div>
@@ -133,6 +137,20 @@
       <i style="background:#5D4037"></i>
     </div>
   </a>
+
+  <h3 class="country">France</h3>
+
+  <a class="card" href="paris-map.html">
+    <div class="row"><h2>Paris</h2><span class="n">29 places</span></div>
+    <p>Landmarks, museums, markets and the Seine quays — the essential Paris map.</p>
+    <div class="dots">
+      <i style="background:#E8590C"></i><i style="background:#C2185B"></i><i style="background:#F9A825"></i>
+      <i style="background:#6A1B9A"></i><i style="background:#2E7D32"></i><i style="background:#0277BD"></i>
+      <i style="background:#5D4037"></i>
+    </div>
+  </a>
+
+  <h3 class="country">Germany</h3>
 
   <a class="card" href="germany-map.html">
     <div class="row"><h2>Germany</h2><span class="n">49 places</span></div>
