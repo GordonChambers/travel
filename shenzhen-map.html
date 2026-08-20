@@ -412,6 +412,16 @@ const sheet=document.getElementById('sheet'), sPhoto=document.getElementById('sP
       gmapBtn=document.getElementById('gmapBtn');
 let selected=null;
 
+/* Google's documented Maps URL for a place. The older `/maps/place/?q=place_id:`
+   form is rewritten onto it, and a place with no link on file falls back to its
+   coordinates, so the button can never open an empty or dead URL. */
+function placeUrl(pl){
+  const g = pl.g || '';
+  const byId = g.match(/[?&]q=place_id:([^&]+)/);
+  if(byId) return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(pl.n)+'&query_place_id='+byId[1];
+  if(/^https?:\/\//i.test(g)) return g;
+  return 'https://www.google.com/maps/search/?api=1&query='+pl.wlat+','+pl.wlng;
+}
 function openSheet(pl){
   selected=pl;
   const cat=CATS[pl.c];
@@ -426,7 +436,7 @@ function openSheet(pl){
   sCredit.textContent = pl.p ? `Photo: ${pl.a} via Google Maps · Amap link uses the Chinese name` : "Place data © Google";
   // Amap expects GCJ-02, which is what Google returned — pass through unconverted.
   navBtn.href=`https://uri.amap.com/marker?position=${pl.lng},${pl.lat}&name=${encodeURIComponent(pl.zh||pl.n)}&src=map&coordinate=gaode`;
-  gmapBtn.href=pl.g;
+  gmapBtn.href=placeUrl(pl);
   updateDist();
   sheet.scrollTop=0;
   sheet.classList.add('open');
