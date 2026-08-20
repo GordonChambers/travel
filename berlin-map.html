@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Berlin — Two Weeks of Sights, Eating & Drinking</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Berlin — Two Weeks of Sights, Eating & Drinking</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Pin shapes: circles = sights, squares = food, diamonds = bars. Berlin closes on Mondays (most museums) and Sundays (shops, Markthalle Neun) — check the CAPS line before crossing town. The Pergamonmuseum is shut until 4 June 2027. Many Imbisse and Kneipen are cash only. Sources: Michelin Guide 2026, German-language food and beer blogs, Berlin Beer Guide, visitBerlin, and Google place data (ratings and hours were correct in August 2026 — verify before a long journey).</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"landmark": {"label": "Landmarks & views", "color": "#5D4037", "icon": "landmark"}, "history": {"label": "Wall, war & division", "color": "#455A64", "icon": "milestone"}, "museum": {"label": "Museums & galleries", "color": "#1565C0", "icon": "palette"}, "green": {"label": "Parks & markets", "color": "#2E7D32", "icon": "trees"}, "cheap": {"label": "Cheap eats (€)", "color": "#00ACC1", "icon": "sandwich", "shape": "food"}, "mid": {"label": "Mid-range (€€)", "color": "#F9A825", "icon": "utensils", "shape": "food"}, "splurge": {"label": "Splurge (€€€)", "color": "#C2185B", "icon": "utensils-crossed", "shape": "food"}, "beer": {"label": "Bars & beer gardens", "color": "#6A1B9A", "icon": "beer", "shape": "drink"}};
+const ICONS = {"beer": "<path d=\"M17 11h1a3 3 0 0 1 0 6h-1\"/> <path d=\"M9 12v6\"/> <path d=\"M13 12v6\"/> <path d=\"M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 0 1 0-5c.78 0 1.57.5 2.5.5S9.44 2 11 2s2 1.5 3 1.5 1.72-.5 2.5-.5a2.5 2.5 0 0 1 0 5c-.78 0-1.5-.5-2.5-.5Z\"/> <path d=\"M5 8v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "milestone": "<path d=\"M12 13v8\"/> <path d=\"M12 3v3\"/> <path d=\"M18.172 6a2 2 0 0 1 1.414.586l2.06 2.06a1.207 1.207 0 0 1 0 1.708l-2.06 2.06a2 2 0 0 1-1.414.586H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z\"/>", "palette": "<path d=\"M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z\"/> <circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>", "sandwich": "<path d=\"m2.37 11.223 8.372-6.777a2 2 0 0 1 2.516 0l8.371 6.777\"/> <path d=\"M21 15a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-5.25\"/> <path d=\"M3 15a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h9\"/> <path d=\"m6.67 15 6.13 4.6a2 2 0 0 0 2.8-.4l3.15-4.2\"/> <rect width=\"20\" height=\"4\" x=\"2\" y=\"11\" rx=\"1\"/>", "trees": "<path d=\"M10 10v.2A3 3 0 0 1 8.9 16H5a3 3 0 0 1-1-5.8V10a3 3 0 0 1 6 0Z\"/> <path d=\"M7 16v6\"/> <path d=\"M13 19v3\"/> <path d=\"M12 19h8.3a1 1 0 0 0 .7-1.7L18 14h.3a1 1 0 0 0 .7-1.7L16 9h.2a1 1 0 0 0 .8-1.7L13 3l-1.4 1.5\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "utensils-crossed": "<path d=\"m16 2-2.3 2.3a3 3 0 0 0 0 4.2l1.8 1.8a3 3 0 0 0 4.2 0L22 8\"/> <path d=\"M15 15 3.3 3.3a4.2 4.2 0 0 0 0 6l7.3 7.3c.7.7 2 .7 2.8 0L15 15Zm0 0 7 7\"/> <path d=\"m2.1 21.8 6.4-6.3\"/> <path d=\"m19 5-7 7\"/>"};
+const PLACES = [{"c": "landmark", "n": "Brandenburg Gate", "zh": "FREE · Pariser Platz", "lat": 52.5162746, "lng": 13.377704, "m": "4.7★ · FREE · 24h · mobbed 10.30am–6pm", "d": "Prussia's triumphal arch, stranded in the death strip for 28 years and now the shorthand for reunification. Two minutes' worth of looking, so come before 10.30am or after dark when the crowds thin and the floodlighting does the work. Walk through it into the Tiergarten rather than turning back.", "s": "Napoleon took the Quadriga — the chariot and four horses on top — to Paris as loot in 1806 and displayed it there for eight years. When Prussian troops brought it back in 1814 Berliners nicknamed the retrieval the Retourkutsche, roughly 'the return carriage', still German slang for a tit-for-tat comeback. Schinkel added an iron cross and a Prussian eagle to the goddess's staff so nobody would miss the point.", "sl": "Napoleon stole the horses on top", "g": "https://maps.google.com/?cid=2791100708733537379", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBYp8cBShXhdljG_oeGt9PKZc3Uw-vcZOBrcsiMvyjj_bdRR273jTpJT1HBHt114BRdapKzGMjlKbySTOuuJddCCaXlf4B5_5lmilpEDBAgHQ49jtFLNPHpHhCyxd_wKU6QQcrMQWDBdh7tAhau-4Cv=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAF9vQsJCOKew06esTQ1cMJrY6PRZ_UNnDiRShn_Z9HoPb-uL6OgJi0c7KQGA_CLOfyHCO-cdb01SaH0ni2l9Yztfxp29QFoz2Bjy2Ctc0CThZelmrF7Kqm6HdMWANt0lqfk_93YGZ6ddW-oA=s4800-w800-h600"], "a": ["Vadym Overchenko", "Henrik Mulvad Hansen"]}, {"c": "landmark", "n": "Reichstag Dome", "zh": "FREE · register in advance", "lat": 52.5186202, "lng": 13.3761871, "m": "4.7★ · FREE but MUST REGISTER ONLINE · airport-style security", "d": "Foster's glass dome sits directly above the debating chamber — the architectural argument being that voters look down on their parliament, not up at it. Free, but you register a time slot on the Bundestag site days ahead and bring ID; no big bags. Take the audio guide, then step out onto the roof terrace.", "s": "When Foster gutted the building in the 1990s, workers found Cyrillic graffiti scrawled by Red Army soldiers who took the Reichstag in 1945 — names, home towns, obscenities. The instinct was to scrub it. Instead the Bundestag voted to conserve it, and the writing is still on the walls in the members' corridors, a few metres from where laws are passed.", "sl": "The Red Army graffiti they chose to keep", "g": "https://maps.google.com/?cid=7213838400204225509", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBfY6Ky0ylF0yLPJjDiiZuI2J8VQMQ-KAu7LAAZu_l53iVnynYVfUqOMfCIdVGb1rquXoHwarZHA5mP5gADxzdikq8CwFw8Bo5FC69__cMeL5iLFDXl3ciZD-Pf-HnRt6gRSlWTCv8qWgUghQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCFTto1RG4-fkhdZVwaEStJIvVhvMD3Yn5PHuWdhGg4_oS-08_iCDrWmx5TnblUFt4LfSZuKcJq0U9wEz76zbW_RmTP238Qa5wGnZyV0M5ZDGy87fZr3_1PcER1IxP73HdOqKPGMuPArmLiK9VL-5V6Xg=s4800-w800-h600"], "a": ["Marc Boberach", "Giorgi Nanetashvili"]}, {"c": "landmark", "n": "Berlin Cathedral", "zh": "€€ · dome climb", "lat": 52.5190608, "lng": 13.401078, "m": "4.6★ · ‒15 incl. audio guide · 9am–6pm, Sun from noon", "d": "Wilhelmine bombast in stone, and the ‒15 buys three things: the crypt with 90-odd Hohenzollern coffins, the audio guide, and a 270-step climb to a walkway round the dome. The view is the reason to pay — straight down onto Museum Island and the Palace. Skip if you've already done the TV Tower.", "g": "https://maps.google.com/?cid=8650048290538948860", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBjiKIIiNPtQ2gPR2DfbK-hU6QC7CU3MpYAqMc5XiQwuCiRkxpCzol-qdmQvO6yFGlIc3bnc4P1jH8NaiYScMyNYUfXzDixylmEwBEJeOBFDrJvtehXCoI1KKwSKhUmXZMmKo9BUaKu5JR6uw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCynuNxi30mINr-pjNarO-RQQ0szmiZfCgog07rJ6H7u7TR8e7JUiEPSsFuc1-csoYlm4Etijb-SWpyK1f0rSmw8XFghjSLkSgF_HVK3dtX9RcFbfedVaKg6HnsmsDhMF27sbhoXBa2wi3btUI=s4800-w800-h600"], "a": ["Matthias Ashir Shah Mughal", "Glenn Albrecht"]}, {"c": "landmark", "n": "Humboldt Forum", "zh": "free roof terrace", "lat": 52.5172522, "lng": 13.4017087, "m": "4.4★ · CLOSED TUESDAYS · 10.30am–6.30pm · roof FREE", "d": "A reconstructed Prussian palace facade wrapped round an ethnological museum that argues openly about its own colonial loot — the labelling is the most interesting thing in it. Go up to the roof terrace and the sculpture-court balcony, both free, for the best ground-level view of Museum Island. Day ticket ‒12 if you want the collections.", "g": "https://maps.google.com/?cid=8942337894102649041", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCafuzzQxbDQp9gExt3bZJuEhVO5Z1R9ErHXax2QcQK_KgSMbRK-uBOjnqNyHt4fK2cYEyFgM-biVXNobXBjPISqvmTq2V4bbCtCjqacGaYpSHpR90GezSBw-3uXt1y2S7_Tv-aDBblbLqzOQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDdpiP44k0oLMWrR2aDG1w6RX2ZdiVzygeLdJkTLo0vFebst7wOuLXuHoXvYX7LHJjKsJVsdgPff8ZKKajepYIbYlTM1Bf5u3VGDAoyxM2QLtp-8Zx32ZtMKFP1SbZCzTs5jwCkV-2dFQcwUgzMGDEM=s4800-w800-h600"], "a": ["Alexander Sanmiguel", "Mikail Bayir"]}, {"c": "landmark", "n": "Berlin TV Tower", "zh": "€€€ · 368m, book a slot", "lat": 52.520815, "lng": 13.409419, "m": "4.4★ · from ‒25 · 9am–11pm · timed tickets online are cheaper", "d": "Germany's tallest structure and the fastest orientation you can buy in Berlin — the flat, sprawling, half-rebuilt shape of the city only makes sense from up here. Reviews split on value: it is expensive and it is a lift plus a window. Book a timed slot online, go at dusk, and skip the revolving restaurant.", "s": "Sunlight hitting the steel sphere throws a cross-shaped reflection across it. The GDR built the tower as a monument to socialist modernity in a state that had little time for the church, and West Berliners immediately christened the glare the Pope's Revenge. Locals also called the tower Telespargel, 'tele-asparagus'. Neither nickname was official; both stuck.", "sl": "Why the sphere flashes a cross", "g": "https://maps.google.com/?cid=14481073088420767649", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB5P9LHNSDwfnx--qVUFlxVhujtN9Jyo02AyT2YGr47fxCehotFfkWoge4fGnZoHDM79Lyqxflm5U7x_hq5-EfjG6g7fF9Yymx9zOLLuTrw1Z-ECLv_vtWSpfVRtU4tYiKIbehMrbkw-Y7D=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBul38IY0Dan8Fe1UNgqvRE1uf550feIMa45TJVsqMOPxzYT0qqRGgvCRAIas97JUhFJGU_Qb1a70xi4wYGKhWnjmkUklCT_YCmNcOsgDSWaflZDkos9cawswZLyF-wO7GqsqHDif3v16YpUW8=s4800-w800-h600"], "a": ["Jim C", "Kjell Sivert Enoksen"]}, {"c": "landmark", "n": "Gendarmenmarkt", "zh": "FREE · two cathedrals + concert hall", "lat": 52.5132122, "lng": 13.3925122, "m": "FREE · 24h · the two domes are NOT twins", "d": "Berlin's most composed square: the German and French cathedrals facing each other across Schinkel's Konzerthaus. Look properly and the domes differ in facade and portico — the symmetry is a Prussian trick, built decades apart. The French church commemorates Huguenot refugees who once made up a fifth of the city. Google files the square as a road, hence no photo card.", "g": ""}, {"c": "landmark", "n": "Oberbaumbrücke", "zh": "FREE · Kreuzberg–Friedrichshain", "lat": 52.5018624, "lng": 13.4457112, "m": "FREE · 24h · U1 runs over the top deck", "d": "A neo-Gothic double-decker bridge with the U1 rattling above pedestrians below, and the old crossing point between the American and Soviet sectors. Cross at sunset with the Spree turning gold, then walk five minutes to Burgermeister or the East Side Gallery. Filed by Google as a road, so no photo card.", "g": ""}, {"c": "landmark", "n": "Kaiser Wilhelm Memorial Church", "zh": "FREE · the Hollow Tooth", "lat": 52.504818, "lng": 13.335082, "m": "4.6★ · FREE · bombed spire left standing on purpose", "d": "The broken 1895 spire was deliberately left ruined next to Eiermann's 1960s hexagon of blue glass — Berliners call the pair the Hollow Tooth and the Lipstick and Powder Compact. Go inside the new church at dusk: 20,000 panes of Chartres blue and almost no other colour. Free; the memorial hall has before-and-after photographs.", "g": "https://maps.google.com/?cid=1184107474437201052", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC2rv8oEhHDMcELHlNdqj2PPxE17AyeNL2SZ6YXWNmWCaeXG_13uYlk2IWrs7ENjpFk6CtZW2E-eufQYbmFZxdg2zHvO1T-HulOS9-w_r8C4XgNl2fw0ZRxR0feeNAfU5bouDccLcw0awrCjTw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCmflwoogXYJ34cV-D5J3FC89dtEkQCPD2lU4J1sdFQuVXfV1lXhD7ipPDRQf_3DIiD4rcMDO1jSuoMuSrkoMe3N1ofpiZB0v2OIqICtL0H-0J3xBeO1als471RBZYyS3RuX7Fhe8tUFVn4OrpG-4Yy=s4800-w800-h600"], "a": ["Vv P", "James Liao"]}, {"c": "landmark", "n": "Charlottenburg Palace", "zh": "€€ · gardens free", "lat": 52.5209319, "lng": 13.2956165, "m": "4.6★ · CLOSED MONDAYS · 10am–5.30pm · Old Palace ‒12, gardens FREE", "d": "The largest surviving Hohenzollern palace, and only the Old Palace and New Wing are open — recent visitors report the Orangery and Pavilion shut and audio guides sometimes unavailable. The baroque garden behind it costs nothing and is the better half of the visit. Half a day if you do both.", "g": "https://maps.google.com/?cid=10068296234905698330", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDgt2r0jLOjotiXJzHLrCgluSHBnCZ3qLsoCvVjkouc7_BLWsaSl-3G_pCpP5gpCgAIb7Gida6S3kMPVI5nnIwLO8iuDZehWKjG7JGfFD0oD0QcVpW3ClExUTntxyqCJQb7S0L1xKjB6RtljMfWwNirMg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCahl6AcMb4cFHyxy0IDyFjYIK3u2kBCet5_0MH-maASQdVWfCuIzieB6VXwurzCJyWl-k5V4MUDwNgEGfB7NIvJMiv5ShcPiX2jyFt9gIpmcEmVoHxUY_y3tKuhohkMwOv964VKNezhb_hJoEgfr-Xkg=s4800-w800-h600"], "a": ["oliver oli", "Running Adventurer"]}, {"c": "landmark", "n": "Philharmonie Berlin", "zh": "free lunch concerts", "lat": 52.5100319, "lng": 13.369693, "m": "4.8★ · FREE foyer lunch concert 1pm in season · arrive 60 min early", "d": "Scharoun's vineyard-terrace hall, the model half the world's concert halls copied. The trick worth knowing: in season the orchestra plays free chamber concerts in the foyer at 1pm — you collect a token at the door and they run out, so come an hour ahead and expect to sit on the stairs. Check the day on the Philharmonie site before trekking over.", "g": "https://maps.google.com/?cid=18275324156411314278", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA4j9F9PSK7meq2dLzcC2o1OKDkdv44xWu8O64xMLbfzwRDTCBDyZslYciw1g7VtopkLYQmPFg-MhPHXh4aN_afZZpko9obHx-XyYe2soIoKoncwrkrmiWq3TlATNnPjdTc1rdapvoW6Qlmq-jdGiMxhA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCzcsAqvK17rZUsMffDVaHeoNgPPP3OYTZXh3oOKfLTY2Jit15tHzDyv_Ysjc8pmtC-oz5dq_8ouG1BsgaDHtMQNUzuez8cJVuNs-s1z1Y7c0h53tnb9G0ZLn0yKMR2tHoWR7aH0kAOASfqsA=s4800-w800-h600"], "a": ["HUPSI Kaufmann", "Adam Baron"]}, {"c": "history", "n": "Memorial to the Murdered Jews of Europe", "zh": "FREE · 2,711 stelae", "lat": 52.5139474, "lng": 13.3787126, "m": "4.6★ · FREE · field 24h · Ort der Information CLOSED MONDAYS", "d": "Eisenman's grid of 2,711 concrete slabs on undulating ground: at the edges it is ankle-high, and in the middle you are five metres down and can't see out. Walk to the centre rather than photographing the edge. The underground Information Centre, which names the victims, is the part most visitors miss and the part that lands hardest.", "g": "https://maps.google.com/?cid=1455935424504010184", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDjGZVl98U4htl3ypfK7GAy109ot7PythgNZmg66mO58Nfn3l-nxMtLHIfcRFXLXbPZtfyI8HObA8tv4AB3YnQYaUit2hLVWApulTmfB3pK0v83n7aAnmlIFkQG_uqg3gm6UVZNxt2Y6jDYtQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC2CBnj5N4WASrF6-00WVHn1Gik6Aho4cvqtjdq-uRWDnmkC2_9LVEmpezedWhVFhEy5cgF4sxf1NttXXKcEeqNHKEAc40Unhp5c_ZXBU01KYlrXsVs1lz2ixIF_ZJQ0P2XWMxzcJ7oTj8f=s4800-w800-h600"], "a": ["Ali Al-Ibrahim", "Pryshchuk A.V."]}, {"c": "history", "n": "Topography of Terror", "zh": "FREE · Gestapo HQ site", "lat": 52.506747, "lng": 13.3837099, "m": "4.6★ · FREE · 10am–8pm daily · open later than every other museum", "d": "Built on the excavated cellars of the Gestapo and SS headquarters, and the clearest account in the city of how ordinary bureaucrats ran a terror state. Dense, text-heavy, and free; take the audio guide and allow two hours. It stays open until 8pm, which makes it the right stop after everything else has shut.", "g": "https://maps.google.com/?cid=3984513367586465352", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA3Lg0qppOhmuQ7GNT5IsbARaXQiioSc_T-ocEFaakaOL0CG4kSEm5_4rKkYh_Q2ywrfAgTng2QTO4Hafg03zSuoQURR5Vld3jH9Fx8mWiHpMklSHeehSS1JPhkZWYNfSYbturT_A-ugjrbyQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCGr9nUUZCGzjUrfPQ8gqUTAUNbj42FNGBVfuqAMO4v81Hun9vgjz7nkEyFmLZy0HS1sACrnI9cxFmp7j7dcxutWxP61px1az5CyIjJuUl7Cd8SK-t91qeXBjthu3CXDTEFkY-XXtkrXCz0cCQ=s4800-w800-h600"], "a": ["Adam Paunic", "Igor Torkhov"]}, {"c": "history", "n": "Berlin Wall Memorial", "zh": "FREE · Bernauer Straße", "lat": 52.5350521, "lng": 13.3901898, "m": "4.6★ · FREE · outdoor site 8am–10pm · the one Wall site to prioritise", "d": "1.4km of the former border strip preserved as it worked: inner wall, outer wall, the raked sand between them, and a watchtower you can see into from a viewing platform. This is where people jumped from apartment windows into the West in 1961. Free, unhurried, honest — go here rather than Checkpoint Charlie if you only do one.", "g": "https://maps.google.com/?cid=16884399877403365804", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDmKAN1Fpl5a9TYdaEiA9Ty-6YKBm8YbXuLdLt9GHynprEcWIpnp-a6ZWrpuCHpMUfJzYLYhPk6X3_ExGjnrHnpdRokTurwSA6sVl_wBlhMkmfccFwdCxKvluTkxWORbhCy9tD9XrVtRzcZUi3eFkhIaQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBEwlTAbonWFCltL8nNi3VFrOe5XkVqZ2m7UulAi450DjeEqAMywgL2gBY8-rsq8QNT_vtxwWyZqNm2-570iT3NzLypvVGfTpASJ8NXaA95rsAk-xp3NUW_IoEhA2wS0pSpPc34XpceSyPN=s4800-w800-h600"], "a": ["21_meep_meep_21", "Thomas_Tkw"]}, {"c": "history", "n": "East Side Gallery", "zh": "FREE · 1.3km of murals", "lat": 52.5050224, "lng": 13.4396953, "m": "4.6★ · FREE · 24h · crowded midday; go early", "d": "The longest surviving stretch of Wall, painted by 118 artists from 21 countries in 1990. The Fraternal Kiss (Brezhnev and Honecker) and the Trabant bursting through are at the Ostbahnhof end. Be honest with yourself about what it is now: a commercial riverside strip with repainted murals and a lot of phones. Walk it early.", "g": "https://maps.google.com/?cid=16040766128848480280", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBBi9XMXBhsytOSu0Io05JqIT3WhWo2QhdRb0m6KrW0FbJlWEj2g7a4XwpmyRhJyLCZnFfjTJbiFMy7v6Qnyp2oMlfji_dhvf9c7eIXNnD-YASgvd4tmwlaUXZhyR-0nzb33OcMZ-Zw1viXDksq_HB2=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDLmndU-qcpeIbB-KZ25Jk_QyfbyIQTp1pDXbhSXylhnj63ZsdxXn214nguwfVHz5iU9cXaw75ysd0bidxSdZIj-nH0Z9M71BG7cKlFMtvfo0Pkfoz7vkoahHc5NdQqo6ufyR__vEjmpfQbPrY=s4800-w800-h600"], "a": ["Max Henike", "Michael Jensen"]}, {"c": "history", "n": "Checkpoint Charlie", "zh": "FREE · replica hut", "lat": 52.5074434, "lng": 13.3903913, "m": "4.1★ · FREE · 24h · the 4.1 rating is deserved", "d": "A reconstructed guard hut, actors in surplus uniforms charging for photos, and a fast-food ring. The 4.1 is fair. Two things redeem the stop: the free open-air photo panels documenting the 1961 tank standoff, and the Black Box exhibition alongside. Give it fifteen minutes on the way to Topography of Terror, ten minutes' walk west.", "g": "https://maps.google.com/?cid=2568430742164574152", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCEncPgob7lrRWUJ-Vt9CtL0LDB0qicpyaz9wteVKX75LNli1a4aqYPOmTK22htvV_YNYAcpbrZ6qA1-kBOmRJo7XskL2ZS5gYOn26hh_nmPQQTBOyipePE8LsYncM_R71BAfmhS7Ct5MmjnA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCmW0VAD2sMw7emvIaaYYcm9rtii9l3v4uG1eL1OvUIOoIF90RUCmpFE-7UIQYXQn9q7fyjIbEfRa8n_dqbzpVCd7CFyQ6-e-Yd7YFRXLE4u6Q4uKhupObmrteTSFJYVVICdDWLxtQQsIblug=s4800-w800-h600"], "a": ["Kieran Proctor", "Kiyohide Hayashi"]}, {"c": "history", "n": "Tränenpalast", "zh": "FREE · Palace of Tears", "lat": 52.5209565, "lng": 13.3872122, "m": "4.6★ · FREE · CLOSED MONDAYS · 45–60 min is plenty", "d": "The actual departure hall where West Berliners and East Germans said goodbye at the Friedrichstraße border — hence the name. You walk through the original passport booths, which is a strange, cold thing to do. Small, free, and much more affecting than its size suggests. Scan the QR for the audio guide; the museum wifi is unreliable.", "g": "https://maps.google.com/?cid=2495697721855501754", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA6mYBFS1-XrqK42vFPtI0IPbQBmbtJ6vBXYSXAgd9rmfkYz-G5iI84ExS3eoT3Vz5Wf_G70A_11DtiiDQqIg7O1_5zWGePyGRewomvsoc3c50NZmCkF9UwnRN18yINn975tZM1aBt0k6utrJdEf6S7QA=s4800-w800-h564", "https://lh3.googleusercontent.com/place-photos/AG9NLjCKF6Aq_C0-XiVyg4ojSDlETjXm81Gm3TXSI3PCnNJzTgxhLsFHfS4MYAP7b2e1gICxBe7EfzPG_mhTjoe7lAhaZiupf7JKm-MUxlra8KtR8gImtyyOCEhHABjcZ-8_MegkTGnovzybNbOwdw=s4800-w800-h600"], "a": ["Alessandro Barbara", "Sócrates Veridiano Faria Lopes"]}, {"c": "history", "n": "Stasi Museum", "zh": "‒12 · Normannenstraße", "lat": 52.514527, "lng": 13.4872818, "m": "4.5★ · ‒12 · 10am–6pm (Sat–Sun from 11) · NOT on the Museumspass", "d": "Mielke's own offices in the Stasi headquarters, left as they were: teak panelling, safe, cafeteria china, bugging kit disguised in watering cans and tree trunks. Three floors, mostly reading, and the second floor frozen in 1989 is the reason to come. Not covered by the museum pass — pay the ‒12 anyway.", "g": "https://maps.google.com/?cid=8540064373585152541", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCoT7qUeoJqLJYJXUHuRDyISLGaIn8IhOkbpfJy_sW3ZY1jhy85VJ2Fkm16fZ5xcRln7uhFLXNpTIYBZDQoTZFpwhWeoacvN3WqKs6ITr7-YVLfGlU9rPP3O5IjAu7WsnSPy3b24dISroaia8Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAAyRtySARPpX2MdWZDRfCk-NeedM6qMiFz9D6Nf9LtcMsdAzeZrEHsVziu5xVRgwZXhYBdLx__Kma5txod7YWqgqpr7xlNbYBMZo2lqFJvFyrb-0aM9in05DqY9C8IG6xjfTY8RBUklLphnahnbfwrtw=s4800-w800-h600"], "a": ["Stasimuseum", "Damien Eck'n"]}, {"c": "history", "n": "Soviet War Memorial Treptow", "zh": "FREE · mass grave of 7,000", "lat": 52.4861394, "lng": 13.4719577, "m": "4.7★ · FREE · 24h · S Treptower Park, 10 min walk", "d": "Stalinist monumentalism at full scale and startlingly empty of tourists: an avenue of sarcophagi carved with battle reliefs, mourning mothers in granite, and a 12-metre soldier holding a child and standing on a broken swastika. Around 7,000 Red Army dead from the Battle of Berlin are buried beneath the lawn. Twenty quiet minutes.", "s": "The child in the soldier's arms is not symbolic. Sergeant Nikolai Masalov is said to have carried a German girl out of the fighting at the Landwehr Canal in April 1945, and the sculptor Yevgeny Vuchetich built the figure around that story. The sword in the other hand is modelled on a medieval Russian blade — a deliberate echo of Alexander Nevsky rather than of 1945.", "sl": "The soldier and the German child", "g": "https://maps.google.com/?cid=201150425296353344", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD3ehME45ESQQBdhqrEAs7wX_98ejVjGWgA3qOJq_cpUp5W5rrivyAFjbUcqouWjWHwbrEfyP1iURZLPlY3GFxcpRKrFamHuMS4-8SEnHI-vXycOYNIQvBTtprcaZ0CQ3OBLBQkVT_EjhFF17JMoxDn=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBirLYAumDkPRBlviWLQZyEu3tAztbqRoj0gGBCfu6HFYKVoAuFJ5poybz2l5w-akt-bbRHGQx5eHSqvfubIJW4mEpVQNr4Tuurx4U5FoxWNDY7ThbsZ7KNqhP39CKUdubuH8RywgCDDJrCdhU=s4800-w800-h600"], "a": ["Adam Schroeder", "René Dittmann"]}, {"c": "museum", "n": "Neues Museum", "zh": "€€ · Nefertiti", "lat": 52.5201349, "lng": 13.3976462, "m": "4.5★ · CLOSED MONDAYS · 10am–6pm · NO PHOTOS of the bust · book a slot", "d": "Chipperfield's rebuild is half the exhibit: bomb damage left visible, new brick meeting old fresco. The Egyptian collection is outstanding and Nefertiti has her own domed room, where photography is banned — you can shoot her from the doorway of the next gallery. Gets hot and airless on summer afternoons; go at opening.", "s": "The bust surfaced at Amarna in 1912 and left Egypt under a find-splitting agreement Egypt has disputed ever since, arguing the German team downplayed what they had. Hitler refused to give it back, calling it Germany's queen. Egypt has requested its return repeatedly since 1930 and Berlin has said no every time.", "sl": "The most-contested face in Berlin", "g": "https://maps.google.com/?cid=10177987776063843125", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBNA9V_Hmdm-uH_rAhrY9Zadki815AO6jt2jLV_uf0AXX-eeZ04J-uAMowH198xel__OEScxyCPTKgElflvCbXMavKx33vrMXCZcxUq7P1Bdj45rR0Iz7SjLmZqZVJuSp8G-c1Grlosi6OauA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCZuR8sAFWUwxez5r1Ov6KQhvlBoa8PDk9k4Tz7pUDaRO--tcGZ6ig2Qf0deREP-e9di72vzs-seO8OBn-FplqCnijVA-Ww2fJkpY3RxrtBewcUoa2cN2BE6Z5vgokMHdZgkU5lvlBCRT5m=s4800-w800-h600"], "a": ["Ariane Burgueño", "Fab Delare"]}, {"c": "museum", "n": "Pergamon Museum. The Panorama", "zh": "‒12 · the Pergamon stand-in", "lat": 52.5209828, "lng": 13.3940778, "m": "4.7★ · CLOSED MONDAYS · 10am–6pm · read the note before planning", "d": "The Pergamonmuseum itself is shut — closed since October 2023, reopening 4 June 2027, and the Ishtar Gate and Market Gate of Miletus not until the 2030s. This is the substitute across the canal: Asisi's 360° reconstruction of ancient Pergamon plus around 80 original sculptures, included in the Museum Island day ticket. Better than it sounds; give it an hour.", "g": "https://maps.google.com/?cid=6160170968438887380", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCcC9BWCENYT5IPyhv7w95Nmq4BCQ8o9K-eBcRFzfPCh64GN9LYTwQSvAVIuj8N5ZwmC-E49wiCpvo9r6HHLpZ5WcsHV41Xd_L1f1km1AavcAm-n6Q8jDT4DPU0ozSMIeT-07OSkb-wERSsOA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB_084N7IMJsPlcyl3FhBXsUzUYwYSARBMlq1ABITpkVAYPwd3LLxL-xh5t3vUmWYyFDMJzpXdexlmPtNmYtFJYrMWVBhKB2aD4PuGkc3qmojM8HN6nv3xtmElaBv_wjY3DktiuVUDH6ku1Qg=s4800-w800-h600"], "a": ["Connie Wang", "Blaise Blaizo"]}, {"c": "museum", "n": "Jewish Museum Berlin", "zh": "FREE core exhibition", "lat": 52.5023115, "lng": 13.3954469, "m": "4.4★ · CORE EXHIBITION FREE · CLOSED MONDAYS · security check at the door", "d": "Libeskind's zinc-clad zigzag, where the architecture does the arguing: sloping floors, the Axis of Exile, the unheated Holocaust Tower. Two millennia of German-Jewish life, not only the catastrophe. The main exhibition is free; grab the QR-code app at the desk, which has children's and Gen-Z versions. Two to three hours.", "g": "https://maps.google.com/?cid=5488962705135407183", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDaiZ2KHr8voVqArO5DJ6W12dxhGV_4c5XJeekTcPy-KF-pm3EjDq40dGwtvxEg6LMp_G_l2wnzoBvljNHPjBgiEWp6Fm-rhb-YHQwLHHn3bjWkHp6h2e5Fcgi3T5T_JOzw1Px8G9noqrJtFA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDbiim7-APOmmYm3l_Q_6EjXlmuoLui374rvT2BiyfdMNeNjrczB9xzqGQ8xW75V8mm1HCuEHizRwre8K0R0vtaEyrZ_DO6sm8CvIUZf-sLRn6OoYZk2hpeTYnUzqHeILNyr3lb8H5cnkytcw=s4800-w800-h600"], "a": ["Raul Vicedo", "Simplicius Simplicissimus"]}, {"c": "museum", "n": "Museum für Naturkunde", "zh": "‒11 · dinosaur hall", "lat": 52.5305726, "lng": 13.3791755, "m": "4.5★ · ‒11 · CLOSED MONDAYS · 9.30am–6pm · warm inside in summer", "d": "Home to the tallest mounted dinosaur skeleton in the world — a 13-metre Giraffatitan from the German Tanzania digs — plus a near-complete T. rex and Archaeopteryx. Go straight to the dinosaur hall, then the wet collection of specimens in jars. The taxidermy includes former Berlin Zoo celebrities, which children find either wonderful or grim.", "g": "https://maps.google.com/?cid=8921232993118488194", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAlbjCTYr3SSVWS-hve8K3rMl7MsEf6CXuVjBAJZ5exl9cIo5gK8X-XSYxZ8ZQmybhOhOTZ45sjiJIx8Kq5ZU-_vKRs16eIsQ25_DVjen4nwdTfvgtqTMHTrGgDNsl_OwiGH6KWvgMPn3tEzA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD2ernatKUfRSX-wlknwHChSu50OZ1M9nfJ-Pu-TysqlqFUrVeI-Mks0mK5YnlhuPdjwH4areM8c-qiW8STt_Ab-eN_-AV4QHF3fNUViw_T4u9ojBuDer2xNt5P1ar52pAc7HwibvXdhSXlhQ=s4800-w800-h600"], "a": ["Michel S.", "Don Pokocha"]}, {"c": "museum", "n": "Gemäldegalerie", "zh": "€€ · Old Masters", "lat": 52.5084982, "lng": 13.3651754, "m": "4.7★ · CLOSED MONDAYS · 10am–6pm · quiet even in August", "d": "The best-kept secret among Berlin's big museums: Vermeer, Rembrandt, Bruegel, Caravaggio, van Eyck, Dürer, room after room, and rarely a queue because it sits in the Kulturforum rather than on Museum Island. Take the free audio guide, which covers 200-plus paintings, and plan three hours. Benches in most rooms.", "g": "https://maps.google.com/?cid=6365064162053734829", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBtrks_LqgnpLFs1aNEFLMRU1hvHhA3RJITL2s_VmiXN3ZxlFFMiThVFL78tboutxNd0n8XaZ3EhD4w04ph-plExNcCv6f0r9F38XIUOUfrP0sTu-HQgxF3FiofjemCzW5RMWH8JFf5yhRYTg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD6Wk_onVFAtuG_mwgOhM-BU8dhTpVBaK84XeQ3bzSMM3C-onVhW8uIH_sImfLaik4UjCaa2JBWCVBEH9SeGb0HrEfxWJhgt0uWNHcmwOx2TdG6HVNwwPDvBnuTahLC-zOwO7tUSlZHftD3RqIanKIGeQ=s4800-w800-h600"], "a": ["Michał Badura", "Camille Estrada"]}, {"c": "museum", "n": "New National Gallery", "zh": "‒14 · Mies van der Rohe", "lat": 52.5069946, "lng": 13.367604, "m": "4.6★ · ‒14 · CLOSED MONDAYS · open to 8pm Thu · specials cost extra", "d": "Mies's last building and one of the great rooms of the 20th century: a steel roof floating over glass with the collection downstairs. Come for the building and the temporary shows — several reviewers find the permanent 20th-century holdings thin, and the special exhibitions are a €6 surcharge on top. Staff are brisk. Thursday evening is the calm slot.", "g": "https://maps.google.com/?cid=13974069968283467740", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDc9ha043snGNQfJD9kq7VEfNjmQmjvjWFk0Usc1OI8Rtso69DnTHgZYkkwIkpH_CzWc3pioWzU5B6gwrHvUovI5VPe0y9F4tYj-enm_qhrhKoc_FQPv09PolEcmZnmxP2SBbJKSnwHC6kX_Cvi5UpH=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAQuBDHAj3Ksd0tIyY9FXEhDXtt_iFKtP5MIwX6v8wRnWrmUVcnGcZStWTde0YzW2OW1QQjfcpOID-Q372pd9IDaUP17ORfdAiV8gtZhLNHa4XNW3Qlctr9-3lXB9thr3i3ctlWUU5FhwA51Q=s4800-w800-h600"], "a": ["Derrick Gannon", "friedrich ludewig"]}, {"c": "museum", "n": "Hamburger Bahnhof", "zh": "€€ · contemporary art", "lat": 52.5283411, "lng": 13.372137, "m": "4.2★ · CLOSED MONDAYS · to 8pm Thu · large installations, sparse hangs", "d": "A disused railway terminus turned national gallery of the present. The scale of the hall is the draw and the programming divides people — expect room-filling installations rather than dense picture hanging, and little painting. Check what's on before committing; the garden hosts free open-air music nights in summer.", "g": "https://maps.google.com/?cid=7535927265072941002", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDRH7IHxDfo7QS5h31pWWmEdvGL1yJNvPoqAdB35OK9ust029F-DiOWhDCOFZxM6DNydbV497X7e3X4S4aunmFQPIZ0A-C8PXvsAgWvEirVbZCRsWherbNw1hhFMtwfDEspBL5v7R9d48bvVw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB7Emt2vxxBKc59Ml5pF8JMJuM_HDL7lAkoJ8P710468_BvyfUMMucMvcdOz-cqa1EJ_GAalKS9cJT_0Vp_F4GeF6cPMr6xFYg6Gz_SAG8IygeqFw4N4HlR8bJ_nFG5UayE9y9ZRNB8g_3pZcA=s4800-w800-h600"], "a": ["Manuel Seoane", "Justyna Komuda"]}, {"c": "museum", "n": "Boros Collection", "zh": "€€ · bunker, tour only", "lat": 52.5235298, "lng": 13.3841109, "m": "4.4★ · GUIDED TOUR ONLY, BOOK WEEKS AHEAD · 90 min · NO PHOTOS", "d": "A private contemporary collection inside a 1942 air-raid bunker that was later a fruit warehouse and, in the 1990s, a techno club. You can only go in on a booked 90-minute tour, in English or German, with no photography and no phone signal. Slots sell out weeks out. A minority of visitors find the guiding overlong; most rate the building alone worth it.", "g": "https://maps.google.com/?cid=10413452294460900748", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDi9YdzuBn-X8ITSCvWobJff6f9Ap_Fhle6ONHWRJONHs6l8mkmEL1phRC0_JDD6nZcK0ip4kMPvV7ysZxQ8DCrF68vL6tSRe3AiSrhKzwgo0F4gxYV4XhRdrGNZzjc1jHT0tYcj6mf23Z-Lg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB3ssVxmitHnd7W-Q02jmMvp4kHIDfwSnKOAEXDsFpjs5fZBUgFQzGas9RQMu2mrXEVr4DraA0Ixl6zypghot__Mn-DTLgfiIH7x2t3COBlx-4gIxMBmSgcFh9Ek-DThRqfh9ztsmXf_nZLAyc=s4800-w800-h600"], "a": ["Dan Cobley", "Konrad Wasilewski"]}, {"c": "green", "n": "Tempelhofer Feld", "zh": "FREE · airport turned park", "lat": 52.4748569, "lng": 13.4005926, "m": "FREE · 6am–10.30pm · bring a bike; it is 3km across · no drones", "d": "An entire disused airport left as public space: you cycle, skate and picnic on the runways. Barbecuing is allowed in marked zones and parts of the inner meadow are fenced off in spring for nesting skylarks. Enter at Oderstraße for the runway view, and climb to the café in the old tower.", "s": "This is where the 1948–49 airlift landed — a plane every few minutes for eleven months, feeding two million West Berliners past a Soviet blockade. Pilots began parachuting sweets to children at the fence, earning the nickname Rosinenbomber, raisin bombers. In 2014 Berliners voted in a referendum to ban building on the field at all, defeating the city government.", "sl": "Raisin bombers, and the vote that saved it", "g": "https://maps.google.com/?cid=9838141530155811723", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCGFvei24qtnCBtkH2SGQ1Q9jRYcq7OJiGi0xWa7ccBDH6_rXKXCjCdEN7Mzek9Rb4zLda1OntvMDgMRb4bbNUcnq1LcGpN7yNp3ePyUZa_8gEAFA_wEICB_R63ZTUULjr7HXHzB6wTn97_=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA_7akYN9f6kuaFn-cyzMvsLQMJJL1ci-soLEDS98NFbnxamb_FRl_-kbtac0TKU12OSUNKrYFj99Qa4_7skzQ_QPWsnarpx3gpbi1XeK2ScQCYuTODpUQFY_sQac6IvPQyWbXCqEpXPv_kBQ=s4800-w800-h600"], "a": ["john waldron", "Doreen Frohberg"]}, {"c": "green", "n": "Mauerpark", "zh": "FREE · Sunday flea market", "lat": 52.5420022, "lng": 13.4021371, "m": "4.5★ · FREE · flea market + karaoke SUNDAYS · dead midweek", "d": "Come on a Sunday or don't bother: flea market from 10am, and from about 3pm several hundred people fill the stone amphitheatre for Bearpit Karaoke. Buy a beer from a stall, sit on the slope. A surviving stretch of Wall runs along the top edge — the park is built on the former death strip.", "s": "The karaoke was started in 2009 by Joe Hatchiban, an Irish-Japanese Berliner who wheeled a homemade battery-powered PA into the amphitheatre on a bicycle and invited strangers to sing. It has run most summer Sundays since, free, with no auditions and audiences in the thousands. The bicycle rig is still how the sound arrives.", "sl": "A man, a bicycle and a PA", "g": "https://maps.google.com/?cid=10685741204862468608", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBTtdCC4-kchyGUMsRTSqweW1TQwz1BH304TdgpCRjuT2KWE9SeJB5sgh3nQZ3mtD7eBoiB7js3ebGIx-H3_cq3DxAjTmtl-Nsc4Uu9txh7K1QoKAa8w03tieaRxHa3un4K1sw0ci32dxCeCQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBEU2S8Bl8OFoVdvF5C1S5KebMIG3iCCfffNLYq2Gt5grbN0-PpsCpM4_sPNtxPm_R1f9l7PzdSoqr8mTY-ZxRvLwhAkjwGSh5k02MX2_ZtEUAcMYbIdNGMQF_JH9voFtt21qo80gS6XnlGtXI=s4800-w800-h600"], "a": ["Moritz H", "Anka Mudra"]}, {"c": "green", "n": "Wasserfall Viktoriapark", "zh": "FREE · Kreuzberg's hill", "lat": 52.4883168, "lng": 13.3817186, "m": "4.5★ · FREE · 24h · WATERFALL RUNS SUMMER ONLY (switched off in winter)", "d": "An artificial 24-metre cascade down Kreuzberg's namesake hill, with Schinkel's cast-iron monument at the top and one of the best free views over the southern city. Start at the top and walk down. The water is turned off in the cold months, when it is just a nice hill.", "g": "https://maps.google.com/?cid=4958341613664762680", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCoQIke1JfWwh_MFD-UhQFFXeh9FLHfT0reSLu2K5idzZsSr9qze8kG4XvpaJrvk3mIBKnEnbgKBaCn-zAqGPPywgn8_Uz6P79xV5e2hZ-22U_huU1ZJO-61qH_7nJB_TZukH8z7xpuK5e9OH7iR4ysYQ=s4800-w721-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCSjtEOjwPV2aEEIyVQWD9GCACN5vpicZE_rAPKUZnBBJB6JKg1sBiiqYdFgL0gRbqwP_H_fbMCi7T_k9lz_sz9djxpoe91nJhhmM7Op_DamSxstbXrysTryjK8FwKbQx5e3UklIC4vkqnpr18r0kds=s4800-w800-h600"], "a": ["Guido Stanzel", "Magdalena K."]}, {"c": "green", "n": "Turkish Market", "zh": "FREE · Maybachufer canal", "lat": 52.4955302, "lng": 13.4218423, "m": "TUESDAYS & FRIDAYS ONLY, 11am–6.30pm · cash · loud, crowded, cheap", "d": "A canal-side Turkish street market where the produce is a third of supermarket prices and sellers shout their goods — a kilo of oranges for around €1, mountains of herbs, olives and cheese, plus fabric and household stalls. Taste before you buy; they expect it. Go late afternoon on a Friday and eat a gözleme standing up.", "g": "https://maps.google.com/?cid=16669295527712037034"}, {"c": "cheap", "n": "Markthalle Neun", "zh": "€–€€ · market hall", "lat": 52.502135, "lng": 13.4315988, "m": "4.4★ · CLOSED SUNDAYS · Street Food Thursday 5–10pm · stalls ‒10–16", "d": "An 1891 market hall and the city's best-known food destination, which needs a strategy: most artisan stalls charge ‒10–16. Thursday evening is when smaller vendors price plates at ‒5–10. Best value any day is Heisser Hobel's Käsespätzle — ‒6.50 street portion — and Heidenpeters brews beer in the cellar and pours it upstairs.", "g": "https://maps.google.com/?cid=10952401861152581394", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAyE7SB_eHDDopwz6fteTUY2TxxwIPgkfxEK_ZHfqxAmgboR4n2-bClzMW16FOBByolI48epIYpCauwbb45XEF12dUYtI9_F0UXpVMAKcA67AoYtjRlDT4rL5HexG4HQbp2HD1oHfNqM8vsGg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDWAI0xMwN5pYKx1WPRR-WRTRD_UgGEU_ymuPTswoFv2pOCjEonfy8oPjdTxATA1PXzfygln8uHoWLln8l1LYy2QDmJuwh-V21QjDH2m8lFnr0Plib956BYU6_94KEzDB4xJrxOLNQ5aTgefzI_YQGIsQ=s4800-w800-h600"], "a": ["Markthalle Neun", "Edwin Chu"]}, {"c": "cheap", "n": "Curry 36", "zh": "€ · currywurst", "lat": 52.4934716, "lng": 13.3876497, "m": "4.2★ · € · 9am–5am DAILY · order it 'mit Darm' · queue moves fast", "d": "The Mehringdamm institution, open nearly round the clock and staffed to shift a queue in minutes. Ask for the sausage mit Darm — with skin — which snaps rather than sags; ohne Darm is the softer standard. Regulars are honest that the sauce is more ketchup than curry these days. It is still the right thing to eat at 2am.", "g": "https://maps.google.com/?cid=9942929399430273796", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCQ7NJAnpa4b0Dh1P-fbxAYmGOEqUb8mIwFp9IyqmeQ_-HGlH5rXSgTeYOA8pV7xR2i0FO7CHv7u6dE2jmt9aKNujcb5Jb2c5mY-Q1Smv2_pY91P7A7efcD4a7DxiuP47MgDZH37d334d_cDQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjClOVxsjSFnqJsJXI8vOzwWVmOcdGJWXyENbeC9Ow8i9jt7819bZP-TntqIl6Hok_6q_6SieKQZA0OG9KmxLptBKPIgKyz_vo7FhuXVivEqgMtPsETkNJiUHhd4OHZx7I--AKqURtHM-YIEoas=s4800-w800-h600"], "a": ["Curry 36", "Schwereisenritter 112"]}, {"c": "cheap", "n": "Konnopke's Imbiss", "zh": "€ · currywurst since 1930", "lat": 52.5404229, "lng": 13.4121753, "m": "4.2★ · € · CLOSED SUN & MON · 11am–6pm only · Sat to 4pm", "d": "A family stall under the elevated U2 tracks at Eberswalder Straße, in business since 1930 and run by the same family since. Portions are modest for ‒11.70 and the service is famously curt. You are paying for continuity, not for the best sauce in Berlin — Curry 36 arguably wins that. Closed at weekends, which catches people out.", "s": "Max Konnopke opened the stand in 1930; his widow kept it running through the war and then inside East Germany, where it was one of very few licensed private businesses in the GDR. They claim to have sold the East's first currywurst in 1960, using ketchup smuggled from the West. The family fought off eviction when the U-Bahn viaduct was rebuilt in 2010.", "sl": "A private business inside East Germany", "g": "https://maps.google.com/?cid=14589303629080944420", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB_gx76-fUyFX4HpxWvCz5-IgNLaAhATaJRywrOoX1M1KwkHZ4g89Y4uDTmSO_cVfQ7rx6PIHJ5ciQxgRA7HO17ZgAYIBw33kBMIdHNyhnqyc_vN65tzrr7uECB5ZyGKn3ZVt8lt4sdgKNHb8gdv3_J8A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB1fa3JuQuFFp38MRpAQfrWMvaqCi1qkTUxAVJLTNvqphYX_6-USmGzTvKTmEOK9BElTYFx85_T8129TEPV69FHjD5ZJmTPC35Go1J4JoXHeJJwtFLkU9AwrbqLkHBEZ8KQ6tr4S5pnYy_qEa1MmZY7=s4800-w800-h600"], "a": ["Konnopke's Imbiß", "Konnopke's Imbiß"]}, {"c": "cheap", "n": "Mustafa's Gemüse Kebap", "zh": "€ · the famous queue", "lat": 52.493485, "lng": 13.3885619, "m": "4.2★ · € · 30–60 min QUEUE, sometimes 2 hours · no seating", "d": "Chicken döner with roasted vegetables, feta and lemon, and the most photographed queue in Berlin. It is very good. It is not two-hours-of-your-holiday good, and reviewers increasingly suspect the pace is theatre. Rule of thumb: if the line is over 30 people, walk to Rüyam or Leylak, which locals rate level with it.", "g": "https://maps.google.com/?cid=12192561201473355823", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCM6Q0jjcit6Ho4QnfVlKminJfCa0sn-pAKJYvva7w66SqseHWMyeHrVjOQf0HNk5ckS-hfoii9OAw1LRuztMdJoQ0aMJ25J-oeqAQNLrDNGjexDVWlPmB2nMzZiZCZywdeiaeWJpFkyarMgP4=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCrl4FjYcuxwqcuay9fTrxyzC9nSmcEJ9iGKwR8hktoEEZD26B6lEmri3BOqjeY29kcww8Edtt_rRhsl0N6cKLoLLbRkjkhkg0SwNokOMPyLqbTg4l6QXlwIEWQuF77Xq72_3RDyPUSosMreQ=s4800-w800-h600"], "a": ["Jenny Chen", "Chanwook Lee"]}, {"c": "cheap", "n": "Rüyam Gemüse Kebab", "zh": "€ · Schöneberg döner", "lat": 52.484503, "lng": 13.3523488, "m": "4.9★ (41,000+ reviews) · € · 11am–midnight daily · free tea", "d": "A 4.9 across more than forty thousand reviews, which for a kebab stand is close to unheard of. Chicken only, carved to order, with fried potato and carrot, feta and a seeded bun. Order the classic Gemüse Kebab in a bun with an ayran; they hand out tea while you wait. Queues build fast but move.", "g": "https://maps.google.com/?cid=13000297331304500585", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAL58OiGgDBQh8JyFlX822eLSR69PNxkrcfCi9BVY_nijxYbtBMaotvgS0RxSp30n81_AaZPAu5Vmp8zdWe8HjHDOirK_2cRDUFK2edy_43ro2hKdfsBrGlsEIzEdlJSd9o6VBI_Qr9DZZ0mSi7cwtzfA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBHlujESfbgGH0lzlYMIcjwWmukojLjs9brsPe3ny11hZ8UnTWrflcmhOhiC4bpWH82W-zL7urviJzJOU8suK6kYJGxyK59jrh25gZ_X46Wd_0EfswmucYlKjA8zsfnTkt1mSfUBPpgTMiDVx9e1NHBXA=s4800-w800-h600"], "a": ["kacper123ful", "Bartosz Biniecki"]}, {"c": "cheap", "n": "Leylak", "zh": "€ · börek & lahmacun · CASH", "lat": 52.4983862, "lng": 13.4190417, "m": "4.7★ · € · CASH ONLY · 6am–10pm daily · lahmacun from ~€2", "d": "A Kottbusser Straße counter doing the best Turkish börek in the city, baked through the day — order the minced-meat one; several reviewers find the spinach-and-cheese underfilled. Lahmacun from about €2 and pide worth the detour. Cash only, soft drinks only, and a queue at weekends. Opens at 6am, which makes it a genuine breakfast option.", "g": "https://maps.google.com/?cid=8161163963528558897", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAupsyRAr2vB86MH-udzYA3gGVzKh9qBVNeZcV1mt-ppsqnCAvtjmfSbSD6rdlCpmPu1eVfSSPIcHNG9aVksXJOep4kjZoTyRPuQHd9FX_ZJf4A74gfsfnc-fTlklXTl0eqjDuShb_9kLQpLkc-VUll=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAsPbb9qfUUELJmU1-4TnJ_kJlqlhlWWuIPLKPDAxCAwBDn58AIK-aF4tVjc0vN3CiNiuZVoOZWjxPP_wQigcGsrjangktTKjARu_S6MLQSCoDqSsp2ApLQMZefhMiFIr9Tym1xgZS0dOY2QA=s4800-w800-h600"], "a": ["Torsten Quast", "Miha N."]}, {"c": "cheap", "n": "Sahara Imbiss (Sudanese)", "zh": "€ · Sudanese peanut sauce", "lat": 52.4775152, "lng": 13.4246229, "m": "4.5★ · €5–8 · 11am–1am daily · service can be brusque when busy", "d": "Sudanese food in Neukölln and the single most-cited best-value plate in the neighbourhood: the Magali wrap, fried vegetables and halloumi or falafel under a thick peanut sauce. Rice bowls are enormous. Reviews are split on the staff at rush hour — go off-peak and it's warm and generous. Cards accepted despite the Imbiss look.", "g": "https://maps.google.com/?cid=3409480428623533488", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBr_bdVS6BRVDhdCW9IzJl8X7dkRd1f3iL8oNQbON9R1VKcbuerQPXMuJQxmCin9Dxw6SBwmZjRJsfoip38WJ75WWrED8bLutaOLDURdeIuijIx3dZMATo4qiAZgS1hWOqHVXMKcCLHJXwrVwk=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjByb43a7PMNZ6hXU65AS9_Hkmn8i2BLyaUebcHsvnqQzD0AjM2r-HKmsRyiVCjzwVbIq5uhOFXKGbV-LH_BSM29pg9ccNhoHF7cadtNd31_WG1atmhWNbpte1tMN01qFBz9xlG0MsbP6GzN=s4800-w800-h600"], "a": ["Hassan Akhtar", "Sahara Imbiss"]}, {"c": "cheap", "n": "Hamy Cafe", "zh": "€ · Vietnamese, one price", "lat": 52.4873228, "lng": 13.4219423, "m": "4.3★ · nearly EVERY DISH ~€7.90 · noon–11pm daily · tiny, eat and go", "d": "A Kreuzberg canteen where almost the whole menu is one low price and the portions embarrass restaurants twice the cost. Chicken pho, beef pho and the glass-noodle salad are the reliable orders; there's a short off-board menu if you ask. Cramped shared benches, fast turnover, house rum-and-coconut cocktail for about €3.", "g": "https://maps.google.com/?cid=14493042180014055467", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDIvD6ynEc_Ypt3XUZs6zxaV8-2e6BDREszTSVdkpFEx2gRqPbYbFnTGsR8PyQtYNnOixHGtdZgpPaW8irrvoFx4aWSkUNqNBhHZMYacS2BMmMJs3eUVGiqxc0YQVin1Yj7q5QAiroAK3aIZA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDxs35w83CSXssCJTH886rLsIMT6sEci5loUzueaONwjFrAAvAlZ0G3_hmEONHcJflyXqGw7Wz0MeaqbAqoori05K3TB3DBofTr0YpSOaoVJ0yicYWaUmPAicrP4Sst-e6vThAtbysAuHpRpF1w5cDMCg=s4800-w800-h600"], "a": ["Hamy Cafe", "Andrew Leib"]}, {"c": "cheap", "n": "Scheers Schnitzel", "zh": "€ · schnitzel €8–10", "lat": 52.5028152, "lng": 13.4473839, "m": "4.7★ · €8–10 with sides · noon–10pm daily · self-service, sauces at the counter", "d": "The benchmark for cheap German food in Berlin: thin, properly crisp pork schnitzel with excellent fries or potato salad, from around €8. Any schnitzel can be swapped for seitan at no extra cost. Order at the screen, then help yourself to the homemade sauces — the remoulade and chilli mayo are the ones. Two minutes from the East Side Gallery.", "g": "https://maps.google.com/?cid=14403971885232703091", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCycvLbMWPr2uOtXZ1q6hys7eJAby2EuoJaCbZ3i_WiGwrkjIry0JZQBnml_4rBHwJY3K8-aeN2GWqhTZvGKMyhkMQduii1wuk4bz_Bo9vjrLWlIRUTZfPJtHlqFMNjLGpxJANTM5ohqTeLonA7VbzBIQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD9ovMcFLovrr4SU6hoOdai0B3T15RqUQtk5cTA_H_MsnHqGnU4jMBMi52-qFQU0z3epzMJpyfaCs248UkS5WlbgEAQqCsUZ1PKPXiJHlfj-5nAhDhTMFjod_NJbqS_X5jvN6rx6yD0_8oYY3KeE-3YwQ=s4800-w800-h600"], "a": ["Scheers Schnitzel", "Mark Little"]}, {"c": "cheap", "n": "Burgermeister Schlesisches Tor", "zh": "€ · burgers in an old toilet", "lat": 52.501092, "lng": 13.4424249, "m": "4.7★ · €7–11 · to 4am Fri–Sat · QUEUE 45 min at 7–9pm; 11am is empty", "d": "A burger stand inside a restored 19th-century public convenience under the elevated U1 tracks, which is exactly as odd and as good as it sounds. Cheeseburger and chilli cheese fries, eaten standing among traffic. Go at 11am on a weekday to skip a 45-minute wait, or after 10pm. Skip the cookies.", "g": "https://maps.google.com/?cid=7791823140620635410", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBjb_Ldc94ilUF5EoXCuVZek2XXdP0VpHl3hwx20ogo9uku8D7L6nVZ-EUu_97xIC_7XbM5iUp8_wZK2_cy8t7NkU3ewb8afuIn8lcx2l3QlH8oLcwZmXIDvM4_53DzPkPssd76BvyVf_CBcA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjASUyD8GNofZrvecIloUAMFWWqxwLvhBGdA1zG4cb3V4zyves6c1ZveoEgq0XviAIJlVAwJ7EhNI2JawmC4IJOi1ZP0Zlzp7cCRZ09fFNJh6dIY-p1ys1kwL4Te6-z_mow7frINwAoCxefNrG_nJ1sQ2A=s4800-w800-h600"], "a": ["Burgermeister", "Miroslav Rambousek"]}, {"c": "mid", "n": "Zur letzten Instanz", "zh": "€€ · Berlin's oldest inn, 1621", "lat": 52.5173692, "lng": 13.4137999, "m": "4.2★ · CLOSED SUNDAYS · lunch noon–3, dinner from 5.30 · book ahead", "d": "Trading since 1621 in a crooked house behind the old city wall, with a tiled corner stove and a terrace. Order Königsberger Klopse — veal meatballs in caper sauce — or the Eisbein; the duck can be dry. Not the best German cooking in Berlin, but the oldest room in which to eat it, and the service is unusually warm.", "s": "The name means 'the court of last instance', from the courthouse round the corner: litigants came here for a drink after judgement. Napoleon is supposed to have sat by the stove in 1806, and the guest list since has run from Beethoven and Chaplin to Gorbachev and Chirac. The building was gutted in the war and rebuilt around the surviving stove.", "sl": "Where you drank after losing your case", "g": "https://maps.google.com/?cid=14644223252745470506", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCvyjScd9hm2Q-n-p7NqHgnM0eHuNgES2oMwhcPLqnNoTprQ45dbGD8FbbYRpbNlgSk2-OxBERSON4SL77a9dU_0d3lBDFCL-7tz4-RpAlR-MVx19AoZui7JWdEYhDiIEq7c4SeMhwkmhu6nQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBLH8nZNgKInj3F14AH7-AMTIjzJe-F5BfgRiQyEh0rk3nt7H0B4mFsHVaMhlmjUpUtw65MV8PR6z_53u-ZefxrL6B6ZN30f_5EtGphRkWZIhCJrfKM2IheUxyuLP-ZIKoPxS2QL32rdRBJM4pkxoCG=s4800-w800-h600"], "a": ["Zur Letzten Instanz", "Pablo Sanchez"]}, {"c": "mid", "n": "Lon Men's Noodle House", "zh": "€€ · Taiwanese, Kantstraße", "lat": 52.5063606, "lng": 13.3164921, "m": "4.5★ · CLOSED TUE & WED · noon–10pm · no reservations, expect 20 min", "d": "A tiny, plain Taiwanese room on Kantstraße — Berlin's Chinese restaurant street — with a cook visible at the pass. Beef noodle soup (dish no. 2), the dumplings and gua bao are what people come back for; the fried rice noodles are the local order. No bookings, a queue outside at peak, and it is a place to eat and leave.", "g": "https://maps.google.com/?cid=9563867049295772485", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB2HbA739I_W_01wE-kQ9E02h-fQ2IJHngnxHBpQeLcLy44WiNV78qUAdtXLdKn2rpidkXR7gZFPu_xfihNOdJilaOTMgY_70C1i5TF_V1HwBduLESq9w_BDiy8Atlt_EbLk_3oI331aw4VhnjBh_LFHA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDjJfrBoJQutr-WQPccz3MbeT4egAWMJIhSN2to755MIBjX6F_gsmAlywrxBJyMHTx3A41-qyXMjK_l4FQsL-53DL1K82cCE-0HNZ1LaSmZxKYUc-Jqvm2SbwW8BqL9cQ-kCdL35Wz4-BmKlBg=s4800-w800-h600"], "a": ["A de Nijs", "Lon Men's Noodle House"]}, {"c": "mid", "n": "Barra", "zh": "€€€ · 2026 Bib Gourmand", "lat": 52.4743722, "lng": 13.4269388, "m": "4.5★ · Bib Gourmand · CLOSED SAT & SUN · dinner only from 5.30pm", "d": "A Neukölln kitchen doing deceptively plain plates — vegetables, sweetbreads, fish with peas — on immaculate sourcing, which is the hardest cooking to pull off. Take the sharing menu and the wine list, which is where the room's personality is. Non-alcoholic pairings are the weak point. Small; book well ahead for a Friday.", "g": "https://maps.google.com/?cid=15461072763767342317", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjARRT3CVlQ8PND6CPI0rRNDeDc1J5NJFpZzdPujk8AhcDm6ovd49S2XdAY06lxy5JWfKi1aGATOeQhLvcya4DskPo0eQVNCFdai3LE6fw01WooCz4JTMtM9b3TjumR2VEQ3Ws-sxiH-naW8sVs=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjADjPv6NMZdW2n1KMv9JvIojWtAub8na3Pd5MU_4EsuP1VHq5HGQzf65JtvAcOmbffGHgtlWpQ0Lv0mRCvhKePduVeYxmBEUKBzMW8GmE3thBCGxxsvq7I8tXZH3qNhQVgKVmTFUpAS-5SbCpJUEDcAig=s4800-w800-h600"], "a": ["Hanna", "Barra"]}, {"c": "mid", "n": "MaMi's Food&Wine", "zh": "€€€ · 2026 Bib Gourmand", "lat": 52.539163, "lng": 13.4087825, "m": "4.8★ · Bib Gourmand · CLOSED SAT & SUN · 6–11pm · open Monday nights", "d": "A small Prenzlauer Berg dining room on Oderberger Straße with a strong vegetarian side to the tasting menu and wine advice that is actually advice. One of the very few Michelin-listed kitchens in the city open on a Monday, which is worth knowing when everything else is shut. Book; it seats very few.", "g": "https://maps.google.com/?cid=550142404861538367", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC5tcnnAhsbLqR6OS0s1wwim5t36lCPjqEFydp895xVzdtVyuukqTGnboiyju3kq22c2L-3kPJjFwR46yQ3Cq3dG3Y1yodWA6Oy5SkhSLYN6xg5tsWqUWBAutANnitm5ZbV3IT7ri3DRQ1SXQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAMUnwCXBLkiiwvwSGY3GLc9lgo4tXphsCkkPN6Ow6LJS_prjmSQItyAl7StMA7omJSeZ-Fdq0OsawCP_MfytfGlZRhWtlGqPBzf80D-jlq3ZpQdNYhTzQrEel2fHnJbLKgmCxM6DjYqAzITTE=s4800-w800-h600"], "a": ["MaMi's Food&Wine", "MaMi's Food&Wine"]}, {"c": "mid", "n": "Remi", "zh": "€€€ · 2026 Bib Gourmand · lunch deal", "lat": 52.5283718, "lng": 13.4105324, "m": "4.4★ · Bib Gourmand · CLOSED SUNDAYS · LUNCH noon–3.30 is the value slot", "d": "Torstraße, high-ceilinged and calm, cooking Nordic-adjacent food with real respect for the raw ingredient — beef bitterballen, marinated feta with peas, whole fish. The chef's sharing menu is the way in, and lunch costs a fraction of dinner. Recurring complaint is pacing when the terrace is full; ask for an early table.", "g": "https://maps.google.com/?cid=7491896350290731412", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD0v6uVks7g_dq0nzZcdTP_YAk7PYVqHahuiUN6Nb_trqv-2wByPfai9et-0p_jBBV3q-sZVxUnqfwI_XnYdWB-UR8_qe7jTCzY0vDA1zVeNuYkbV__rkUkiEox5ngNRTJzqg3PRP_bCX_zCw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDYt5xP9M8RJAYgvCkHEAprsvSKMp2Khjt0yuvbAexEpmN4Ts_MNeAFREl1wFx70oowal50j8KILBsne4dKKAtGvWo-v1BVufIVvtLpA9zUhg-tEAwDohc9utae8nQW5jB3AyRFdHT3eEhFHKpaacWQ=s4800-w800-h600"], "a": ["Remi", "Gabriele"]}, {"c": "mid", "n": "Restaurant Nußbaumerin", "zh": "€€€ · Austrian · Bib Gourmand", "lat": 52.5013918, "lng": 13.3128722, "m": "4.7★ · Bib Gourmand · CLOSED SAT & SUN · dinner only from 5pm · come hungry", "d": "Austrian home cooking in Charlottenburg at portions that defeat most people: veal schnitzel the size of the plate, beef stroganoff, game in autumn, and Kaiserschmarrn served for two. Austrian wine list, warm family service. The kitchen's own advice is to arrive hungry and skip lunch. Book — it fills with regulars.", "g": "https://maps.google.com/?cid=7276021758573168578", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCx29gIFIh_PryQszmF9P7yrOkqzY2WP2HwiuQ6UGtn2iKLYWppVAaMJWUeU050IqwjchLUGyQ3wpl3KzzYAcqG6Yp9vqqDaOLC6sUVSAKHLfzh3BuR8n4biKAqVVXZXWAXmwJLxZ3HLZ_-UQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA-wrsvF5WUXPLhAV2PRH3rYkxj6dELOUkhoZYCquhh0Ps3MsD-UdBkpiYIWkEG23GUHyuDkrS3kvz1me50PA7nHdd-vr7HXVdXCVRqC6I7Yf0crcQ2Dnms3VlgtdDrqFduR-KqVuoOsI8ti3vgwmjS_g=s4800-w800-h600"], "a": ["Restaurant Nußbaumerin", "Restaurant Nußbaumerin"]}, {"c": "mid", "n": "Lucky Leek", "zh": "€€€ · vegan · Bib Gourmand", "lat": 52.5348585, "lng": 13.4167656, "m": "4.7★ · Bib Gourmand · CLOSED MON & TUE · dinner only from 6pm", "d": "Fully vegan tasting menus in Prenzlauer Berg that don't lean on meat substitutes — three or four courses, with the cheese variation the dish regulars insist on. The room is casual to the point that some diners feel the price outruns the setting; the cooking doesn't. Alcohol-free pairings are properly considered. Cash is smoother than card.", "g": "https://maps.google.com/?cid=863086404424744094", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBCTVXIe2HqOx9gQPU89THmTffFLHWasJWXgEbHRihGUmWoTLdKIDcbIOwey9KfTqQC1p-ROBUk7gIbPOu9Zq9MJewMVQMKBaBPIMqT0ZhCzeFgH8vdUQD9IMRfhOAA1p5SiyCC6lezAaMaLZU=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBF_DsVUtDO-pgIVcMP__QPkLQZX1lzOcjbjyeP0NH5eCnctl74qrkE-HTiDA_t84wzFNLrirTal9IALRnvaj4IS2pReKquPx8PjtvEje1T26ErUoFwyvT_ZSZpHzogr0hEMVVuCgVVhJqJ4YI=s4800-w800-h600"], "a": ["Philipp Klöckner", "Tey Bannerman"]}, {"c": "mid", "n": "Café am Neuen See", "zh": "€€ · lakeside beer garden", "lat": 52.5103772, "lng": 13.3444862, "m": "4.3★ · 9am–midnight daily · self-service garden is cheaper than the restaurant", "d": "A beer garden on a lake inside the Tiergarten, ten minutes from the Zoo, where you can rent a rowing boat and drink a Maß under the trees. Use the self-service counter for pretzels and sausage rather than the sit-down restaurant, where reviewers find prices high and service uneven. Sunday afternoon, boat first, beer second.", "g": "https://maps.google.com/?cid=17847596920730549220", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCQtW4EdiLVUPKyehNKydF7if-WtJ_wjF0gmdGHuwOnuRub0iEuvqBpdcRA4S6Pvu3mPdLhC9Lbz_KcUF23oF4VUgdmovNyMwMWPQNaZExLH284BGzuF5Cy9T_xYxQO1h0cu0WMa8KMPIQN6EE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCWDQJvXJjwwm3F_j4FJ-UaNwmF15kGfhd9MzjEyLbvJ4qBcpTjxRVkWB3sbNbs1HyMt9ILMXVHYlk0WPophSVGnIO-Ygt2MySpmtuhbOzIFCUfesu-mfMbUAjTesy5PplJJyoE68e39mzGPHjebeOVzw=s4800-w800-h600"], "a": ["Café am Neuen See", "Seán Moran"]}, {"c": "mid", "n": "Konditorei & Café Buchwald", "zh": "€€ · Baumkuchen since 1852", "lat": 52.5212047, "lng": 13.3476955, "m": "4.4★ · 11am–6pm daily · cash-friendly · Baumkuchen by the slice or whole", "d": "A fourth-generation Konditorei near the Spree whose founder was appointed confectioner to the Prussian court — Baumkuchen is the speciality, layer-baked on a rotating spit for an hour. Order it with coffee, plus the lemon cake, and sit in the old room rather than taking away. Tourists are rare here; wasps in summer are not.", "g": "https://maps.google.com/?cid=13047399286744125264", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBDKq6t46sQt9AXwKwUy7D2qimwW-LFlN2s0SeKafEBu1cNfMLVEykRGBYi8R4G8gkcnSCc8Kf9kLzhgCuQ8wdY-YQBCF1BeBbFU-bkslv8pVbJSW5N0jDlJU9BTx9EZuS_bvW68g_EjM1ACw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDKcORWFFg50G4qzu1F0rLXdwsYuwBZ1t8em6kIkGhkwtjmAdr3KwCRTKYdDMUqdya6RIG0Id8CjzPr59eg8SaFYDCY6ZLDp7Jlcni-wP7JnyTctcwLa7SE0FnMGpyt1Er5wjNIay7vv-N_XN7iyI9g=s4800-w800-h600"], "a": ["Konditorei & Café Buchwald", "Y Duan"]}, {"c": "splurge", "n": "Rutz", "zh": "€€€€ · three Michelin stars", "lat": 52.5282224, "lng": 13.3862349, "m": "4.6★ · 3 MICHELIN STARS 2026 · CLOSED SAT & SUN · dinner only · ~4 hours", "d": "Berlin's only three-star restaurant, and the only German kitchen in the city at that level: Marco Müller cooking Brandenburg produce — fish, herbs, fermentation, vegetables from the sandy soil around the city — into something that tastes of nowhere else. Expect four hours and a serious wine cellar. Book months out; weekend closure surprises people.", "g": "https://maps.google.com/?cid=11168929855443895632", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAkka9ao1P5-uJpmZ7D5ZH1-uhnit1F7y4TP-_AikZ-YWaOo4RvfpznZQn38OBq-lIG31_4wdQizBW3Ph81Z5p62QSuAOk2X7PRHH24FZye2PL7sSR_07c9fEqYH5p-ZiSeHd4-xwYyE9ZyWpG2HWl0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCMBY-_Z33WGNDNoWzVfFlLcjiz9CcOIP2nSL1hxcnjgaNRFpjlw8VChIAa31XXTZJsItGyVHI0bk9ZeqZYcfYo4KpViKu15Gw6dGjEOgOokk9w0Qj8mcokH95at_G74tIo4uMjcYv6bgm9uPQeITJhsg=s4800-w800-h600"], "a": ["Rutz", "Rutz"]}, {"c": "splurge", "n": "Nobelhart & Schmutzig", "zh": "€€€€ · radically regional", "lat": 52.5053369, "lng": 13.3904178, "m": "4.3★ · 1 Michelin star · CLOSED SUN & MON · one set menu, no substitutions", "d": "No pepper, no lemon, no olive oil, no tuna — everything comes from Berlin and Brandenburg, on principle, and you eat one fixed menu at a counter facing the kitchen. The 4.3 comes from diners who wanted luxury ingredients and were told no. Go for the argument as much as the food, and tell them about dietary needs when booking, not on the night.", "g": "https://maps.google.com/?cid=8058767565214711546", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDZXt2Pm8Dr-3t_UKyT-GeNQyVeZB9w4FYiHEfkfn70DRQk-kiycG9_LOgrKyOZoJrhZNuy0bJxWPBSJ1qPfq_yIGUBWueF_nQvOME5ulZcFAxhURBu44byfn5eeP2k5AJdftlo0EErf1FLlw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAalQAZ-DVmi4CFRYuMvfapXWbK-IoXxCZjjuD7133aq1YmBizIQi-QwIxsWsPwR3JxM3XRD4Rp9g9ynW5AY-VJ0MwEg-lxqCnYDxVAwBo4qAugQshmoyQkEGB7XGqiqC3Y9TEbbc7x7VVC=s4800-w800-h600"], "a": ["Nobelhart & Schmutzig", "Nobelhart & Schmutzig"]}, {"c": "splurge", "n": "Restaurant Tim Raue", "zh": "€€€€ · two Michelin stars", "lat": 52.5068988, "lng": 13.3914818, "m": "4.6★ · 2 MICHELIN STARS · CLOSED SUN & MON · early 5-course seating Fri–Sat", "d": "Asian-inspired cooking pushed hard toward sour, sweet and chilli — the Peking duck interpretation and the wasabi langoustine are the signatures. Bold enough that a minority find it unbalanced; nobody finds it bland. Since May 2026 there's an earlier five-course 'Early Kolibri' seating on Fridays and Saturdays, which pairs with a concert afterwards.", "g": "https://maps.google.com/?cid=10281141310625315349", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCOkX0CIIFf9fRBOeExAAwj7MJTHcmQxRABNZCDm9-G8xZde4iwM8dxl87cWbt9A-Lx-fNKiuvw0FR_dx_V32pL68TeZu7RglmAwl7Tw7ka9PyN9IFKwO54wKISoCDgJALcEcWcw3rECAwdKXE1-guN=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCFxmDkTpiEDeBj4l8KF6G0eR2D4SKIz2doHZvnBsOkqTWcDc24LCODau-w8Q5izu0_8_MOZm1nJIlTRJvHSkDMG5LbQxa_YeQJ7LzF6Uk8yQwugUiYUROuchF97v3-XoUZ4e6cmiyUZ7Mt5AN82rzBxw=s4800-w800-h600"], "a": ["Restaurant Tim Raue", "Restaurant Tim Raue"]}, {"c": "splurge", "n": "Cookies Cream", "zh": "€€€€ · vegetarian · ring the bell", "lat": 52.5157102, "lng": 13.3877054, "m": "4.7★ · 1 Michelin star · CLOSED SUN & MON · HARD TO FIND: service yard, unmarked door, ring", "d": "Getting in is part of it: you cross a service courtyard behind the Westin, find an unmarked door beside the bins, ring, and climb an industrial staircase into a room that used to be a nightclub. Vegetarian tasting menus with intense sauces, loud music, unpretentious service. The pairings are the thing to spend on.", "g": "https://maps.google.com/?cid=8382646374827884576", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBBrFy-gEOnuaf2f_47NsE0cAmm0O02U0vy1bupaf7ZUW6SEd5Pgu_AGqUlnsZGmuRcAHmbZadg8f5VeTkYs9x4SJ5_jvt7OJ__HD_EoPhPI-MINsr16saHoqhOXlBxJptkbrcUm79Uk5PSkfE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB7BBkPDFjPnwXlXy_gC2uJhuTM5V9pIAARZbouPEQwVaeJBkghXu7EGUba-lBVN21pQ45ciemzXYBBQqqVn7wu72tXHyEtX9L1mTgPefQ6PCkW7cFP1qyWsAX-skAA3TWzjHAG0Gim8DMd-o19Ma5tvw=s4800-w800-h600"], "a": ["Cookies Cream", "Cookies Cream"]}, {"c": "beer", "n": "Hopfenreich", "zh": "craft beer · 22 taps", "lat": 52.4995388, "lng": 13.4392837, "m": "4.5★ · from 5pm daily · to 1am Fri–Sat · Berlin's first craft beer bar (2014)", "d": "A corner Kneipe by Schlesisches Tor turned into the city's original dedicated craft beer bar, with around 22 rotating German and international taps and staff who know every line. Barrel tables, candles, no clubbing crowd. Ask what came on this week and take a half-pour if you're tasting around. Walk 200m to Burgermeister after.", "g": "https://maps.google.com/?cid=9202741231060784676", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCgEIC9VOwc9KVhxd7AyN4-bMTgwnK3mONxzi9HkFh1x-Hp4VE6Ubxjb4oBNx1-jEhQIShlruH-DfEz1OnsQoYHnzYrSnBHcv2MY5TRu0wzbKZgLiwh1dr1hu-18PHLRgXGbafNdv8-vVANsw4bLPEXRA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBe_rT2i9BQTT1dlrZv-WR3MHBWxiIbDNV_br_ft1BhzWJr95vkDrOGDGz_TyHyiEfBn12rvHfJpyhx3g1TikvuHR2GjL8thDlN24a_nxSss4ApU6eKSN1d7Btf9qfDayQ42a4YozLYt2j2OkGVT8-s7w=s4800-w800-h600"], "a": ["Kamil Symela", "Adam Topham"]}, {"c": "beer", "n": "MUTED HORN", "zh": "sours & lambics · Neukölln", "lat": 52.4806732, "lng": 13.4262815, "m": "4.8★ · from 5pm (3pm Sat–Sun) · to 2.30am Fri–Sun · cards accepted", "d": "The highest-rated beer bar in Berlin, run by Canadians near Boddinstraße, and the place to drink sours, gueuze and lambic — rare on tap in Germany, where the purity law pushes brewers elsewhere. Encyclopaedic staff, cheap snacks, shaded outdoor tables that fill by 7pm. Pair it with dinner on Weserstraße.", "g": "https://maps.google.com/?cid=6564229452325155018", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCK-RCQ6hzBdWFKd__lFIl6t0k7m1U20n3S9U1InGpQpbozBYTnvAP54l5sTEKxWsUycr3KZA38vP331EIXVBNkrEP3POVAi9QHw86vEZxwu-ok15JxIPu2j8D_T-ecLrLWYHwJYtRYKu6LOQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAaGHlCsprLZoqbZkBuFsCjSux_CvqRwZaulgUp1YFbPbSm9MIqrydqVWZMwpGzqIvoQrh-OQFdfKLnMUh6OjQqFvlx0HVYfUwy7Qtf4rj7L5VhfAJ8vCRHrMqwWW-l3Pa_cmQircukF31YqvLGWC7y5A=s4800-w800-h600"], "a": ["MUTED HORN", "Caleb Friend"]}, {"c": "beer", "n": "BRLO Brwhouse", "zh": "brewpub · park beer garden", "lat": 52.5001966, "lng": 13.3737, "m": "4.4★ · from 4pm (noon Sat–Sun) · huge garden · NO AIR CON inside", "d": "Shipping containers stacked beside Park am Gleisdreieck with a brewery, a beer hall and a vegetable-led kitchen under one roof, and the S-Bahn running overhead. House range from clean Helles to barrel-aged sours; the food beats most brewpub plates. Best for a long group afternoon in the garden, not a quiet pint.", "g": "https://maps.google.com/?cid=16047510156601435659", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBZvHIeXptMkoEh4j7b7fKNwLcnaNixwrn8RydZ80v9iYKeeDEfvlCGLuN0IL86TefYbmzbK95V1WzqQ7b8JX-s4ODD1Rr9ZYXehmllzmO1OK44wV09kNb6afRjah93GVCrEGO1qRpb090Qt8I=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDLXF7zEGdJbfbZvZ0Eh64nvxtAOn6fEW5JnurwIHKk5e1H7HC0nJ6U2XDP3_u8CLvkSckoP_mrjYRITzcfUsaTLSBzdBI7LauzxhgH5sNkb1Ha-AMmXF55kRtKT2zCxK0AApAyWNaZJdTTFdg=s4800-w800-h600"], "a": ["BRLO Brwhouse", "BRLO Brwhouse"]}, {"c": "beer", "n": "Vagabund Brauerei", "zh": "Wedding · the original taproom", "lat": 52.5479292, "lng": 13.3493092, "m": "4.7★ · CLOSED MONDAYS · from 4pm (2pm weekends) · no proper food", "d": "Three Americans crowdfunded this Wedding brewery in the early 2010s and the Antwerpener Straße room is still the small, chatty original — more beer-geek living room than bar. Hop-forward ales, weizen, gose, and a NEIPA that surprises people in Germany. Come for happy hour, ask what came off the tanks last, and eat elsewhere.", "g": "https://maps.google.com/?cid=18041741452093089379", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDiji9x4XZjxFcFWh9SSGsiWDOkbaS_aOqzVEUFHWv7GrBbe352Jgq0NAmuZFe8_Q4BffdN6Qm5Ky6S5kbaxg8mgrntdAN56RNIgWVL8sbJ5VF6T1FUceiR66LqzXPxkuV3AYpjGHisdXhoeQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDvDQ7RNUmV7ofp1YcuE0jOkjwNissAVbEuRMG_i4Cif_l2atEAVu4xRFzT14H8gmE1vvE33_tcYVgsdGWmA_ut_yN2GYPcmQSkqKxP_MwP1YKzwK-8gckcgncnvTBM7KGbYxLPOEprGmKUSg=s4800-w800-h600"], "a": ["Ted Tucker", "Dzmitry Yudo"]}, {"c": "beer", "n": "Hops & Barley", "zh": "brewpub in an old butcher's", "lat": 52.5089972, "lng": 13.4606998, "m": "4.7★ · from 5pm (2pm weekends) · to 2am Fri–Sat · brews on site", "d": "A former butcher's shop in Friedrichshain — the wall and floor tiling is original — brewing its own Pils, dark beer, wheat and cider a few metres from where you drink it. Owners work the bar and will let you taste before choosing. Football nights get packed; go early for a seat. Cash is easiest.", "g": "https://maps.google.com/?cid=8060834085518444379", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBCh8U80PWMpsKurXpKhjbDCO_cEIgKnyn96fwQgLMBTvNm_gO6n1pmZfMeuazjL_AqAdsOwo8mwBZLdveoFUGUD5BPFrNzt2R6vgDeCwX2Zil205ODMNJBJNQv8NFlNdn_JZcsRb0tf3bJeA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA-o2sdgwkAe4R-HrSz68HoKdw7uf0PPpY1FFwrVRGnLjnnPgOjBjbapeCTn0yAoLYM4wPmXcaFpjB8wOZZpnZP_m6QX_eIi-8tqIvJ_Wb8xfI7o9_Hr0uKEGP2Bn4whxT2p0O0LS3iFYBc=s4800-w800-h600"], "a": ["Hops & Barley", "Shahryar Nozari"]}, {"c": "beer", "n": "Prater Beer Garden", "zh": "Berlin's oldest beer garden, 1837", "lat": 52.540099, "lng": 13.4097855, "m": "4.3★ · noon–11.30pm daily · garden SUMMER ONLY; indoor Gaststätte year-round", "d": "Trading since 1837 and much bigger inside than the Kastanienallee frontage suggests: gravel, chestnut trees, self-service counters that keep queues short. Roast chicken with sauerkraut is the order and the pretzels are unusually good; skip the spätzle. Portion sizes have drawn recent complaints, so order to see before committing to a round.", "g": "https://maps.google.com/?cid=8185127261212328939", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDfYLT1zAaLTG0eF1EZBc2OCjuCInKQSof2V5WOBu6IO8X9vT53AU_regluJrbJ5PGfHR0FIJ2rEchVGcJcL9JTlhhiJ2THIZiKEByen3KJ2X85oyP_iU2mQ62pkzXfONDOHYQb_doinihM1S4=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA4dmkA8S8NnYb2j5t2hycpN6qauVh9-LFJjpyiw3BXuiFb4rt1HgQEXCFNvrg7df7raljgNuDMSElQdkErHdTyDBv2IUcRPHETaxiWSCS2PRBG6evESiSAkoN_cV9Tx4XC7iVzjZvtG1sC_gc_ktujlw=s4800-w800-h600"], "a": ["Jasper Doeven", "Jeanet"]}, {"c": "beer", "n": "Klunkerkranich", "zh": "rooftop bar on a car park", "lat": 52.482195, "lng": 13.4318524, "m": "4.5★ · €5 ENTRY · from 4–5pm · to 3am Fri–Sat · HARD TO FIND: mall lift to level 5", "d": "A garden bar on the roof of the Neukölln Arcaden car park, reached by taking the shopping-centre lift to the top floor and walking up the ramp — which feels wrong until you arrive. Sunset over the flat western skyline, DJs later, simple food, drinks at normal bar prices. The €5 door charge annoys people; the view earns it.", "g": "https://maps.google.com/?cid=17956129675509246770", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBU7GkgdwlqVTegeCw2TLCDb1i9FIeyA07IPSrSewD6Roo67kyXRRvq4DjJJGzUzLhfvXSKQE1HujJHV6JbtMSvsgAdwy_ckw2ifBxQO9YFvHJD0aFiXJAIqqq_-MvuMiFYYvSec6jV0u_MEMOxucomTw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAHHm-4TfDW1q3s1KjBPXg_I_QJMHMcoq-jBU-7wgkY6EUBwLSxIf04ez3lOyR2b1waWZeRLUHjByJ1QLXgPzY0GyKDyyX_zr7MYzIYvF8UOCYhjuBUqNJrmH83rP9dOYpK1X7VEIpr7BIclA=s4800-w800-h600"], "a": ["Klunkerkranich", "Urs Berger"]}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+'" style="background:'+CATS[pl.c].color+'">'+glyph(pl.c)+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng+"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  map.panTo([pl.wlat,pl.wlng],{animate:true});
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the sheet down to dismiss ----
+   Touch: drag anywhere in the sheet, but only when it is scrolled to the top, so
+   reading long cards still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    if(sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'y':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(dy)>Math.abs(dx) ? 'y' : 'x';
+    if(drag.axis==='x'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(dy<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=dy;
+  sheet.classList.add('dragging');
+  sheet.style.transform='translateY('+dy+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='y' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
