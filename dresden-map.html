@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!-- city-guide-maps template v7 capabilities: swipe-dismiss,drag-handlers,click-away,escape-key,gallery,side-panel,must-see,overview,filters,fullscreen,geolocation -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Dresden & Saxon Switzerland</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{position:relative;width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .pin.must{border-color:#F2C14E;border-width:3px;
+    box-shadow:0 0 0 1.5px rgba(120,80,0,.55),0 2px 7px rgba(0,0,0,.45)}
+  .star-badge{position:absolute;top:-5px;right:-5px;width:12px;height:12px;
+    background:#F2C14E;border-radius:50%;border:1.5px solid #fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+    width:30px;height:30px;border:none;border-radius:50%;cursor:pointer;
+    background:rgba(0,0,0,.42);color:#fff;display:none;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);transition:background .15s ease}
+  .gal-nav:hover{background:rgba(0,0,0,.65)}
+  .gal-nav:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .gal-nav svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .gal-nav.prev{left:8px} .gal-nav.next{right:8px}
+  .gal-nav[disabled]{opacity:.3;cursor:default}
+  /* only for real pointers — touch users swipe */
+  @media (hover:hover) and (pointer:fine){
+    .gal:hover .gal-nav, .gal-nav:focus-visible{display:flex}
+  }
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  /* when there is no photo the grabber would sit on the text */
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---- city overview sheet ---- */
+  .about{position:absolute;inset:0;z-index:1400;background:var(--paper);
+    overflow-y:auto;transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.32,.72,.35,1);
+    -webkit-overflow-scrolling:touch}
+  .about.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.about{transition:none}}
+  .about-inner{max-width:640px;margin:0 auto;padding:18px 20px calc(40px + env(safe-area-inset-bottom))}
+  .about h2{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:3px}
+  .about .tagline{font-size:14.5px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+  .about-close{position:sticky;top:0;float:right;width:34px;height:34px;border:none;
+    border-radius:50%;background:#eef1f5;color:#5b6472;font-size:16px;cursor:pointer;
+    line-height:1;z-index:2;margin-left:10px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;
+    margin-bottom:20px}
+  .stat{background:#f6f4ef;border-radius:11px;padding:9px 11px}
+  .stat .k{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#8b8577;margin-bottom:2px}
+  .stat .v{font-size:14px;font-weight:700;line-height:1.25}
+  .about h3{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:20px 0 7px}
+  .about p{font-size:14.5px;line-height:1.6;color:#374050;margin-bottom:9px}
+  .musts{list-style:none;margin:2px 0 4px}
+  .musts li{position:relative;padding:7px 0 7px 27px;font-size:14.5px;line-height:1.5;
+    border-bottom:1px solid #f0ece4}
+  .musts li:last-child{border-bottom:none}
+  .musts li::before{content:"";position:absolute;left:5px;top:14px;width:9px;height:9px;
+    border-radius:50%;background:#F2C14E;box-shadow:0 0 0 2px rgba(242,193,78,.28)}
+  .musts b{font-weight:750}
+  .nearby li{padding:7px 0 7px 27px;font-size:14px;line-height:1.5;list-style:none;
+    position:relative;color:#374050}
+  .nearby li::before{content:"";position:absolute;left:6px;top:15px;width:7px;height:7px;
+    border-radius:50%;background:#9E9D24}
+  .about .foot{font-size:11.5px;color:#95a0ae;margin-top:22px;line-height:1.5;
+    border-top:1px solid var(--line);padding-top:13px}
+  /* ---- wide / landscape: the card becomes a left-hand panel ----
+     A full-width bottom sheet letterboxes photos badly once the window is wide. */
+  @media (min-width:720px){
+    .sheet{left:0;right:auto;top:0;bottom:0;width:390px;max-height:none;height:100%;
+      border-radius:0 20px 20px 0;box-shadow:8px 0 30px rgba(16,24,40,.22);
+      transform:translateX(-105%)}
+    .sheet.open{transform:translateX(0)}
+    .gal, .gal-track img{border-radius:0 20px 0 0}
+    .gal-track img{height:auto;aspect-ratio:3/2}
+    .grabber{top:0;bottom:0;left:auto;right:0;margin-left:0;width:24px;height:100%;
+      flex-direction:column}
+    .grabber::after{width:4px;height:38px}
+    .sheet:has(.gal.none) .sheet-body{padding-top:16px}
+    .sheet-body{padding-right:26px}
+    /* keep the filter panel clear of the card */
+    .panel{left:auto;right:70px}
+    .about-inner{padding-left:26px}
+  }
+  @media (min-width:720px) and (max-height:520px){
+    /* phone held sideways: shorter, so trim the photo further */
+    .gal-track img{aspect-ratio:2/1}
+  }
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Dresden & Saxon Switzerland</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="aboutBtn" title="About this city" aria-label="About this city">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Pin shapes: circles are sights, squares are food, diamonds are drinks. CLOSING DAYS ARE IN CAPS on each card. Dresden museums mostly shut Mondays; the Historisches Grünes Gewölbe shuts Tuesdays and needs a separate timed ticket. Saxon Switzerland, as of 22 August 2026: a severe storm on 31 July damaged the Amselgrund at Kurort Rathen and the Felsenbühne open-air theatre is out of use; the Bastei, its bridge and the Schwedenlöcher are open. Felsenburg Neurathen has been closed since 2023. Low water has suspended most Elbe paddle-steamer lines. Malerweg stages 2, 3 and 5 are on signposted diversions. Bark beetle damage closes paths at short notice: ring the national park centre on 035022 50240 before a long walk. Sources: Google Places data, the Tourismusverband Sächsische Schweiz closure bulletin, the Michelin Guide 2026, SKD museum listings and German-language local blogs. Photos come from Google Places contributors and are credited on each card; they were not viewable from here, so two are shown per place rather than one. Live location needs an https address and will not work from a downloaded file. Not researched — a themed walking-tour source: searched GPSmyCity but never fetched a tour page, so route-led sights (Augustusbrücke, Goldener Reiter, Stallhof, Dreikönigskirche) are absent Not researched — regional food and drink specialities: no dedicated specialities search; the food section was written from general knowledge plus one café listing, so the Stollen bakers and Quarkkeulchen addresses are unverified Not researched — where to stay — districts: districts written from general knowledge without a search; treat the four stay cards as orientation, not verified recommendations</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <button class="gal-nav prev" id="galPrev" aria-label="Previous photo">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="gal-nav next" id="galNext" aria-label="Next photo">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="about" id="about" role="dialog" aria-label="About this city" aria-hidden="true">
+  <div class="about-inner">
+    <button class="about-close" id="aboutClose" aria-label="Close">✕</button>
+    <h2 id="abTitle"></h2>
+    <p class="tagline" id="abTagline"></p>
+    <div class="stats" id="abStats"></div>
+    <div id="abSections"></div>
+    <div id="abMusts"></div>
+    <div id="abNearby"></div>
+    <p class="foot" id="abFoot"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"heritage": {"label": "Landmarks, squares & parks", "color": "#6D4C41", "icon": "landmark"}, "church": {"label": "Churches", "color": "#8E24AA", "icon": "church"}, "museum": {"label": "Museums, palaces & fortress", "color": "#1565C0", "icon": "palette"}, "view": {"label": "Rocks & viewpoints", "color": "#2E7D32", "icon": "mountain"}, "hike": {"label": "Gorges, gullies & water", "color": "#00897B", "icon": "footprints"}, "transport": {"label": "Ferries, trams & lifts", "color": "#546E7A", "icon": "tram-front"}, "stay": {"label": "Where to stay", "color": "#3949AB", "icon": "bed"}, "cheap": {"label": "Cheap eats (€)", "color": "#00ACC1", "icon": "utensils", "shape": "food"}, "mid": {"label": "Mid-range (€€)", "color": "#F9A825", "icon": "utensils", "shape": "food"}, "splurge": {"label": "Splurge (€€€)", "color": "#C2185B", "icon": "utensils", "shape": "food"}, "cake": {"label": "Coffee & cake", "color": "#BF360C", "icon": "cake-slice", "shape": "food"}, "beer": {"label": "Beer, wine & bars", "color": "#37474F", "icon": "beer", "shape": "drink"}};
+const ICONS = {"bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "beer": "<path d=\"M17 11h1a3 3 0 0 1 0 6h-1\"/> <path d=\"M9 12v6\"/> <path d=\"M13 12v6\"/> <path d=\"M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 0 1 0-5c.78 0 1.57.5 2.5.5S9.44 2 11 2s2 1.5 3 1.5 1.72-.5 2.5-.5a2.5 2.5 0 0 1 0 5c-.78 0-1.5-.5-2.5-.5Z\"/> <path d=\"M5 8v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8\"/>", "cake-slice": "<path d=\"M16 13H3\"/> <path d=\"M16 17H3\"/> <path d=\"m7.2 7.9-3.388 2.5A2 2 0 0 0 3 12.01V20a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-8.654c0-2-2.44-6.026-6.44-8.026a1 1 0 0 0-1.082.057L10.4 5.6\"/> <circle cx=\"9\" cy=\"7\" r=\"2\"/>", "church": "<path d=\"M10 9h4\"/> <path d=\"M12 7v5\"/> <path d=\"M14 21v-3a2 2 0 0 0-4 0v3\"/> <path d=\"m18 9 3.52 2.147a1 1 0 0 1 .48.854V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6.999a1 1 0 0 1 .48-.854L6 9\"/> <path d=\"M6 21V7a1 1 0 0 1 .376-.782l5-3.999a1 1 0 0 1 1.249.001l5 4A1 1 0 0 1 18 7v14\"/>", "footprints": "<path d=\"M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z\"/> <path d=\"M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z\"/> <path d=\"M16 17h4\"/> <path d=\"M4 13h4\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "mountain": "<path d=\"m8 3 4 8 5-5 5 15H2L8 3z\"/>", "palette": "<path d=\"M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z\"/> <circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>", "tram-front": "<rect width=\"16\" height=\"16\" x=\"4\" y=\"3\" rx=\"2\"/> <path d=\"M4 11h16\"/> <path d=\"M12 3v8\"/> <path d=\"m8 19-2 3\"/> <path d=\"m18 22-2-3\"/> <path d=\"M8 15h.01\"/> <path d=\"M16 15h.01\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>"};
+const CITY  = {"name": "Dresden & Saxon Switzerland", "tagline": "A rebuilt Baroque capital on the Elbe, and the sandstone labyrinth an hour upstream that taught Germany how to look at landscape.", "stats": [["Population", "Dresden ~570,000"], ["Founded", "First recorded 1206"], ["Berlin", "~2h by train"], ["Prague", "~2h15 by train"], ["To the rocks", "S1 to Rathen ~35 min, to Bad Schandau ~50 min"], ["Language", "German; English fine in the city, patchier in the villages"], ["Budget/day", "~€55 thrifty, ~€130 comfortable"], ["How long", "2 days Dresden, 2–3 for the national park"], ["Best months", "May–June and September; October for the beech colour"], ["Avoid", "Bastei on a July or August weekend after 10am"]], "sections": [["History in five minutes", "Dresden was a middling Saxon river town until Augustus the Strong decided in the 1690s that a prince-elector who also wanted Poland needed a capital that looked the part. He spent enormously on it: the Zwinger, the porcelain works at Meissen, the picture collection, and the goldsmiths whose work fills the Green Vault. That 40-year spending spree is essentially the whole tourist offer today.\n\nOn 13 and 14 February 1945, British and American bombing and the resulting firestorm destroyed the centre and killed around 25,000 people. The East German state cleared the rubble, left the Frauenkirche as a deliberate ruin, and rebuilt selectively in concrete. After 1990 the city reversed that: the Frauenkirche was rebuilt stone by catalogued stone and finished in 2005, the Neumarkt around it reconstructed from photographs and Bellotto's paintings.\n\nSo almost nothing you see in the old town is old, and the city is unusually open about which parts are which. The darker blocks are the survivors."], ["Culture and society", "Two cities share the river. The Altstadt is Baroque, ticketed and full of visitors. The Äußere Neustadt on the north bank is a 19th-century quarter that survived the bombing largely intact, was squatted after 1990, and is now where people actually eat, drink and live — courtyards, cheap kitchens, bars with no signs.\n\nDresden also carries a harder political story: the anti-immigration Pegida marches started here in 2014 and the state votes well to the right of Germany's average. The city is equally the place where tens of thousands form a human chain each 13 February to keep the far right from owning the bombing anniversary."], ["Economy, then and now", "Saxony made precision things long before it made chips: Meissen porcelain from 1710, cameras and optics from the 19th century, the world's first single-lens reflex camera. The GDR concentrated its electronics industry here, and that workforce is why the region rebranded after 1990 as Silicon Saxony — Europe's largest semiconductor cluster, with Infineon, Bosch and GlobalFoundries fabs ringing the city. Tourism and two large universities do most of the rest."], ["Iconic food & drink", "**Eierschecke** is the city's cake: three layers — yeast base, quark, and a set custard on top. Order it as a **Dresdner Gedeck**, with coffee and a coffee liqueur alongside (~€9).\n\n**Dresdner Christstollen** is a protected-origin fruit bread, made only within the city by about 110 licensed bakers and sold from late autumn; the Striezelmarkt on the Altmarkt runs from late November to 24 December. Outside that season, reputable bakers sell it year-round — it is not the same thing, and they will tell you so.\n\nSavoury: **Sauerbraten**, **Quarkkeulchen** (fried quark-and-potato cakes with cinnamon, ~€8), potato soup, and river fish. To drink, **Radeberger** Pilsner is brewed 15km away, and Saxony's tiny wine region on the slopes towards Radebeul makes dry whites you will not find outside the state."], ["Unique to Dresden and the Elbe sandstone", "The region is called **Saxon Switzerland** because two Swiss painters at the Dresden academy in the 1760s kept saying the rocks reminded them of home. The Romantics followed, Caspar David Friedrich painted here, and by 1826 there was a bridge at the Bastei purely so visitors could reach a view. This is one of the first landscapes in Europe invented by tourism — which is why the **Malerweg**, the painters' way, is signposted as a 112km trail.\n\nDresden also runs the **world's oldest fleet of working paddle steamers**, and two hillside railways from the 1890s, a funicular and a suspension railway, still in daily service on opposite ends of the same ridge."]], "musts": ["**Frauenkirche** — the rebuilt dome, and the cross made by the son of an RAF bomber pilot (nave FREE, dome ~€10)", "**Historisches Grünes Gewölbe** — the Baroque treasury, including the pieces returned damaged after the 2019 heist (timed ticket, ~€14, CLOSED TUE)", "**Zwinger** — the courtyard at eight in the morning, before anyone (FREE)", "**Fürstenzug** — 23,000 porcelain tiles that outlived the firestorm (FREE)", "**Bastei** — the 1851 stone bridge in the rocks; walk up from Rathen before 9am (FREE)", "**Festung Königstein** — the fortress no army ever took, though a chimney sweep did (~€15)", "**Schrammsteinaussicht** — ladders and ledges to the best view in the park (FREE)"], "nearby": ["**Pirna — 30 min by S-Bahn.** Intact Renaissance old town, painted by Bellotto, and the 2026 Bib Gourmand kitchen at Felsenbirne.", "**Meissen — 40 min by S-Bahn.** The porcelain manufactory and a cathedral on a crag; the workshop demonstration is the reason to go.", "**Bohemian Switzerland (Czechia) — 1h.** The Pravčická brána arch and the Edmund Gorge boats, reopened June 2026 after the 2022 wildfire.", "**Prague — 2h15 by train.** The line follows the Elbe through the whole sandstone gorge and is worth the window seat."], "foot": "Prices indicative for 2026 and worth re-checking. Closures verified 22 August 2026 against the Tourismusverband Sächsische Schweiz bulletin, the Michelin Guide 2026 and SKD museum listings. Place data and photos from Google Places contributors, credited per card."};
+const PLACES = [{"c": "church", "n": "Frauenkirche", "must": true, "zh": "FREE to enter · dome climb paid", "lat": 51.0518734, "lng": 13.7415216, "m": "4.8★ · nave FREE · closed to sightseers during services · dome climb approx €10", "d": "Bombed flat in February 1945, left as a rubble heap for 45 years, then rebuilt stone by catalogued stone and finished in 2005. The darker blocks in the facade are the originals, recovered from the pile. Go inside for free; pay only if you want the dome gallery. Check the service board at the door before queueing.", "s": "The gold cross on top was made by Alan Smith, a British silversmith whose father flew a Royal Air Force bomber over Dresden in 1945 and spent the rest of his life a pacifist. British donors paid for it; the Duke of Kent handed it over on the 55th anniversary of the raid. As an apprentice in Coventry decades earlier, Smith had made crosses from nails of that bombed cathedral. One of them stands in the Hofkirche, three minutes' walk away.", "sl": "Made by the son of the pilot who bombed it", "g": "https://maps.google.com/?cid=7150976228831701411", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA-Nzl7cTZm3A5rWxj5r2-4FG_RAQoEaLbHUP1QbqDatQU57-gWcD4_hHlN_uXyx4MNdTaLx_9igxc-p9T3zY044Xl-6zIg53sgiWDi_A4XSI3DqRODlJevHQh4nbH3Jd0yMD8aZjWA_bOF43U=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCKDb7oXn6t-ZXJLNJO3H2dG1FIcg1OO_PzfCGiiQ49stuFxkzsvip6rgl2pNns0vZXjx_sLQ2OKjhYDrFcJ_2ZW6mVVkrnhmQGlNZa4cXJRmFQnsn7NghWfm-awNUdpMQWD6ZqRpujyfOa84o=s4800-w800-h600"], "a": ["Mridul Patel", "Steffen Belz"]}, {"c": "heritage", "n": "Zwinger", "must": true, "zh": "courtyard FREE · museums ticketed", "lat": 51.0529962, "lng": 13.7339266, "m": "4.7★ · COURTYARD FREE, 6am–10pm · museums Tue–Sun 10–17, MONDAY CLOSED", "d": "August the Strong's pleasure ground, built as an orangery and party venue rather than a palace, which is why it is all gateways and fountains and no living quarters. Walk in free and early; the courtyard at 8am is empty. The three museums inside are separate tickets from the building.", "g": "https://maps.google.com/?cid=7241394566456907063", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDRs9wFNyY0NIDg9rsn9SEJaGtpsXSfP5kUYfZAq3FI8Dytcjo37hEVIdU6_Eqv05zU0xjzPUev19J3prgUex60hiOeUdgckrF3c6wnmhYw_hENR_4y3dbEGSXiFfZi_sNS7GWxawcBEGVLtQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCwln213d-lEEx1HhCo3Uovaekwc-2x5Bhw_xHosY9LDMb8wkfx1RE6vKr7dbTY052On4zs2sqzVv4vMszD948IB07xxmBXv6qy28tZInicw_ugDBPxe5mFmQDSH2lk3GnQpEBzwhsWV6ddhw=s4800-w800-h600"], "a": ["albert pankow", "Darek Jenciak"]}, {"c": "museum", "n": "Gemäldegalerie Alte Meister", "zh": "Raphael, Vermeer, Bellotto", "lat": 51.0533882, "lng": 13.7347067, "m": "4.8★ · MONDAY CLOSED · 10–17 · house ticket covers the whole Zwinger", "d": "One of Europe's great picture collections, in Semper's wing of the Zwinger. The Sistine Madonna is here, and the two bored cherubs at its foot are the most reproduced detail in art. Also Bellotto's Dresden views, painted before 1945, which is how the city knew what to rebuild. Allow two hours; come at opening.", "g": "https://maps.google.com/?cid=12302637156143911889", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBHrYsSrP4yiM_UJs1cMSL3F61h_za3-Jg1cMYXvENcPc_myUaRsh92ik0r19EdNTq8dQnbWgy5kGWJVPt-MHY95hp9bovA4bcpvbT-ASybqpo3j5HmkHG8QVm6yIAo0VtqR_hsDoE_rR8Bug=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjApMV6YoLs_VHrzgvDpEVeJYT8TOwjfyUtKUJFAJo_bUPBiIwMlYVlIe6Wq50V77WJdIq-3e4aHCq6FPPdRDPtmvMtTFd_sEKYIW4XuOCFuot4gO1bi5pOCrJpIRNPrbwqpejC1q-MMFbJaYQ=s4800-w800-h600"], "a": ["Gemäldegalerie Alte Meister", "Michael Niehaus"]}, {"c": "museum", "n": "Historisches Grünes Gewölbe", "must": true, "zh": "the Baroque treasury", "lat": 51.0526345, "lng": 13.7363072, "m": "4.7★ · TUESDAY CLOSED · TIMED TICKET, book ahead · no bags, no coats, no photos", "d": "The original treasure chambers with their mirrored walls, one of the few parts of the palace that survived 1945. Entry is by timed slot and is not included in the palace house ticket, which catches people out; a same-day queue can run an hour. The Neues Grünes Gewölbe upstairs is included, less overwhelming and needs no slot.", "s": "In November 2019 thieves knocked out the street lighting, cut a window grille and axed one case, taking 21 pieces insured at about 114 million euros. Most were handed back three years later on a table in a Berlin law office, damaged: stones prised out, a sword blade missing. They are on display again exactly as returned, unrestored, because they remain evidence in proceedings that are not finished.", "sl": "Why some of it is visibly broken", "g": "https://maps.google.com/?cid=14939710532309988731", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD2fdOL_IvMfUGXl0kntCB241d8oSikMqjtdowNsKHH-2bsM31OTOV2X6toxUTV2s1au-K6n6snf9JR8klv5_Tp19QDqvSqUa60g9mk18k2WrTvFE-qv-59Txbb0JlfOI-nJFh46n6rgwM-YmM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD997JFnR_ROaVP6rSH809d2qyBGUFiBdhioyFs0wQGK2QBOy4L05Tf0Hthfypseh5K79SgU13zNPHouS75xY6_ZB_pwRY743BonzdXzjXa_q22kQ23U6OGIVm-YXlQrOwqwoSZ-G6jddLZ0A=s4800-w800-h600"], "a": ["Historisches Grünes Gewölbe", "Fred Navarro"]}, {"c": "heritage", "n": "Fürstenzug", "must": true, "zh": "FREE · 102m of porcelain", "lat": 51.0527909, "lng": 13.7389032, "m": "FREE · 24h · best light late afternoon · two minutes from the Frauenkirche", "d": "A 102-metre parade of Saxon rulers on horseback, made from roughly 23,000 Meissen porcelain tiles. Walk it from the far end so the procession comes towards you. The last figures on the right are not princes at all but the artists, craftsmen and a farmer, tacked on to the end of the dynasty.", "s": "Everything around this wall burned in February 1945 and the wall did not. Glazed porcelain shrugged off the firestorm that destroyed the palace behind it, so the mural is essentially original while almost every stone you can see from it is a replacement. About 200 tiles have been swapped since. Look for the slight colour differences.", "sl": "It survived the firestorm that took everything around it", "g": "https://maps.google.com/?cid=4750722484603993737", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC9SX5ma5L16cgrSt47olbB8Hdv2JdDxOrcmX_gb8Q033zTjvmq5C8qoGnZ_iLe0nqEkLRY8gI7NRJ5-1nur08qS0JKIrHW7DK6x6yJ0p6_77kA1G-RUMuyKHd7ISRZCUvubk_KEdtCtcyspPHcKYxxZw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBEoPwpseNfmyRmxnrE24266Gi88AMmCb18lO_77-pM4qbc05KhS5mBKcUTwelmvVDQDx4ZUDv4eD3hGqq9AoFsinjVSyXL1mCEyDCE1A0_RmgAg2wJRYvx-Yo6yf4SA95o2HBwFF-jR5EdJ_c=s4800-w800-h600"], "a": ["Elis Brandin", "Myriam Berg"]}, {"c": "heritage", "n": "Semperoper", "zh": "opera house · tours and standing tickets", "lat": 51.0544862, "lng": 13.7352762, "m": "4.8★ · guided tours daily, English usually 2pm · cheap standing tickets sold at the box office on the night", "d": "Burned down in 1869, rebuilt, burned again in 1945, reopened in 1985 on the anniversary of its destruction. The interior only opens to ticket holders or tours. Reviewers who actually got in rate it far above those who photographed the outside; the box office releases standing places on the evening, often when the house is sold out.", "g": "https://maps.google.com/?cid=1156137927034507307", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAcDfodWo3Sp2APQbIUNh-_t3PRC7VQI1emIsaMnKk_Onxz8bBANVLzzu8wT7LjAdbXFbp-wJJBjCTD1BiTQcGNhXMGNWIf5Pd0ZaboIcl7JtRqpSTJWe4OkWGEVhnvfu8t4U8UnMxtuXcaPA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAg7BghVhL_RtSFkuGJq-DJTlF_F4ysiHRgdiQiR9LiWawwMPP1DW-QqltcOhWbiUullMCtyGJL292X-1sMFT9aY74KGKApp7-vrwSAuIAFUD9cuC0EvSHT9utZOw6pAHYyI6s2P7KYqvpGVfs=s4800-w800-h600"], "a": ["Elshad Mirzayev", "Peter Morris"]}, {"c": "heritage", "n": "Brühlsche Terrasse", "zh": "FREE · the Elbe balcony", "lat": 51.0532474, "lng": 13.7426731, "m": "FREE · 24h · no shade at all · steps up from Schlossplatz", "d": "A former stretch of city wall turned into a promenade above the river, and the one place where the whole Baroque skyline lines up. Come at dusk, when the cafe tables fill and the sandstone goes orange. There is no shade whatsoever, so it is punishing at midday in summer.", "g": "https://maps.google.com/?cid=506732445788596839", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAYbZe9llUR8AnPLKhvHxI1rJS6wtBOwY9RN13TaoBeaw8Qdm9FzPZnN21JCZO-ebrsiqspoo8NtB-SyzvLAItoz0D-LHSjjkoQvSDUMmjdXxzfExjlmTwcNkEj87_iW-c-QEEMzf3CxL0C-Oo=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCQ-KYbakmW4V96MCxeQjMogGdW24JTDDJj_3i-r6tlZW4X-oulz61sPSqbkuEWOfckZiS_ca5Bcf-YBIKOeS_qaPtoWIht660MxUlNS8UnFV-vIKw6wryBc5WBWlJAltpndxpiKU2bj8OfKDHY08We=s4800-w800-h600"], "a": ["Erich Raeder", "Andreas Baumhardt"]}, {"c": "church", "n": "Kathedrale Ss. Trinitatis (Hofkirche)", "zh": "FREE · the Catholic court church", "lat": 51.053509, "lng": 13.7373588, "m": "4.8★ · FREE · CLOSED 12–13 DAILY · Fri 13–17, Sun 12–16", "d": "Built by a Catholic king for a Protestant city, which is why it stands slightly apart and why the saints on the roof outnumber the congregation. Inside are the Wettin crypt and a Cross of Nails made from the ruins of Coventry Cathedral. Doors shut for the lunch hour every day and reopen on the bell.", "g": "https://maps.google.com/?cid=9306713805753267447", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD5Ib3aI6LnTx9jVWcm4b40FcENxkD67a0oLQ3DfyShu2Mhv4uDta3XosYkA1AXrgRUkfJtxNGZnFGiCTbpTS9n3m6w1gBvxrZ5fxnYk9rw8Neb7p20KR439_Czqg7qN93dnMmbdzwZut8Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA8vdteeW6sqhoG9TAYF0LvyEy4qDIDojSDuoUXPQse56SlRjDhOY9Mejonx24YmvcwXmAADMPpvmvE53O4v_sA_cX3dMgMXz67kXrO-G08mj4AEoyabpeqpKqO_2aBKanG75n-Lcd4H6XQ=s4800-w800-h600"], "a": ["martin virgl", "Othmar Knoll"]}, {"c": "museum", "n": "Albertinum", "zh": "Romantics to now", "lat": 51.0520205, "lng": 13.7443443, "m": "4.6★ · MONDAY CLOSED · 11–17 · quietest of the big three", "d": "Everything after the Old Masters: Caspar David Friedrich and the Romantics who invented the way people look at the Elbe sandstone, through to Richter and living artists. Less crowded than the Zwinger and better hung, with sculpture in a glass-roofed courtyard. See the Friedrichs before you go hiking; the rocks look different afterwards.", "g": "https://maps.google.com/?cid=12719724002584608176", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD-ASi4sf6Oq5VeQsFQM7StPDFvkAgncQZdS2fqmCRFvOWq8-FHLM-tcYrjzVEGscXgoywREN6yYnEaqi4nNsO-RAysAPkOBBxzWgLX7pT3fZNh-fFn6K8t1ljsZM1umQnmIAIYPElgPeROuw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBOazu518Qv1p2JQEFYfcC91r5-r93aM0sL9iQxD8rgN68FJr6j7Nt4DWalO_excjI5GVoaxTk1ziRyZ8C6GbbCBgquPYjRxKmWof29JmG9fZyfjDNg2avR9u3QcD1MipNzC6DvRkwM-REZCEo=s4800-w800-h600"], "a": ["Albertinum", "Christoph Orpel"]}, {"c": "church", "n": "Kreuzkirche", "zh": "FREE · tower €5", "lat": 51.0487781, "lng": 13.7388147, "m": "4.6★ · nave FREE · tower €5, 260 steps · Kreuzchor sings Saturday vespers", "d": "Deliberately left rough: after 1945 the interior was finished in bare plaster and never prettified, so it is the one central church that still looks like what happened to it. Home to the Kreuzchor, a boys' choir founded in the 13th century. The tower climb is cheaper and emptier than the Frauenkirche dome.", "g": "https://maps.google.com/?cid=14263218315324169934", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDqgoOkVWTFheXxA3KCNeOhasfOF7ZsdHeMCBeY23B4iVLkGFOOG4b4cN18Rwi1VZPDaLZs2ltxMvnwywy5cw2m34KkJ4mcEGRylWfpn8_ROjj_zzxTp5tsW5sYrCc-3iPZjc_a2xeJA06L=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAInWWrMNCxsy2M5guHDFoVV1wvOJXMw7Iw49rEb29pQbiRoJHuF87hp2HPvbNlG-ZyUIUQM4K2HV5UtJbToZAdDg9xeyDthgY_TYJTFvNTT05U5ba6Vaw9ihy5G0swgIjqKGhyp4ZW-6avi_xKIYz53w=s4800-w800-h600"], "a": ["Kreuzkirche Dresden", "Sylwia Szymczak"]}, {"c": "heritage", "n": "Kunsthofpassage", "zh": "FREE · five themed courtyards", "lat": 51.0680136, "lng": 13.7539973, "m": "4.6★ · FREE · courtyards open daily · go when it rains", "d": "A chain of five linked courtyards in the Neustadt, each done by different artists: the blue house is plumbed with funnels and gutters that play like an instrument, but only in actual rain. Shops and cafes at ground level, flats above, so keep voices down. Ten minutes to walk through, worth timing for a shower.", "g": "https://maps.google.com/?cid=815102303864145265", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD7k0MggrurWsvpSl1xVoW2L4rTbeHmMEpbDGXB_NPpFRt5Nzvd-PaJ9uFI-V7GbTaRYVgemKP26Udz13nA794gLrSlrU3vWf-070PgNMZfzg3UsIRCRadnWjt79OErkOHuiXAKjxN1MbR5yA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDBMmarFV4QE12HWNeS9XGwtYf_oSnxAV-g8eECYsGKrWXQ_P4-qjyi5G9_1J-QE3M9ujUE1HK5CLPhx_JtXBGfzacTgOIaog-WDfVapeWOoCZlWSVEYmGus1iwaOPcd2BXAP0AXSYdP9gM3Q=s4800-w800-h600"], "a": ["Dawid Tomaszewski", "Guido Krieger"]}, {"c": "cheap", "n": "Pfunds Molkerei", "zh": "€ · tiled dairy shop, 1880", "lat": 51.0637639, "lng": 13.7598407, "m": "4.5★ · CLOSED SUNDAYS · 10–18 · shop downstairs, small cafe above", "d": "A dairy shop lined floor to ceiling in hand-painted Villeroy und Boch tiles, holding a Guinness record as the most beautiful in the world. It is genuinely a shop: cheese, buttermilk, milk soap, tasting samples, prices above supermarket but not absurd. Two minutes to look, longer if you eat upstairs. Tram 11 stops outside.", "g": "https://maps.google.com/?cid=14192295741375296602", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAPOTOG0WbQ8UFbZLI5RxjumSl03s1vY1byXivQzFoBTzVPGGXWq9eZqrWYBqIXfYeqgqLfD25BHXjkj2SlygN4ck3vy01XS7kBqV5l7PcVU-6aDkjAEzSX3Usk35ujVmVHdN899YQg3wW_=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAVrZen9oS3ek23UMJRIBcJbcayKeCMBRsqwV82jXaFVp6QOzigSnapLY06_GDynHD0MfNl0lzyH_yxWrnNCKnnxGNsCFOwbYDKWB2mLSRBJRiIn-DEr78Jx81xsRPotSfuIeTuTnmBcEnixhMLDSD7MA=s4800-w800-h600"], "a": ["Dresdner Molkerei Gebrüder Pfund", "Katja Samulski"]}, {"c": "heritage", "n": "Yenidze", "zh": "the mosque-shaped cigarette factory", "lat": 51.0592492, "lng": 13.7268884, "m": "4.2★ · dome restaurant 12–22 · entrance is through the plain office lobby, then a lift", "d": "A 1909 tobacco factory built to look like a mosque, with the chimney disguised as a minaret and the smokestack top glazed. Now offices, with a restaurant under the coloured glass dome and a terrace looking back at the old town. Food reviews are middling; go for the room and the view, at sunset.", "s": "City rules would not allow an obvious factory this close to the centre, so the owner built one that did not look like a factory at all. The tobacco came from Yenidze in Ottoman Macedonia, and the building advertised itself: an Oriental facade for an Oriental product. The neighbours sued over the design. It stayed.", "sl": "A factory disguised as a mosque, on purpose", "g": "https://maps.google.com/?cid=9577777957299512713", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBmQ94_7RO8a7-b75xVV92XDr0rasN6IyCmgs1pofmhJRixisNZSD5ta8D6bzNYC-10gUxgnnOfgmCYgx_L4lmworJFf4Xt_ggdu54C54jCWfhlCVxuqTj9Uburzyp4-YYYIQFRHJe6yVAQAWDuhQ3EUQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA4Wu3tpds7sCJou--vk1RgjysY55e-jBkr0-kI8byGTZTQBTeZ8dj3ssmhQPbrhYiQ_O30DopKEVylYvfQlXIa3Ot1FZLrj92sxS0ijhF7_vPEFgMUIOKKXPW1v5CpvQ6IXG8fOQZUM51cFA=s4800-w800-h600"], "a": ["Lars Jaeschke", "My Moments"]}, {"c": "heritage", "n": "Großer Garten", "zh": "FREE · park, palace and a park railway", "lat": 51.0383072, "lng": 13.7616421, "m": "4.8★ · FREE · open 24h · narrow-gauge park railway runs Apr–Oct", "d": "Two square kilometres of Baroque park a tram ride from the centre, with a palace in the middle, the zoo and botanical garden inside the fence, and a miniature railway crewed partly by children, a survival from the East German Pioneer railways. Best use: rent nothing, walk the main avenue, sit by the Palaisteich.", "g": "https://maps.google.com/?cid=16354030707127993750", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDEC9FD1SHEfQYKlWGCRGWhLud6MkvlDfrZl2ZBD6AZR87H1798ASWe424hDF0a4Zv72C2Hak0AWINkr93x2ObgB9EsMaGXue7klAvb6FTxATx6RdVA-6dvbuxUJJkEXNKp0Kx0gSuFnjU4Mk4=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDsVt6FXKy0vgoCAfJ9HEkqvk7Zya7Z956Opsh0VgB4bF39_1hxflvwGPpG30RDu9XoLRmi3Hf5QxQ15L3bSFi_i4I5jBvu1mXGoOd91oDpjju0FO5kKVarbogQRKIUqcYkxbRia4L87s3aKg=s4800-w800-h600"], "a": ["Großer Garten", "jose guerrero"]}, {"c": "museum", "n": "Militärhistorisches Museum", "zh": "Libeskind's wedge · approx €5", "lat": 51.0785265, "lng": 13.7599555, "m": "4.6★ · WEDNESDAY CLOSED · 10–18, Mon to 21 · outdoor vehicles FREE", "d": "An arsenal split open by a Libeskind wedge, and the most unusual war museum in Germany: it is organised by human themes rather than by campaign, and is unsparing about German military history. Reviewers consistently complain the cases are lit too dark to read. Tram 7 to Stauffenbergallee, then 300 metres.", "g": "https://maps.google.com/?cid=8616770286647647084", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA9-QR6A5GN6c3HqyBnV8Hwsh9f6Vn6km-XMPVUSqxUyLWsqfDhxy0WVwWpM2RGtJrWfgriyrTJgCl4zpDSmMqVA4rXMMoTJbNIWGvQwQiYFBNYMBUHs7WIMmlbJqR9lmPfin_jM2cZ_V5k3PM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC97L3GtIZBRPyN8erDDZkhKKdtZnFKRScPONs1LNyFZF5JjNHuu6SZJDBHz4jpGq5GI9bobdfWJeZDY_L38N7Ujb1_er8GBEJwfL7HlNXlHxgRZjzpnvC0uqEmw3fZ0IHLcU2vJ3S7S4B4=s4800-w800-h600"], "a": ["Mohammad Wasil", "Ralf Halling Zimmermann"]}, {"c": "museum", "n": "Deutsches Hygiene-Museum", "zh": "the body, oddly", "lat": 51.0442685, "lng": 13.7473033, "m": "4.5★ · MONDAY CLOSED · 10–17 · main exhibition labelled mostly in German", "d": "Founded by a mouthwash millionaire to teach the public about the body, and still doing it with the transparent anatomical figures it became famous for in the 1930s. Excellent with children, and the temporary shows are the strongest in the city. Ask for the English booklet at the desk; the permanent labels are German only.", "g": "https://maps.google.com/?cid=15789630006332282794", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDtufgpo4sAfqTCtQQEsR0lulet7TzNu2gZn-KBA5JkYTpuA51fiCvjlzvFx6MES2PY7d9Di7YhYPO-e9xh0SFuGhNLjBM1nnXlXozYdSQ-2RDKY-4ekLMDPB8lkHqtC4px0gqNfbtCGNDVOg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDTmU-NbkXdTCIeDJ0B11aUYFOXzCK4lv9luAnSPtGlys7PvvKW4Rj21On84FGMaP-7wwuotLnL0uAwXCdwlRg8d6TJ4mLW4nftgQT9trbWXxMJqtW5orT6Y_jdzZ56MqH2TTktxhh7sB5W5Q=s4800-w800-h600"], "a": ["Deutsches Hygiene-Museum Dresden", "Olena Voitenko"]}, {"c": "museum", "n": "Schloss Pillnitz", "zh": "palace, park and palm house", "lat": 51.0084333, "lng": 13.8711111, "m": "4.6★ · park 9–17 daily, small park fee · palm house open in winter too", "d": "A Baroque summer palace built in a chinoiserie fantasy of what Chinese architecture might look like, on the river outside the city. The park is the point: a 250-year-old camellia under its own mobile glass house, wisteria in May, and lawns to the water. Arrive by boat or the ferry near the Blue Wonder.", "g": "https://maps.google.com/?cid=13895472312067258358", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCYwQS16mG4Xvp7rkKHZXlK2CHT11MZUIrmZYLQHDGiC7ZXH3udlG5AqzE1Bc5cYdvkQP0qHk0t80UqIm040BA3EHcr28hWP8955BSKhmu-YnMO4NNRSyJNJhBCPQsRiED1DaKB11JhOQGF=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDww_ooQ23kEMHqmS4Lh09f5C-KTdMX818HZgq6QI5aeJoSCftzLfPlqldaHObD7T20K7J_OnsbUKgygFGYYPFa2ySpOFINxmFha1QTb4ArNhxKntot7SCx4_uooJ7OfWlsoTAF25NHVAXp72c=s4800-w800-h600"], "a": ["Schloss Pillnitz", "Luis Lagarde"]}, {"c": "transport", "n": "Blaues Wunder", "zh": "FREE · the Loschwitz bridge, 1893", "lat": 51.0533771, "lng": 13.8101662, "m": "FREE · 24h · walk it, do not drive it · pubs on both banks", "d": "A cantilever bridge with no river piers, painted a green that has been called blue since it went up in 1893. Cross on foot for the villa slopes and vineyards upstream, then use it as the start of the funicular and suspension railway loop on the Loschwitz side.", "s": "In the last days of the war the bridge was wired for demolition to slow the Red Army. Two local men climbed down and cut the ignition cables the night before it was due to go, which is the only reason it is still there. Both banks put up plaques; the story is told in every pub on the Schüller side.", "sl": "Two men cut the demolition wires", "g": "https://maps.google.com/?cid=733520531028340501", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD67eTdte_7TkMO8_5hKJagQjxGVlDoMVM9R6p425p90m63Qzbw8SJ-274y2k8MXhso_CYoPHDq2sEfkCYH1UtSD2WqyoNiMTo4a9CGwatF3QsEd1KGWV9SK-bsqEa3fiZp9oz5cPMNJ2RaHpA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDv5Q3RE5DXon0Z-kRdDvQHRNuXJsu5Lr-n33iSVN7tIDkc_SvScNv-x57f_mRbCoI7e__YEV192ku7xHNLQucHmIQ7WZ4vilHAZYL_wH5j9hxLslhBRHJ5UllSuICy5pr87VIcc1kdeV6u4z0=s4800-w800-h600"], "a": ["Michael Tomasini", "Robert Kroeber"]}, {"c": "transport", "n": "Standseilbahn Loschwitz", "zh": "funicular, 1895 · €4 single, €6 return", "lat": 51.0543405, "lng": 13.815029, "m": "4.6★ · 6:30–21:23 · DEUTSCHLANDTICKET AND DVB PASSES NOT VALID · return ticket also covers the Schwebebahn", "d": "A three-minute climb through a tunnel to the Weißer Hirsch hillside. The ride is short and the machinery is the attraction, but the return ticket is also valid on the suspension railway a 20-minute walk away, which is the real reason to buy it. Do the loop: up one, ridge path, down the other.", "g": "https://maps.google.com/?cid=6410627351627616624", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAcrDQqtBIMT9EfjxVPNx9GqoHMUshi9mr59uR1OIrEhvFnIuqjmqQnh-5C34d1hjw6x3nVmoDZhKrHupkpGGGMVlodNUfeUWqSmFsE5yomQuYOxs29BUbgCnHjr0v-iJSHInTkCynEKMPM1Oo=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBOobb-NYn1neYEhs1hSTncvthZAOcZz6miqffAPhJhECusHuMTCaIMARq306tuk6U5KVW4c0GYvd05DhIklEKuxiWt-nYPRVJlTrHzWJUPXqLcjyFCVqWxgr6adXCAEbqpMDgl6UdkrQct9d4=s4800-w800-h600"], "a": ["Falk Schade", "Nataliia S."]}, {"c": "museum", "n": "Panometer", "zh": "360-degree panorama in a gasometer", "lat": 51.0254925, "lng": 13.7884501, "m": "4.7★ · 10–17, weekends to 18 · approx €13 · the show changes, check what is hanging", "d": "Yadegar Asisi hangs a 100-metre circular painting inside a disused gas holder and runs a day-to-night light cycle through it. Which panorama is up changes every year or two, so check before crossing the city. When the Baroque Dresden version is showing it is the best single explanation of what was lost in 1945.", "g": "https://maps.google.com/?cid=9678103984791737267", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBid1ujxzfumOrq-irdJeErGkSRGZ3xM8KYeGHVmBGY7lTE-17ViMU100KwZDljCc0jsjFvlalzCg7mFuSQ0yqLiipH6XQ_LI_v2goihBpmuhC8EXv9pmmuhgVZgrc5CUnvQONxuhz-IkSbKis_387b=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBpHhqknhm0a0rh3lnv8ky1G3RxKw0sRBxATNzuQ0CrcaNCbgfdPFJMKAC9_y63OYvhXSWjTAp9fNmg6g9PBIQTd7Ki8mTj-h0R8pQTUg6f2TGjqC-dAR6MakME_ub7tbbhP2NqEF42OeANYQ=s4800-w800-h600"], "a": ["Panometer Dresden", "Dominik Straßberger"]}, {"c": "transport", "n": "Elbe paddle steamers (Terrassenufer)", "zh": "the historic fleet · CHECK BEFORE GOING", "lat": 51.0537304, "lng": 13.7409568, "m": "4.5★ · LOW WATER: several lines cancelled until further notice · check the day before", "d": "The world's oldest fleet of working paddle steamers, running upriver to Pillnitz, Königstein and Bad Schandau. As of late August 2026 the Elbe is too low and the Saxon Switzerland, Elbtal, national park and evening lines are suspended; a reduced hiking boat runs from Bad Schandau. Ring or check the site the day before rather than turning up.", "g": "https://maps.google.com/?cid=10082550787126685822", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC_T12xBz7uYnRX6TCbJM3LEKyUpJ1IGCUc6LXtq3XdFle2JMkdUoA4aaxL0V2SywmJJnOsx9vXV9pfMDK_FE0YW5hIIgBM7vtE49AvIfYYU8Yw7VRFPnRhkmNvbAyX-x-shZZdjCbOdYr7TMM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDQZE83cK_mr3ZwqphDS9FRXMomUfi9Oeor4LJINPcGcuf40mg9ZGUQY24bzGj4fd11qsMKLN_bccvT8lPZqqX6ag2rDmCpM2EgvxDFKqPfUDNavdhiybZkrcMyeH7stKU-0Ku9wsjycKSUWkEupg-a-Q=s4800-w800-h600"], "a": ["Sächsische Dampfschifffahrt", "Harald Ziebig"]}, {"c": "cheap", "n": "Neustädter Markthalle", "zh": "€ · market hall and stalls", "lat": 51.0603209, "lng": 13.7447117, "m": "4.0★ · CLOSED SUNDAYS · 8–20 · flea market upstairs on Saturdays", "d": "A restored 1899 market hall that locals actually shop in, with a supermarket, butchers, cheese and a handful of counters to eat at. Not a food-hall destination and the 4.0 is fair; come for a cheap lunch between Neustadt sights, or on Saturday for the flea market on the upper floor.", "g": "https://maps.google.com/?cid=1659759091712273603", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjClLSUfENem8djom96siTHi790TAnpQPmEEtbc0I67-sOntuMaKwExDz1iLGylHdWn7oowNiNmXJ3Q6VQ0gtfv_DzMiNg_biJzLhsNQYIX7ZwNDq5Ov1p2y0gOJKz05ORiCV_WMo-UMyMpLGhk=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAwaZfqXZCSIf7O5HLg51CosCKmL7yhW6gqm0nOYsgEDVn-5--jqdkT8wvJXNetFU7khKcVLF1YUZ15ajNzPuMtzz6rK0Awo7XJjcFneg_rwMPM8K8XSBg50FqYHUFdYoVZT9Th_ot4ojHohoQBTCBo=s4800-w800-h600"], "a": ["Neustädter Markthalle", "Stefan Juergens"]}, {"c": "mid", "n": "elements / DELI", "zh": "€€ · 2026 Bib Gourmand", "lat": 51.0809242, "lng": 13.7608548, "m": "4.7★ · CLOSED SUN AND MON · 12–22 · book, and say which room you want", "d": "One address, two restaurants: DELI holds the 2026 Bib Gourmand for good cooking at a fair price, elements next door has a Michelin star and a menu around €125. Same kitchen team, in an old factory hall with a courtyard. Reviewers who booked without checking got seated in the wrong room; state which you want.", "g": "https://maps.google.com/?cid=14747278086070803424", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDizHw4DKxsFqF4_WHqYCZMnX9hrSnpPU_-i6MZGz6UVablM0Nz9LErpNPoDsEjwFq4avViJhyeb1RQiZWelMrYJbDS5rqImglBHA9yGruPq8WjHetT4B5kYxB-J8eMwdobwYMBU4uBLQPq-g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCnherk0FfDFi6NKV-XcZPo8bP1IFGGKewkz3oL9AbNZON0vIMuBvW4LjM0VS6CjxRQZW8Q9KsE2Mztc1sALqRLaMnpgpwgmfKh8BbjW_sTDth8L1ii3emYXq8xGlw8AIQf1fSdSsb1BAdyLAO3t0pH=s4800-w800-h600"], "a": ["elements DELI", "Bruno Acar"]}, {"c": "mid", "n": "Raskolnikoff", "zh": "€€ · Saxon and eastern European", "lat": 51.06439, "lng": 13.75497, "m": "4.6★ · CLOSED SUNDAYS · from 17:00, from 12:00 Fri–Sat · BOOK, especially for the garden", "d": "A former squatted artists' house down a Neustadt side street, now a low-lit restaurant with a walled back garden and a pension upstairs. Cooking is regional plus pelmeni and borscht, portions modest, prices low for the quality. Hard to find and easy to walk past; the garden fills first.", "g": "https://maps.google.com/?cid=3791459793565305984", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD3g_Pj8bMvFIjVJDNJZCUrZCrW99OFS0uQmArO1I-3wO3-VDPhA5-OdUOQxUg9R7_ei6UIvew0mzTkYuZVJ_FEeRD2y4pcwSZZKhtg6Rsy4wBZKbzsbDT7FBIOKrb06giwYICzjXRK138iKWwvrbfq6w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCaD-Z3MjIHzP6ueH7m9viXdpGBwsyGbwJmlzLfA2QsgbVZ4k42IIrRbLGfKkLeNBmYKsJSFgEp7ZmUK876oADr6w2oqZOr-Aob_5Yh4lR3Ol4Y65Vykc4w2u25ABlqhZphJFIYzJUj2GQe3Yk=s4800-w800-h600"], "a": ["Raskolnikoff", "Matthias der Reisende"]}, {"c": "mid", "n": "lila Soße", "zh": "€€ · dishes served in preserving jars", "lat": 51.0681687, "lng": 13.7536534, "m": "4.7★ · from 16:00, from 12:00 weekends · BOOK · tucked inside the Kunsthofpassage", "d": "In the Kunsthofpassage courtyards, serving everything in glass preserving jars, which sounds like a gimmick and turns out to be the local one worth doing. Short menu, vegetarian-heavy, warm service. They turn away walk-ins most evenings. Some reviewers find portions small for the price.", "g": "https://maps.google.com/?cid=10015848747490426593", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC3x6bIOg-ht9snZkYNB2nlp4j2OR2Hhcpjfgr92BytIymoUsz2jppg1YsQ0WMtbybOX5dhvSrn2592-qvWBgYI8XYvbhKtn8s9nVqzNpQ1dfap6j1TTV376E00wOay30ZjCbPqGcp-fwHT2A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAhrdVgZWVOfmIbWkSYDbP8BLQI_ntII3qDpw_jWzu4qVAb4UZ2Fy8vAM36yLFEoIzxpRLlZGt2Zq7J8Y5PSMA8doC-Z-8M8KYEg6YzAreEgsiJD7DeEdHJeo8GA9-UPdd-LSuOCy3KzYqsAyCxNyrZ=s4800-w800-h600"], "a": ["Der Baron", "lila Soße"]}, {"c": "cheap", "n": "Ocakbasi", "zh": "€ · Anatolian charcoal grill", "lat": 51.069775, "lng": 13.7487361, "m": "4.7★ · 11:30–23, later Fri–Sat · lunch menu is markedly cheaper than dinner", "d": "The Neustadt address locals name when they want grilled meat rather than another kebab counter: charcoal ocakbaşı cooking, bread from the oven, mezze that arrive without being ordered. Ask for Adana or Urfa by name. Order at lunch and the same plate costs several euros less.", "g": "https://maps.google.com/?cid=3185218140651335525", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA7okSCIssMdgusOBwIEan3d0KbASfK72YZG9X0YsYfnIT-KxuBEMOPUDpe3lX3oz6sQtE2JcnXiOOngGog6BtmuxMEzO7R0qxIOx9WhXK9Ujyi_yTj06DPAIQTq-f0oIOOIlZgnbWsqRkjXg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCkhTRuXlJAZiofye6IwjZB6kCv5Eu7yyKFSLVL4YGqeFpLOgdah_YMpbPvzCyu_eenFlHNxckq_wyXYvh0vdjxu7ilo-Xk0NDH4ZVWxiSK8GYxUXmU35Hffnj2TdKGmBrR4BH-4FBSLKtKmQ=s4800-w800-h600"], "a": ["Talat Üstün", "OCAKBASI"]}, {"c": "cake", "n": "Dresdner Kaffeestübchen", "zh": "€ · Eierschecke and the Dresdner Gedeck", "lat": 51.0516032, "lng": 13.7437697, "m": "4.7★ · CLOSED SATURDAY AND SUNDAY · 9–15 only · tiny, expect to wait for a table", "d": "A one-room cafe behind the Frauenkirche doing the city's cake properly. Order the Dresdner Gedeck: a slice of Eierschecke, a coffee and a coffee liqueur, alternating sips so the cake stays sweet. Weekdays until three o'clock only, and about six tables, so it is a morning plan, not an afternoon one.", "g": "https://maps.google.com/?cid=5099346710933661425", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD9WDYjpKZUPuqNDIV8lBdMjxchJMMh9XBEPi-kp_1dZYyXLXHZDliCdy6puIO1wPDSWJ6pubn5DVHX9KBBIzm9FVunlcosElkjemLZI1zPf8LZtoykGPNvF9AnWeFiX7sk5QmjCY507lHP=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCRt6Vbn5ppeNIoZpcX7oOniRHUKR31OeuyURVJCBq3wOunCsL1kjJo7hBIaM-8f22HJ_AUu6Ms0Trdytz4wMr9y-TyHC4sZU8eyoR09RULctQoisgYTO7g7YcTkLE4zdRfYXf7Ztz9DBwdv40=s4800-w800-h600"], "a": ["Dresdner Kaffeestübchen", "Dresdner Kaffeestübchen"]}, {"c": "cheap", "n": "Curry und Co.", "zh": "€ · currywurst, about €5.50 with chips", "lat": 51.0657684, "lng": 13.7558354, "m": "4.3★ · CASH ONLY · 11:30–21, to 22 Fri–Sat · pick your heat level", "d": "A counter on Louisenstraße doing currywurst with a sauce you choose the heat of, plus a vegan version that regulars order on purpose. Sausage and chips for about five and a half euros. Cash only and the toilet is grim; eat standing outside and get on with your evening.", "g": "https://maps.google.com/?cid=8352286362005471053", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjClE342sGjz-0PSG2EPPgvs1YpNdSX--0i4Eb86IoOYGNlNplK7_IwBAIYxabJQW7BK1PNeGpYVCMSyKekb1v17baZQSqBGpo4IRXeLA4kTHD1tBK-FQ1Ko6vkCSOwN54jM512pOqZFRFpsSBE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDlMhKFowjHHGj3Vx5fy43TkLemOivbgdqP3lKMwep7iKsDv66jz5A6z18eQiDRXpFd2aW2jRTGJ3j-T_7HrXz-RA165iptMdLORVhZSUlnD07DTQiVK_KnHHbYYLp894cpZTJSHjnyFVpZLV8XT9a0=s4800-w800-h600"], "a": ["Curry & Co.", "yesran"]}, {"c": "cake", "n": "Café Continental", "zh": "€€ · Neustadt breakfast", "lat": 51.0664897, "lng": 13.753705, "m": "4.3★ · 8–18 daily · corner tables get traffic noise · coffee is the weak point", "d": "The standing Neustadt breakfast, served until late morning on a busy corner near the Kunsthofpassage. Plates are large and well made; several reviewers rate the food highly and the coffee poorly, which matches. Eat here, drink coffee somewhere else.", "g": "https://maps.google.com/?cid=2247121706373366186", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAC6WAFmeFiunmlgbpDNsvZ5JiNIAG1lkDbS5o4E7ADc1Jydbg8_uk7OgtTvh5_wn1Z_bTSCcf-dcqSxvyZ60ItBvBHcmToPOi7F26Tb8T2vaWWzMRE0tbpvUK--kBaaZjWMAUCBqoIskM_Zg4=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA6T1Lpw3DVezkgglulSEPYLRViN8ztLGS1Koeby5dVOx6LUddXqjhGksl4C7HEHR_Ng6p5LWSnyVDYkzJGphZQDlQcZcnhnrWFT6-lijnsCN1naImrtOvq0QHKMmvZjbb4VzDQDg3KGcyksNZiJfph=s4800-w800-h600"], "a": ["Café Continental", "S. Reicht"]}, {"c": "mid", "n": "Alte Meister", "zh": "€€€ · terrace on Theaterplatz", "lat": 51.0538723, "lng": 13.7338996, "m": "4.3★ · MONDAY CLOSED · 12–22, Sun to 19 · pricey, and the terrace is the reason", "d": "In a side wing of the Zwinger with tables looking at the opera house, which is normally a guarantee of tourist cooking and here mostly is not. Best used as it is by locals: coffee and cake on the terrace after the picture gallery next door, rather than a full dinner at these prices.", "g": "https://maps.google.com/?cid=7316403077208021582", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDeY1IpMZIUGQkHNfp20uan7xTsNQRegeCtZa3zE57E1eSSUdV695p2t5q0_F-sruy8OETN2X3MLhydX_uMgVP0U36JOAkfmcDejVQyeKVA9mImJQUdS4Q8WcRSnmFYYbD9t_myfFRNCa7OIzJLsF5A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDLbsjARpLk7FrCW_yRfThQMgL8wjpIbL9IrhMSU0ocY8lvBzsttb3FQARMBT72EPH-XE1cBUUk00Xa3pQgXIrrmIEaLOId6ycp_rGTb5_aipWFrG969lQVcM5LekgX4RmMg6stMluLNO6J=s4800-w800-h600"], "a": ["Kathrin Lang", "Alte Meister Café & Restaurant"]}, {"c": "mid", "n": "die Pastamanufaktur", "zh": "€€ · fresh pasta, order at the counter", "lat": 51.06081, "lng": 13.74276, "m": "4.3★ · CLOSED SUNDAYS · 11–22 · order at the counter, four big shared tables", "d": "A small room beside the Dreikönigskirche making its own pasta, including some odd and good lemongrass and pumpkin dishes rather than only the standards. You order at the counter and they carry it over. Service reviews split sharply; the food ones do not.", "g": "https://maps.google.com/?cid=8802146016943628942", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDT8du-UnGp6PIJpAaV1XMg8_0uI5aZ45xBh7LLDS74BpdcTYP4k-L0ydehf35DHCJzWLoA_5vT_qsx3Qn3Dy7Nd6yqtWVeEKtd8E6q9rmUpgLjuYgq_2kuJbOWkM7kGboxFJL1O7ZgzxvMIA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDtzncIFGVkIvygLL5V_h_phMHKqDOjMrmo2xqF0T7SmNcQi1H10Cx3bMGGcIrPSCs9VSA1NhQ3D0C-roSRxGAWfUEnxJsU7jrYX621PFva0T57i5Tf-mufl_61prn_uAsRqHlPm3DOLdmZ=s4800-w800-h600"], "a": ["Antje Raue", "die Pastamanufaktur"]}, {"c": "mid", "n": "Sophienkeller", "zh": "€€ · costumed Saxon cellar", "lat": 51.0519086, "lng": 13.7349802, "m": "4.6★ · MONDAY CLOSED · 11–23 · loud, themed, shared tables · beer by the litre", "d": "Be clear what this is: a vaulted cellar under the Taschenbergpalais with staff in 18th-century costume, live music and a carousel. It is tourist theatre, and the Sauerbraten, roast duck and litre glasses are still good. Reviewers report being sat with locals and enjoying it. Skip the suckling pig, repeatedly called dry.", "g": "https://maps.google.com/?cid=12208224726830787758", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBQba7uyzB3Lv44GIIAPZvWxMc0ZjWXYPvNZT36UiRNM_zNeUozgrklAbLmOpUF3ofOd3v9M1duFEaamMwM0vbNCioqabi1uzaVcR5rn7gM4qU12xY3hPlTY87xPmVAjspK-qhQhQ1niAoTKg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAeXtEA5epB4YF6KWQ92tXaQ0Capwt7jd4eP3mL7r5KmTSG0ohGkVYcr5exGdZ7o8M-upEvaeQZDCJMvQ9w8xx0QNNrzsQ9tUoorORFnl6Uu1bd6vI16JBiingOnd-rGLx3MYiLBGOgoVRFdCnKU4yFWQ=s4800-w800-h600"], "a": ["Sophienkeller im Taschenbergpalais", "Uwe Riehm"]}, {"c": "beer", "n": "Ballhaus Watzke", "zh": "brewery, ballroom and Elbe beer garden", "lat": 51.0775639, "lng": 13.7158304, "m": "4.4★ · 11–23 daily · the beer garden faces the old town · service is the weak point", "d": "Dresden's own brewery, in a 1898 ballroom downstream of the centre with a garden on the river looking back at the skyline at sunset. Beer is the best in the city and the kitchen is solid, traditional and heavy. Repeated complaints about brusque waiting staff and a paid car park; go for the terrace and the Pilsner.", "g": "https://maps.google.com/?cid=10862837736775909819", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAy2rJzgRMIGnCGjT13X28DHiXgp7ebamBOIbi8jfD3rFdpPvEOvjomENipol8KtHxz4IiuADc_KgsJJpheUOAkS4FSxL2ugYgkowp8wPytI7Cd4CNqV1O36BKMNhgoaG5FPm1Cl0jVyViaw50XA_00=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB0KRrnkXycRFL7UHWZ7Nu9x_EWO-GIlazBwQuoBN-dkBM0iIjHtB3sdxdJZbuHfZjL882LJbODrnt9qpxJ9MsACbEDTPBgTHMWrUPZq-ddfmGr_oFgNHu7dlHoVviKWROUrDavoM6a8Vh5V-743MIDnA=s4800-w800-h600"], "a": ["Ball- & Brauhaus Watzke", "Tom Jansen"]}, {"c": "beer", "n": "Brauhaus am Waldschlösschen", "zh": "brewpub above the Elbe meadows", "lat": 51.0679383, "lng": 13.7780918, "m": "4.3★ · 11:30–22, to 23 Fri–Sat · order drinks outside, it is faster", "d": "A big brewpub on the slope where the Elbe meadows open out, with a terrace that catches the evening sun and its own unfiltered beers. Food is standard pork-and-dumplings and opinions on it vary; nobody argues about the Dunkel or the view. Walk here along the river from the Neustadt in 25 minutes.", "g": "https://maps.google.com/?cid=10311554306135898562", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBp48-dZqDRP1Vn4fZZ16jfScf13Ggv0Sx6QsPTAl58mG65E2kJ0MD6r3urhTS5euZMTmzf0vqOsWOfC4z4Bo3kFepTRMV8oUvPsn8W5IS9zdQYGn6thCtPaEdQrVfobXoenlxFdVD7QMfwiGU=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBEkOrfaZL-b7ahhfP6dbx8JAUwnGH3JN6E0Xohxg6wkAjE81Jdco0hQt1xkP2qaXzkOeBbX3zTPDrT8VOQPTLrp9ItqyqxIsLr2ZoZ4H5BI2-XdPAvtnNAWqkfLucwZ6Eeaue-7oWk9z0JBRKUgFVN=s4800-w800-h600"], "a": ["Brauhaus am Waldschlösschen", "Torsten Meyer"]}, {"c": "beer", "n": "Feldschlößchen Stammhaus", "zh": "brewery tap in the old brewhouse", "lat": 51.0402931, "lng": 13.7187691, "m": "4.4★ · 12–23 · SUNDAY BRUNCH ONLY, 10–14 · kitchen slows badly when full", "d": "The original Feldschlößchen brewhouse, kept as a beer hall with the old control panels and vessels still in place and a small museum on the upper floors. Good beer, large portions, and a well-documented 45-minute wait when the room fills. Note that Sunday is buffet brunch and it shuts at two.", "g": "https://maps.google.com/?cid=15110150395038943985", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAQ51rZB89T7Kj6n0St0BPRBnUjX7KnvhOWLVFiNFjGUHzavN65_AUXZu_W4XxPekt8-klrvRhnaUV89Cj1gdEc60KNtlpG0346_lSuNgvSKLtcy9__4pvIjHygYKSnlj1bPiGFol-mxSP7=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDDLuuGwMYmujIT7Pa4GjTqJsnRiEnwJpDtRV64F2spGNMdvsBh1xQLxzfamrHVuvW3GUXA7wK170PZHoXupUkuhpxRsj2KJNyV9VrORJShB1KQ3frcEIZreWnRYqGUpxJPN7o9M2zhDj_rMqV_jfKKeQ=s4800-w800-h600"], "a": ["Feldschlößchen Stammhaus", "Lutz Gärtner"]}, {"c": "beer", "n": "Monitos", "zh": "small cocktail bar, no sign outside", "lat": 51.0656333, "lng": 13.7571154, "m": "4.9★ · CLOSED SUN AND MON · from 18:00, to 2am Fri–Sat · NO SIGN, look for the door · non-smoking", "d": "A newer bar on Louisenstraße with no board outside, which is why almost nobody has reviewed it and why it is calm on a street that is not. Short set cocktail list, strong pours, staff switching between German, English and Spanish. No food, but they let people bring snacks in.", "g": "https://maps.google.com/?cid=14153470196990824710", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAQPOi8_Yw1Ki0QUYi5YHXLZNR_JHMyBUPahz1vL0f__Iftay2XRDlVpeokWonPAq3AY612U_VNc2_n1nb5y2GX0ox-qnlG0rIyfeyE82sfpqP0m4Zzkaa5AmK-h46ofDXShsiqj22cRbntRis=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAW7i5ySAg1xSr-qY1xtBHO9xhHGSYoBPyZBp3G7Yr1EHdotvaO36Axb0jZoHxdh186MncKr5dI3rz3Vo8rJPBOqlvwNbmfdG7Xrl10sauFTtt5-PcA_20-DmTeUQcSNg5yohcvUD1842RFCnJ3_KKnIw=s4800-w800-h600"], "a": ["Monitos", "Gongmingyue Tang"]}, {"c": "beer", "n": "Schloss Wackerbarth", "zh": "Saxon sparkling wine · Radebeul", "lat": 51.1143522, "lng": 13.6181697, "m": "4.6★ · 10–19, Sun from 11 · tours in German, book ahead · S-Bahn to Radebeul Ost then a walk", "d": "Saxony is one of Europe's smallest and most northerly wine regions and this Baroque estate is the easiest way into it, 20 minutes from the centre. Terraced vineyards you can walk up, a sparkling wine cellar, and a terrace for a glass without any tour at all. Combine with the Elbe cycle path.", "g": "https://maps.google.com/?cid=3644380024381290771", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAbpTYEIuLMByDEOOxjes6dbj5-57Lbh_kUIyxunVELr7WpxG2KyoeKrxhAHxldmwCT-KYG9pNNc7Ya-QWWjLzumEM8rvn-2obxnkq7rOyVBRfUKmcakq6_G3Itjl2-47GXcjMptm3LORtKgbE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCmV_GPrntgsgBNlPVvsg3VUrd1IFwGMCIjnBlQnAK4QLpmrCeXsi1kbBormozXB8kc9xfJDES8GA0l6PiZJUF3zgvi3PRK3ONRxS516DwkXQhB_pZpDcx_AxPXrwvGnLoXG5FLdLRbH7kUnw=s4800-w800-h600"], "a": ["JR. P", "Thomas Malik"]}, {"c": "stay", "nophoto": "district, not a business", "n": "Stay: Äußere Neustadt", "zh": "cheapest beds, loudest nights", "lat": 51.07, "lng": 13.755, "m": "Approximate centre of the district · 15 min walk over the bridge to the old town · noisy Thu–Sat", "d": "The 19th-century quarter north of the river: bars, courtyards, cheap rooms and the best eating on this map. Trams run all night to the station. Choose a flat on a side street rather than Alaunstraße or Louisenstraße unless you plan to be out on them, because the noise on weekend nights is real."}, {"c": "stay", "nophoto": "district, not a business", "n": "Stay: Altstadt around Neumarkt", "zh": "walk to everything, pay for it", "lat": 51.051, "lng": 13.74, "m": "Approximate centre · everything Baroque within 10 minutes · dead after 10pm", "d": "Everything the day trippers come for is inside a 600-metre circle here, so you can be at the Zwinger at eight before the coaches. The trade-off is price, restaurant quality aimed at visitors, and a quarter that empties in the evening. Best if your trip is short and museum-heavy."}, {"c": "stay", "nophoto": "district, not a business", "n": "Stay: Kurort Rathen", "zh": "sleep inside the rocks", "lat": 50.9585, "lng": 14.079, "m": "Approximate centre of Niederrathen · car-free village · book early, very few beds", "d": "The obvious base for Saxon Switzerland: the Bastei path starts here and the village is car-free, so you park across the river and cross by ferry. Being here at seven in the morning is the whole trick to the Bastei. Very limited accommodation and a storm in July 2026 damaged part of the valley."}, {"c": "stay", "nophoto": "district, not a business", "n": "Stay: Bad Schandau", "zh": "best transport base in the park", "lat": 50.918, "lng": 14.154, "m": "Approximate centre · S-Bahn from Dresden, tram up the Kirnitzsch valley, ferry across", "d": "Less pretty than Rathen but the transport hub: trains to Dresden every half hour, the Kirnitzschtalbahn to the eastern rocks, buses to Hinterhermsdorf and the Czech border 10 minutes away. Overnight guests get a guest card covering local buses. Best base if you are hiking several days without a car."}, {"c": "view", "n": "Bastei and the Basteibrücke", "must": true, "zh": "FREE · the sandstone bridge, 1851", "lat": 50.9619502, "lng": 14.0727896, "m": "4.8★ · FREE · 24h · BE THERE BEFORE 9am · FELSENBURG NEURATHEN CLOSED since 2023", "d": "A 76-metre stone bridge strung between rock towers 190 metres above the Elbe, and by a distance the busiest thing in this guide. Walk up from Rathen rather than driving to the car park; it takes 40 minutes and you arrive before the coaches. The medieval rock castle beyond the bridge is shut indefinitely for rock movement.", "s": "The region is called Saxon Switzerland because two Swiss painters at the Dresden academy, homesick in the 1760s, kept saying the sandstone reminded them of home. The name stuck and the Romantics followed: by 1826 there was a wooden bridge here purely so visitors could reach the view, replaced in stone in 1851. This is tourism inventing a landscape, two centuries before Instagram did it again.", "sl": "Named by two homesick Swiss painters", "g": "https://maps.google.com/?cid=15921374324988064504", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD0aC8XnTeEstFh-5jC2rm9ySiGV13f9vcAfKYdiNoHFxchFlwaY1k9gM_c04GqIaKrTUJlfq5jijarfceg_WhXAD_jBRxazb-K7dOPjomX5S_FuW5hhabzB-AhAY0BAYzuI-l8Abi_c4xN_3EHkwoFug=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBvtijU9svBqvD56HbG34En3VDEeSvqGl3jRVg32T-gjhZri7Q1fIFjfPu_fOnHYTqn7bnYoPGqVNztO8T77VLP6AaLkApZkYy1P4COGUfB2KDTdH26xWT7qKn82yT45Cbr0o3KPYquauxcxTc=s4800-w800-h600"], "a": ["Uwe Kaufmann", "Enrico Seidler"]}, {"c": "mid", "n": "Panoramarestaurant Bastei", "zh": "€€ · the window tables", "lat": 50.9626372, "lng": 14.0703665, "m": "4.3★ · 12–22 · BOOK AND ASK FOR A WINDOW · open despite the July 2026 storm", "d": "Right at the viewpoint, and the food is better than a monopoly location needs it to be. The recurring complaint is being seated in the third row behind a partition with no view at all, which defeats the point; book and specify a window. Cake and coffee is the cheaper way to use it.", "g": "https://maps.google.com/?cid=9572472984530871441", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAz6JMgxNqH9Mm-l_pzr8T_c_rMEWCNc1pljmKLKt4NAJqzkLwALA5hLUlMlUloo0EacskN9j0-Q8tHPZF4GgM3AaTtLsIxlQDPlm6jvuLyUDlvNkNb7un07n9M0pRd2iT9Q3F_yPN79BBqrw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAIxeo8YIZNqeHZAKgUo7AKGY0rJywUTodV626aGhsnWLhR-P-lBEWmDLqqrllixrORGBqBdtwXHIyeEeXih7c1iYP6J3yG1DxnZWgu7SFvsiWuDvQLGhSeO3Ph8-N1W4hPzZ7lv3DmwgGvzm6lY0J7=s4800-w800-h600"], "a": ["Panoramarestaurant Bastei", "Jesse Allhands"]}, {"c": "stay", "n": "Berghotel Bastei", "zh": "the only beds at the viewpoint", "lat": 50.963275, "lng": 14.0700106, "m": "4.4★ · car park is a five-minute walk away, unlit at night · sauna needs booking 30 min ahead", "d": "Plain rooms, unremarkable hotel, and one enormous advantage: you are on the rock after the last bus leaves and before the first one arrives. Guests describe having the bridge to themselves at sunrise. Book months out for weekends.", "g": "https://maps.google.com/?cid=6775465118685766414", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCe3P7MVC2YEqv63BNd37KAzCgmejCsuD2vBOPbQK2IuP7zkb53k7Rxpv4dQNT9Kgl7XkmOihLDm7PpqrvZC4nMgOyvJ8IHUHHubkaCApENLwdO6SZZLBSAJNgNONb5lBvWFnNQZmNXO1IvyQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAkYnETD2Jw8QXD1HtbDovJiJIna48_ycdfbZjsn8YeOCeCp_mIXZGppBMfcbGfcHRCLPAPR1lK8ZL_CRmyfo6eByT04tHCtJJWzhtNO72xDA-EN45_n_Yotv2kfQLV-hjVj-aDWUdqjZfG=s4800-w800-h600"], "a": ["Berghotel Bastei", "Red Rockez"]}, {"c": "transport", "n": "Fähre Kurort Rathen", "zh": "reaction ferry across the Elbe", "lat": 50.9573256, "lng": 14.0800443, "m": "4.3★ · approx €3 return including a bike · 8–22 · DVB AND DEUTSCHLAND TICKETS NOT VALID", "d": "Rathen is car-free, so the ferry is the way in: park or take the S-Bahn to Oberrathen, then cross. It is a reaction ferry, pushed across by the current on a cable, and takes two minutes. Buy the ticket on board in cash. Running normally as of August 2026.", "g": "https://maps.google.com/?cid=13128640340616187821", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA7O7lin3_icKyJyw9kqrI6k_AGyN4mIELL9mu2ysq_-hqTkGYtqhOSEj-KZ4A3-lkqrh9XxbS5srm2Z3G-81zzIhu0NvMJd2MsCA5peuk5oMBFnnaR_IaaCffXvxP_FzhUAFb_m5whottXhT4=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDmCQmlrpSIzDHT2xse1TlfOTWcfYGSoIFlRT3Hqexk4Ck3x03N6c-dPzCBKTs54pLpZMzI9HIVc78-AJdmCij1KveBehXIy6eH5THzuXuZOr0shcSFM1AC07Fl17sONWPYdH_kkB1TPkoo=s4800-w800-h600"], "a": ["ToH", "Andy aus Berlin"]}, {"c": "hike", "n": "Schwedenlöcher", "zh": "FREE · about 700 steps through a cleft", "lat": 50.9695169, "lng": 14.0722373, "m": "4.8★ · FREE · reopened after the July 2026 storm · slippery in wet weather · not for pushchairs", "d": "A staircase gorge so narrow the sides nearly touch, climbing from the Amselgrund to the Bastei plateau. Do it upwards from Rathen and come down the easy path, not the reverse. Locals hid here from Swedish troops in the Thirty Years War, which is where the name comes from. Roughly 700 steps.", "g": "https://maps.google.com/?cid=5977666287741965782", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBynQuqiBthIOXoW02-4pX8W0louV3Qn5K0ixNeZNU7GL4Mr94uay3YIFUi1MZyQfdEX_N2oHgiOMqGEhg1pne7yvqnKGDgjfcdZSoEKdZy3XMgBbao1FEKaL7nv6CTzGaprE898-pa7xkagg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC7gl2nFyChRcHvLRX3o7jCHiiBXSZrd03xIMIQjbLOJgdHM3dB0ErEoHwlkGVilfWoo-WwfT36RielblOHr8o7YiJYbK-OaIFByJLIg_RhHy39_Fl2iSmjkNpTiYvYpL-FPj2095zglPRfQUO-qRzS=s4800-w800-h600"], "a": ["Ben T. Truth", "Matthias"]}, {"c": "hike", "n": "Amselsee", "zh": "rowing boats under the cliffs", "lat": 50.9651392, "lng": 14.0818002, "m": "4.7★ · STORM DAMAGE July 2026, check locally · boats normally to about 16:30 · the Wanderrast kiosk is closed", "d": "A 500-metre artificial lake of 1934 in the valley below the Bastei, with rowing and pedal boats and cliffs on both sides. A severe storm on 31 July 2026 tore through the Amselgrund and the open-air rock theatre nearby is currently unusable. The upper valley and the Schwedenlöcher path have reopened; ask in Rathen about the lake itself.", "g": "https://maps.google.com/?cid=5405273665570551162", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC880HEMkBSO00e01ve37begPj_Sep9FIUNNKeTR-D8ba8HcNo6tkXTJfy8h0cM6H_ojjGK3qebWjMO4Kq-DkhOyah-Xx2cXuxXho7Fy_0jvfvTOCXg86enjLytZfBBhXiJKP-ZFG90rbZx0dU=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCjEWwjGiin1Z5hW6e2VXMv87NgjL8Kl7JNT6VqNagcfxLcw0N5jliuJhTYJxphkakfrbYTlYm3wmKk64hH4GO_70LS5hKKYmh9TVWvEtO1dFTgL3ww-yOIvheOk0BM2mIi-FnF6RFx0pux=s4800-w800-h600"], "a": ["Wayne Devaney", "Achim Scholtyssek"]}, {"c": "museum", "n": "Festung Königstein", "must": true, "zh": "the fortress on the table mountain", "lat": 50.9190556, "lng": 14.0572936, "m": "4.7★ · 9–17 daily · lift available · pay the €2 for the handset, the app audio guide drops out", "d": "Nine hectares of fortress on a cliff 240 metres above the Elbe, never taken by an enemy in 400 years of trying. It held the state treasury, the Meissen porcelain secret, and a prison; in 1940 to 1942 it was Oflag IV-B for Allied officers. Half a day minimum. Bring a windproof layer; the plateau is exposed.", "s": "In March 1848 an 18-year-old chimney sweep called Sebastian Abratzky could not afford the entrance fee, so he free-climbed a 35-metre cleft in the cliff and went over the parapet instead. He was arrested at once and jailed for a few days. The Pirna weekly paper reported that a harmless chimney sweep had achieved what immense armies could not. The rock and the route still carry his name.", "sl": "The only man to take the fortress", "g": "https://maps.google.com/?cid=10051767837015825800", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCO7vHMMkhP9iGyfezWyrkKF5b0QT2EC4AOqjzDTmHW0vOkNyyiHlVS38suzanyKTDTe7pwmK35L781vcZSqnlFZNlYvKN9NJyVYiRo7WtKfOEkw-OpSNn6g0Cb5rCyd3gySqbAXmlvBgTNHuY=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjApQTCcWEH7tKe8a2tWiiqnrGP3uAKU9xtZ8ubF51TSd3e2JYQVveNKXBXn-FKm2FFDO9TwLOPen60gmIFvVUByl7-_-yOjDqJ0S02ksjuHiLDSe_pWqrtdiDr4bkQzbNLN3bYZY5H8J4PBOg=s4800-w800-h600"], "a": ["Harald Peter", "Adrienn Kovács"]}, {"c": "view", "n": "Lilienstein", "zh": "FREE · the table mountain in the Elbe bend", "lat": 50.9304071, "lng": 14.0850807, "m": "4.9★ · FREE · steep both sides, ladders near the top · the summit Baude shuts at 17:00", "d": "The freestanding table mountain inside the river bend, and the symbol of the national park. Up the south side and down the north makes the best circuit, roughly three hours with the climb. August the Strong had an obelisk put on top to mark his own ascent in 1708. Carry water; there is none on the way.", "g": "https://maps.google.com/?cid=17185527492355302459", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA5ma04svDbk1giDX5pym92ddExoxJtAS-xdVGz8w4obtprSz6EaBxBw1HhpunDvC4Ck7Sj_y-ufrP9xRrczlhE4SzxvnpRSSFchJjzdl3N1cPwy_laiTaqwmeug4BPQCdP3aroaTSKaBJnOII=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDgUCvhbT8W4E74dTvLEAVWPiz_I4Vr6w-sqJFhgYV9ZYbJ0WbzzQIRQNxtt8FjCItmbS_Ez2km1-UV9fNuqj1fqoNAEXUnK022i456GF6tmh0sN23ABAKRhsh3vfrHhDEUmhkVaJ_4r3eYyw=s4800-w800-h600"], "a": ["Frantisek Honsa", "Dirk Frenzel"]}, {"c": "view", "n": "Pfaffenstein and the Barbarine", "zh": "FREE · the 43m rock needle", "lat": 50.8969819, "lng": 14.0811249, "m": "4.9★ · FREE · the Nadelöhr ascent is a squeeze between rocks · lookout tower and inn on top", "d": "A miniature version of the whole range on one summit: clefts, caves, a 29-metre lookout tower from 1904 and an inn. The south viewpoint has benches and the best panorama of the table mountains. The free-standing needle below it, the Barbarine, has been off limits to climbers since lightning strikes weakened it.", "s": "The needle is said to be a girl called Barbara, sent to church one Sunday, who went up the Pfaffenstein to pick bilberries instead. Her mother followed, found her, and cursed her to stone on the spot, so that she would stand there forever as a warning to disobedient children. The 19th-century collectors wrote it down as a nursery threat, which is exactly what it is.", "sl": "A girl turned to stone for skipping church", "g": "https://maps.google.com/?cid=5668836584073950445", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAZukG7kcsQOkESciZSwoiyeMB6f0S01o_De6wdF2HrQHNwfxMRZW8WCcleqlZPnJIpV7-x_ckNhsmYAKsuzl0ZLpZ605eNgy4FOYUMUlwGZgK1vg_Z8o_kBf4ZH42eoa24GZe7Lr13xKw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC9T6IZDXh-q2xioa_ZN9WrWhShaZxEbf0xTpeGnWeuTv8T9XVGHlRxOGnH9chsl4AZM2ftc6DqXW3SkE3-vFGR9GHBJPz0zBFMXx9DVv67KS9myb7y6sYp6kJ8orw7GI6Waxy5MCuZlvafeBc=s4800-w800-h600"], "a": ["Thomas Schmidt", "Mirko Müller"]}, {"c": "mid", "n": "Bergwirtschaft Papststein", "zh": "€€ · summit inn with a hanging bench", "lat": 50.9012955, "lng": 14.1203453, "m": "4.6★ · 11–18, later Thu–Sun · CARDS ACCEPTED, unusual up here · 10 minutes of steps from the car park", "d": "A proper mountain inn on a small table mountain, ten minutes of steps above the road, with a terrace facing the Pfaffenstein and a swinging bench people queue for. Home cooking, vegetarian options, prices reflecting the location. The easiest summit lunch in the park for anyone not doing a long walk.", "g": "https://maps.google.com/?cid=7338735239076020948", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCroJbVXOr-arbv8RCFyMVULVlzv-fQ9jqun-IIxm-fHIhZZNATEQTgu1CEKdOkzAokioAEESMgFS2QzG7TGmYmOnlQfkgh4WzuTLhXhyUdgBEQjRMXr_59lC98P8rnaSpX5bxmhqPhjlHyfOQ_IT2Ctg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB30NR8wy_zA4DiYNPYAwcbaa5r3mjti9UAQVOXwtwTWDPAJDF7O-OqDyAVy5jLEyLdZ75sGmEykb_7PCv3mL5vIkGKyJxxoBLJ7vUxJpHgsi_fytny6dZUSNVVlJKN1jdgEZVHvtHtQmVPmA=s4800-w800-h600"], "a": ["Berny MEDEN", "Bergwirtschaft Papststein"]}, {"c": "view", "n": "Schrammsteinaussicht", "must": true, "zh": "FREE · the ridge walk above Bad Schandau", "lat": 50.9126945, "lng": 14.204415, "m": "4.9★ · FREE · LADDERS, IRON RUNGS AND NARROW LEDGES · not for vertigo or small children", "d": "A jagged wall of towers with a walkway threaded along the top: metal stairs, ladders and handrails leading to a platform over the whole range. The best hour in the eastern half of the park and the most exposed. Boots, not trainers. Start from the Schrammsteine car park outside Bad Schandau.", "g": "https://maps.google.com/?cid=17469338771080700083", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBZeWTNsDnNZI23epFW0QHsCtYrAh73p5-Uj6v0bEdAnC69gIi4AHr4WM4elxag8Xxobc1MV1jmQGrxLyxPLxqgjPSxe-CYkVW4McV5BsJhTQL9XOeTZWDZ6TPsidh1utxfU-W8T43zXTeK_g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjATRrydwK1ghLM0Mbcq_joQPHy3YBe9utZwp6z3_AlzIN9g1mYA04UdDdoXySTI1yGNP6r_cPRaK88QwXN76Fo-p9zsW3OeUyi2WMeTaEQ1tpN4vY-RLCuRVBjDbPm0QRuHZpi6_n5ncyDy7A=s4800-w800-h600"], "a": ["Ali Dawi", "Enrico Baum"]}, {"c": "view", "n": "Carolafelsen", "zh": "FREE · the Affensteine panorama", "lat": 50.9128947, "lng": 14.2344866, "m": "4.9★ · FREE · TWO ROUTES: one is a scramble over boulders and iron ladders, the other a path", "d": "A viewing platform looking straight into the Affensteine, quieter than the Schrammsteine for the same class of view. Two approaches leave from near the same point and they are not equivalent: the direct one is genuine clambering. Check which you are on before you commit. The car park fills by nine on weekends.", "g": "https://maps.google.com/?cid=9779781881561231224", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDlXvzpe1m3tjPcv-75EfEr28HkIsMxYhb_PSqZzg5ECsnGV5MP2icYeyUUc-GaB6CmlSaj57WL8iRxwA-hByf92fFGjfTmM4mfUlKJJArnuNushAc58-1zfIFjmcFAmjoOGM4X5oLj3qXJSg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDwmkM1u1K6zOF4iXNLSqhCtvWbIFopP4wdFXXGpZTpX2b0EUXZ9-imox450gdk9Pp0DarO9uT-1WQgtueRmQqYWA3jyHYQe16ZJ4cvrPbYUcQ1ar3xRneE1Ji1Dbqv9W47R0YaTaNrXQo2zQ=s4800-w800-h600"], "a": ["Susanne Marschall", "Lukas Masuch"]}, {"c": "view", "n": "Kuhstall", "zh": "FREE · the second-largest rock gate", "lat": 50.9256106, "lng": 14.2567272, "m": "4.8★ · FREE · about 30 minutes uphill from the Lichtenhain waterfall · kiosk at the arch", "d": "A cave-like rock gate 11 metres high with a snack hut under it and, tucked into a crack behind, the Himmelsleiter, a steep iron ladder staircase up to the top of the arch. Take it. Villagers drove cattle in here to hide them during the Thirty Years War, which is where the name, cow shed, comes from.", "g": "https://maps.google.com/?cid=6587833041012833007", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDIaNdBRU9JViNucZmypULq_rSWKy-fUVW53Palys5yZK7sOShnAOf1azd8BA-KMA_RKcvMIpQR-qXY5er9DWDHFT1muHhlfk3UD-d4I-6jnd4uspnAq_P4UwQS_bsKxGQQdzHbjrDb_YhIl3A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBYfn3f7GHALwph1shJoRujRJaaL8TwU4VWeyDSfQ6vcyB4OvaVa-vCgq_UOYKWdtLA87OVw0SlbHOyOrcWNMZ6Z_j1i_LR_7hEbrXdlIopSJdNPgBtkGPiG520N90xlr8PQ8yatcE5hru2cNc=s4800-w800-h600"], "a": ["Jojo F", "Nahidul Kibria"]}, {"c": "transport", "n": "Kirnitzschtalbahn", "zh": "open-sided tram, running since 1898", "lat": 50.9211272, "lng": 14.1581945, "m": "4.6★ · approx 9:55–17:30 · day ticket around €10, BUY FROM THE DRIVER IN CASH · slower than the bus", "d": "Eight kilometres of single-track tramway up the Kirnitzsch valley from Bad Schandau to the Lichtenhain waterfall, in wooden cars, hop-on hop-off for the trailheads. Reports conflict on whether the Deutschlandticket is accepted, and drivers have charged people who expected it to be; carry cash. Time your return, the last tram is early.", "g": "https://maps.google.com/?cid=724173229846096013", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBfQ_27BVZ7ZJoNHDuQAE17b_QUwj1L9ustdiitSFTTG15VKszvnU83KJaUhNXhS_vM1XEmWf8n20ZjRaixOq0GOC4F1sfPc_ao_xWQ-ZRKuN2BMNPs7rkJsbhoQGUmTkemZzNDnGeRkKQdow=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDapk3KrBs2Qm6w4p4jx7x9PPzBprMIaW92X5b6ujdPHq9Kgkp2TrKNNgdmOcEH9eKfkz7cC8dnHAF5QastlXvg6cAuSxfKgjFgJkDUQuwQXOxJDzObvUDf4xrKvncGQPj-yNfBljoseAkQrYVDRHVrvw=s4800-w800-h600"], "a": ["Wolfgang Grafeneder", "Hans van der Honing"]}, {"c": "hike", "n": "Lichtenhainer Wasserfall", "zh": "the honest verdict: it is a trickle", "lat": 50.9292305, "lng": 14.2425985, "m": "3.9★ · the surge is released on a schedule, not natural · restaurant open 11–22 · tram terminus", "d": "A small stream over a rock with a sluice above it that is opened on a timetable for the crowd. The 3.9 rating is deserved if you came for a waterfall. Come for what it actually is: the tram terminus, a good large-portion Gasthaus, and the trailhead for the Kuhstall half an hour uphill.", "g": "https://maps.google.com/?cid=7038796388448288024", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCwKBwaQuxCFS7Pmf32h27qzLiENZWdAfr3fdXz5G_oVvMJ51LH3dNe6qoGh51U4d_MDyTGNCcsPXUUAnlprL1-ZwT2AilVm1c52cw3wOvEk2_mmAneldBs_QPXLIBucyUu5pnTw-cDCE963x0=s4800-w620-h401", "https://lh3.googleusercontent.com/place-photos/AG9NLjCpUHxEMVeeIdBYM_2hIpKHPqOESO9XwfvDIpRmLBsEanyNCeYzyIfPrFsdbWv-uTY-7SnklcQWPj08flj6ih4gn3bnlXvuZmUDW46mEpqy4wXS1DnB_iePhZKf61Zw847IHH7XO3wOakY=s4800-w800-h600"], "a": ["Hotel Restaurant Lichtenhainer Wasserfall", "Thomas Weimann"]}, {"c": "transport", "n": "Historischer Personenaufzug", "zh": "1904 Art Nouveau lift, 50m", "lat": 50.916663, "lng": 14.1612616, "m": "4.6★ · 9–20 · small fee · a shortcut, not an attraction · cafe and trails at the top", "d": "A free-standing steel lift tower of 1904 that saves you the climb from Bad Schandau to the Ostrau plateau, ending on a bridge to the clifftop. Views over the Elbe from the platform, a kiosk, and paths straight into the park. The park at the top is shabbier than the photographs suggest.", "g": "https://maps.google.com/?cid=11924367386537712097", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjClx4bpHULQzGXu_s1ozDE4ZIqWylZ1jjgSaHmSx1V9WF6LtiQ5ha7Vv6ak9wxspMEHukZSHLx0P99hqu2l-tZv2-oAtA7KngpdcG56mKf1zuIb8en4pLeFyP-VQsJwTTFALKlwxCzSmxNX0ik=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD49bJE3B5dpG6psjR376u3eX1v3GDNdD9voi7jcBcqbAwEn-xQn963qB_GkImVSBHnnleDCzsqojOYy_FK4N6gzSPWgwf-fwe_PcL670R9oQd1AAOkj_LvEBeCjQzmCalX3TlZSJF8Z_OfvQ=s4800-w800-h600"], "a": ["Martin Kukula", "Rüdiger"]}, {"c": "hike", "n": "Obere Schleuse, Hinterhermsdorf", "zh": "punted boats in a gorge", "lat": 50.9100734, "lng": 14.3873242, "m": "4.7★ · 9:30–16, Sat to 13:30 · CASH ONLY, bring exact-ish money · about an hour's walk to reach it", "d": "A dammed stretch of the Kirnitzsch at the far eastern end of the park, worked by punt with a boatman who does a comic commentary, mostly in Czech and German. The walk in through the gorge is as good as the ride. Take the first boat at ten. They turn people away for being a euro short.", "g": "https://maps.google.com/?cid=4906371672231897336", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDvSpknP2Yi0_IdM2eMsceEWUWIcwbKVW9EMBU_QUymg85fucgXuBWlCSND6rRHLdSIWZ1IR6pCPI9cdnASLOZ_LvS68-T0kLTp_0xw5k-s_P2UI263mPFqSyLJakEXiCz_h1h6uF0Ibn_dqsc=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCBW3TtEryRZ0HlB-HZFv2fnt2XAnshkXul0IQXmF2MmO47pRJ9J4Ah1YGCoSgAqK_guTH99uhZlt89gvEBpW8IKCjCXLJslVk6JzA6gX-_YBUU65w0FOA04tSKvaGebUGPdyo_f6f84u--9vyNMhjtQQ=s4800-w800-h600"], "a": ["Obere Schleuse", "J. K."]}, {"c": "heritage", "n": "Burg Hohnstein", "zh": "FREE to walk in · castle above the Polenz valley", "lat": 50.9797684, "lng": 14.1093658, "m": "4.4★ · courtyard FREE, donation box at the gate · tower and museum small charge · German labels only", "d": "A 14th-century rock castle above the village square, now partly a hostel, with the tower and a museum open and free toilets in the yard. It was an early Nazi concentration camp in 1933 to 1934, which the museum does address. Useful as the Malerweg stage end and for the view down the Polenz.", "g": "https://maps.google.com/?cid=4378002646293403852", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjByG5W8Wz9_ntA9DhfCbjpecsC6hK1JbymEN_Nny6rWaMRRe9ltnaRkMJVq_ttOj5UCqjRjaHIkK3-IlarSrdHjPn9OldIsey8UXSTs9IdM2m3SHLkyYowUiA14pG_JZSe9io3qUDn3w7P5xNB8n8Bg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBvKUVrSsB84IbHSxokPlCRGZ6Wz1qbUqDXBizcWZdG-NOcBwMRKdpKwtHGuynE1yWbF1-dzPbLVygfOkks-LrlrDh-LBZ9lU1WA3yBI6xAAz26kKPTD0aXv_x9luim0sclAg4sAcXoWemCBw=s4800-w800-h600"], "a": ["Burg Hohnstein", "Cornelia Eibisch"]}, {"c": "cheap", "n": "Schmilk'sche Mühle", "zh": "€€ · organic bakery, brewery, beer garden", "lat": 50.8922377, "lng": 14.2322676, "m": "4.1★ · 8–20 daily · filter coffee is about €4 and not worth it · last village before Czechia", "d": "A restored mill village at the border where the bakery, brewery and mill all work: bread from a wood-fired oven, house beers including a Bock people travel for, cake and pizza. Food is priced for a captive location and portions are small. Come off the Schrammsteine ridge and drink the beer.", "g": "https://maps.google.com/?cid=7340282862457740704", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDdxBis3fC8U2Qct5Sqc0xahMELngRgZOK49N_qnqzh1dyhtOGtJ4xTVmQ9VRjgxzxEy0wn2AwtY9t_96Lbd52yjWgXXmv2Z7q8HeHdPjAA46x_rx1f3vvbM1hohVDtS8CfCvKk10_HhNyHD4ItMb1nBA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCWjngS08ElFa92RhVuyMwhcjKKg_MWyx2g8LOGJVAbjh6xizND3V4D2P4Xwc6Fz09gjZymAV5tyixXiLiYUuHoTNMYmQGgyHteJbdioZauJ-LX6boygo5Kjl8hz21AwlS78vhbaFmT8o0l=s4800-w800-h600"], "a": ["B S", "Jonathan M."]}, {"c": "heritage", "n": "Stadt Wehlen", "zh": "the Malerweg starts near here", "lat": 50.9570872, "lng": 14.0333779, "m": "4.7★ · FREE · ferry F8 running again since 19 Aug 2026 · packed at weekends, quiet midweek", "d": "A small market square on the Elbe with the Bastei visible behind it, the cheapest quiet coffee in the area, and the ferry across to the trails. The Malerweg's second stage starts here and is currently signposted on a diversion because of storm damage further on. Nearest shops are in Pirna.", "g": "https://maps.google.com/?cid=7104484491118534574", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBSyB20jAiKg4ecDghCOfyBNX9jH44eoZ7Qa8MMHTaxbi1uh8Ctx5GEk10tGLLVU0NsK94XPYIsTORjwKMv-nYlhgGxYradu8CmJWT1fII9iEl01dtXr_4vIhASqnXjuIxZJXlKs5BO9h3zLQ4=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC_gHXG6Kia-_5EIdSoW_d-v7vd2uO9wRTOF3MomYDHAsNUytnsDKD1cSDsS50mIBGGZbKEsTVuUrkDl6zxCqix-RxIMTfCYHtr6twYainLX_FnoWsDlIfpJ3sa1L2xUpi1fu31KJZgL5Mt=s4800-w800-h600"], "a": ["Ulrich Wollfoerster", "Björn Hegemann"]}, {"c": "museum", "n": "NationalparkZentrum Bad Schandau", "zh": "approx €4 · and the closures phone line", "lat": 50.918822, "lng": 14.150043, "m": "4.6★ · 9–17 · English-speaking staff · ring 035022 50240 for path closures before a long walk", "d": "A small exhibition aimed mostly at children, and the practical reason to come: this is where you find out which paths are shut. Bark beetle damage and storms close routes at short notice across the park. Free maps and honest advice at the desk. Cards only accepted above a minimum.", "g": "https://maps.google.com/?cid=18324897890706424158", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCN5MxVjI2gAWKftDns1wYk2goV1eF_AemCBvi7w3Y7PjpBWrvYmdJx5UQHlmkGkwsQ6pVzFEUcDGP-7ixEkoEBLN-u2mCOR31BUK3HwksirH4JHuSPYn5h9W8NoxrmfGhWTzQ6Vv3EBuW1=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC_9XjGapDYZORSYjIj12n60lCvn_1_ynuds7BcnFbPBpbtNx7SvtG2W4toC_sNioUggwHKjexozueUJcqCkqjd_MExHV5v0BMgbqoE8msbPmcbBkNxpmXZZkpYRYRY9f5wz5XSrw2oPGcPH_Fa0gsyow=s4800-w800-h600"], "a": ["NationalparkZentrum Sächsische Schweiz", "Erik Schulze"]}, {"c": "splurge", "n": "Restaurant Felsenbirne", "zh": "€€€ · 2026 Bib Gourmand · Pirna", "lat": 50.9631952, "lng": 13.9432614, "m": "4.8★ · CLOSED SUNDAYS · lunch Mon, Fri, Sat only · BOOK · vegan menu is properly cooked, not an afterthought", "d": "Holder of a 2026 Bib Gourmand and the best cooking between Dresden and the Czech border, on a quiet street in Pirna. Small dining room, precise fish and game, and vegan guests treated as seriously as everyone else, which several reviewing couples note with surprise. Lunchtimes are limited; check before planning around one.", "g": "https://maps.google.com/?cid=2774149472259869126", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBLxbOW19-HrB0_CLQKO5x10OJsI-nGIvneTnq-aPJOh_94AlEhQpqWavfe6tbUEi71HoGuqfsZCyBQVaCf4tbqdPVtXeNhsCiA6hRQoncS6zdz_f4dpoSyaVdzxjUrNv7ur4S2e8oOq1y4j1tgDuj3yw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBTXgzbxMsOeJohpNUl3PsRSwtIvgjziO8KDokc18f1C38gJ6VC1NWqliPRr12Ri87sB1eqci6Ib9JhensbhSnXpmA_BxrR2xhyTeW3JOk35Gr8waD_UfwAGD32vLHBpCSfNXfyPeBLD9YauOnkiIM7ig=s4800-w800-h600"], "a": ["Restaurant Felsenbirne", "Restaurant Felsenbirne"]}, {"c": "heritage", "n": "Pirna Marktplatz", "zh": "FREE · Canaletto painted this square", "lat": 50.9623278, "lng": 13.9418214, "m": "4.6★ · FREE · 24h · 30 min by S-Bahn from Dresden · Christmas market projects onto the town hall", "d": "The gateway town to the national park, and a genuinely intact Renaissance old town rather than a reconstruction. Bernardo Bellotto, the Canaletto of Dresden, painted this square in the 1750s and you can stand where he stood. Twenty minutes' walk covers it; use it as the stop before or after the rocks.", "g": "https://maps.google.com/?cid=17720602913915567627", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCKgVlWZ5bewIVm3pKSIdRYnWMUWemYwjWC6neYlaki0B6DzrQnMvFfIXk3KqqpHovuRI4Hu3bCgw4D_Wn6-TZAvgFqB2UM5sCVevUtQSZ3PEdqfunSk_RrdH4ye5D8nGkW8xgqeG6vIOcPpj3Q75upTg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCkCmC_l1inS6bw0X8oaVUq2sjZbXXnALQSQADpuz95ibTcuUtAy5XWMQ41MJsvD7hZRHaA3RVvEqkLFWnANyxZTaDS2dKV2BbUt9SGhmJYN7GG4zk38SpL6pHZfWbNVBLg41fPS_iv04GmNKk=s4800-w800-h600"], "a": ["Jordi44", "Daniel Schmid"]}, {"c": "heritage", "n": "Richard-Wagner-Denkmal, Liebethaler Grund", "zh": "FREE · Malerweg kilometre zero", "lat": 50.9952289, "lng": 13.976209, "m": "FREE · 24h · press the button and the music plays · 12m of stone in a wooded gorge", "d": "A vast Wagner monument standing in a river gorge at the start of the Malerweg, entirely unexpected in the trees. There is a button at the base: press it and Wagner comes out of the rock while you sit on a bench by the Wesenitz. The first hour of the long-distance path, and its best surprise.", "g": "https://maps.google.com/?cid=1392960283746502797", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAamTMUQLx0BSPTB0plgd9EekNSrGYz9g2lW_eCp8aS4NWs9OgIaYnd5WR4y747X0QAWLWKxU7IeVdkHR9G_AnOjdo2prJZHAUSWCObgSUE1IKt4uBCN33T1HRKGH2AGBKAXMlbiYxeD9DahyQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAUuxQ-OsFauFg8vmCOHboaYYLIn1zn-pMO6W6tkJz5SAwXWeaOb7JTD1aYBHPr-s-uztsmDdfwNq95HBhDA2ekunuVkuIyrGaPC3vT1IAE1t9zU57CIcrkU6gfiBeF7t_QyqmClTCWHGM9CmA=s4800-w800-h600"], "a": ["Frank Beck", "Wind Rad"]}, {"c": "cheap", "n": "Neumannmühle", "zh": "€ · valley inn and hikers' dorm", "lat": 50.9237375, "lng": 14.2843882, "m": "4.6★ · CLOSED SUN AND MON · opens 15:00 · CAR PARK SHUT 15 Aug–30 Sep 2026, use the bus", "d": "A mill inn deep in the Kirnitzsch valley on the Malerweg, with a bunk room for walkers and a schnitzel that people write home about. Note the opening hours before you plan a lunch here, because it does not do lunch. The car park opposite is a building site until the end of September 2026.", "g": "https://maps.google.com/?cid=9019541305846733095", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB4X3qoyGtIrD5CrZrmXP6ndzNehaY-Y0E4P9HiKKJR78Qr-Sk0zfyhYCfDou1LAw4ZHrB0aAZN4ioOV6v9bDnvKQCb1Ji0QipqYEVO1nJ5IZ6wKucEJRFloZwTca1nV8ax01n8UJKeriFtIg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDGulSwiPG7HzS-i2hZ0JM8P_IL0IszKAaoYU6c8x7aPnZQjhcZvIHsW4geoGXP9K2g7h4TwKB4Q6dTpEOZtfKs33kPB88vUhBXYyvedTf_GgaWFt95PHs1CZu5sU0C41hIlTdIqw6vCj7-=s4800-w800-h600"], "a": ["Neumannmühle Berghütte", "Neumannmühle Berghütte"]}, {"c": "view", "n": "Prebischtor (Pravčická brána)", "zh": "Czechia · Europe's largest rock arch", "lat": 50.8839207, "lng": 14.2815093, "m": "4.7★ · approx 125 CZK · trail from Hřensko Apr–Oct 10–18, Nov–Mar Fri–Sun 10–16 · NO WALKING ON THE ARCH · no drones", "d": "The largest natural sandstone arch in Europe, half an hour over the border and 45 minutes uphill from Hřensko. You pay to enter the viewing area and the Falcon's Nest chateau beneath it; the arch itself has been closed to feet since 1982 to stop it wearing away. Parking in Hřensko is expensive and day-rate only.", "g": "https://maps.google.com/?cid=5257753306265593658", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDHWXYLIkJlicP3tx3Y5LYPyfAeGmA3HVUFgQ6qrRbg1y-JfxheFZBpgaIiYNn-lD7LKy--qritV_fiXbsX8xRVsKdiLg7kLwviLGL5HeJkqB4qUahlvPo01pRFprqMcCjtVfFlkFloqQ_gZQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjChxu9plg8XvwWpw8lOmzp8nUqkZZjf6x03FgsG7_qi9K-gc70fBdPlwjrr7-zcgVEtlRdfwN2Cd281pVJHhu5Ukoxxtj1smTBL21Apn6EetMj4T97oTc5vk7nABCtvfs32VH5tOmTKSX14cJg=s4800-w800-h600"], "a": ["Bori-Lili Land", "Renata Valoskova"]}, {"c": "hike", "n": "Edmundsklamm (Edmundova soutěska)", "zh": "Czechia · punted gorge, reopened 2026", "lat": 50.8700063, "lng": 14.2802872, "m": "4.7★ · REOPENED 18 June 2026 · boats hourly 10–17 · buy tickets at the municipal office in Hřensko, not the boat", "d": "A gorge on the Kamenice worked by punt since 1890, closed for years after the 2022 wildfire tore through Bohemian Switzerland and open again since June 2026. Twenty minutes on the water between vertical walls, with a walk in from Hřensko. The Gabrielensteig route from Mezná Louka to the arch remains shut.", "g": "https://maps.google.com/?cid=9324786466118230564", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAsBTQIYDpCKFn0MDGWVc436yUWW0bavCqPmFdW3W7ZCt_gSjEpvjb8bFvzd4KdjOYCO-wQbYklezzehE-TfIyyAbwFEzUtigo98uMAOKuGWmFvfDbxHsoVNoFm2XsVs3nJp6aAR2BAPmBLWg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAVYTB9hOArKcB6ZAoqL8wwFY7At4vXp4yp_OkQKLx-1vNR_uME8juCKzn-TM6LNlhFcdy0cdLUmNf_avdduT4jxoND4lz7CZnRD220AUC4FOxAFdkR_iSrZZACUn4joLEEaWrB_Qwb6fYo=s4800-w800-h600"], "a": ["Susanne B.", "Melanie Bucher"]}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+(pl.must?' must':'')+'" style="background:'
+         +CATS[pl.c].color+'">'+glyph(pl.c)+(pl.must?'<i class="star-badge"></i>':'')+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true,
+    zIndexOffset: pl.must?1000:0});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galPrev.style.visibility = pics.length>1?'':'hidden';
+  galNext.style.visibility = pics.length>1?'':'hidden';
+  galPrev.disabled=true; galNext.disabled=pics.length<2;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+  const multi=imgs.length>1;
+  galPrev.style.visibility = multi?'':'hidden';
+  galNext.style.visibility = multi?'':'hidden';
+  galPrev.disabled = i<=0;
+  galNext.disabled = i>=imgs.length-1;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+/* arrows, for mice and keyboards; touch users just swipe */
+const galPrev=document.getElementById('galPrev'), galNext=document.getElementById('galNext');
+function galScroll(dir){
+  const w=galTrack.clientWidth||1;
+  const i=Math.round(galTrack.scrollLeft/w)+dir;
+  const n=galTrack.querySelectorAll('img').length;
+  galTrack.scrollTo({left: Math.max(0,Math.min(n-1,i))*w, behavior:'smooth'});
+}
+galPrev.onclick=e=>{e.stopPropagation();galScroll(-1);};
+galNext.onclick=e=>{e.stopPropagation();galScroll(1);};
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng+"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  panToPlace(pl);
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+/* Wide screens show the card as a left-hand panel, so the gesture axis and the
+   map centring both have to change. Keep this threshold in sync with the CSS. */
+const SIDE_MIN_WIDTH = 720;
+function sideMode(){ return window.innerWidth >= SIDE_MIN_WIDTH; }
+
+function panToPlace(pl){
+  const ll = L.latLng(pl.wlat, pl.wlng);
+  if(!sideMode()){ map.panTo(ll,{animate:true}); return; }
+  // shift the centre left by half the panel so the pin sits in the visible half
+  const panelW = (document.querySelector('.sheet')||{}).offsetWidth || 390;
+  const pt = map.project(ll, map.getZoom()).subtract([panelW/2, 0]);
+  map.panTo(map.unproject(pt, map.getZoom()), {animate:true});
+}
+
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the card down to dismiss ----
+   Touch: drag anywhere in the card, but only when it is scrolled to the top, so
+   reading a long card still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    // In side mode the dismiss axis IS the gallery axis, so the gallery wins
+    // any gesture that starts on a photo.
+    if(sideMode() && e.target.closest && e.target.closest('.gal')) return;
+    // Vertical scroll only conflicts with the bottom sheet.
+    if(!sideMode() && sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'go':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  const side=sideMode();
+  // side panel slides out to the LEFT; bottom sheet slides DOWN
+  const along = side ? -dx : dy;      // movement toward dismissal
+  const across = side ? dy : dx;      // movement that belongs to the gallery
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(along)>Math.abs(across) ? 'go' : 'other';
+    if(drag.axis==='other'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(along<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=along;
+  sheet.classList.add('dragging');
+  sheet.style.transform = side ? 'translateX(-'+along+'px)' : 'translateY('+along+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();   // distance OR flick
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='go' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  const ab=document.getElementById('about');
+  if(ab && ab.classList.contains('open')) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- city overview ---------- */
+const about=document.getElementById('about'), aboutBtn=document.getElementById('aboutBtn');
+function esc(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function rich(x){ // allow **bold** only
+  return esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+}
+function renderAbout(){
+  if(!CITY || !Object.keys(CITY).length){ aboutBtn.style.display='none'; return; }
+  document.getElementById('abTitle').textContent = CITY.name||'';
+  document.getElementById('abTagline').textContent = CITY.tagline||'';
+
+  const st=document.getElementById('abStats');
+  st.innerHTML=(CITY.stats||[]).map(s=>
+    '<div class="stat"><div class="k">'+esc(s[0])+'</div><div class="v">'+esc(s[1])+'</div></div>'
+  ).join('');
+  st.style.display=(CITY.stats||[]).length?'grid':'none';
+
+  document.getElementById('abSections').innerHTML=(CITY.sections||[]).map(s=>
+    '<h3>'+esc(s[0])+'</h3>'+String(s[1]).split('\n\n').map(par=>'<p>'+rich(par)+'</p>').join('')
+  ).join('');
+
+  const musts=CITY.musts||[];
+  document.getElementById('abMusts').innerHTML = musts.length
+    ? '<h3>Must see, do &amp; try</h3><ul class="musts">'
+      + musts.map(m=>'<li>'+rich(m)+'</li>').join('') + '</ul>'
+    : '';
+
+  const near=CITY.nearby||[];
+  document.getElementById('abNearby').innerHTML = near.length
+    ? '<h3>Nearby</h3><ul class="nearby">'
+      + near.map(n=>'<li>'+rich(n)+'</li>').join('') + '</ul>'
+    : '';
+
+  document.getElementById('abFoot').textContent = CITY.foot||'';
+}
+renderAbout();
+function toggleAbout(open){
+  about.classList.toggle('open',open);
+  about.setAttribute('aria-hidden',open?'false':'true');
+  aboutBtn.classList.toggle('active',open);
+  if(open) about.scrollTop=0;
+}
+aboutBtn.onclick=()=>toggleAbout(!about.classList.contains('open'));
+document.getElementById('aboutClose').onclick=()=>toggleAbout(false);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') toggleAbout(false); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+let wasSide=sideMode();
+window.addEventListener('resize',()=>{
+  const now=sideMode();
+  if(now!==wasSide){ wasSide=now; if(selected) panToPlace(selected); }
+});
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
