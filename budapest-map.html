@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!-- city-guide-maps template v7 capabilities: swipe-dismiss,drag-handlers,click-away,escape-key,gallery,side-panel,must-see,overview,filters,fullscreen,geolocation -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Budapest — 2–3 Weeks</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{position:relative;width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .pin.must{border-color:#F2C14E;border-width:3px;
+    box-shadow:0 0 0 1.5px rgba(120,80,0,.55),0 2px 7px rgba(0,0,0,.45)}
+  .star-badge{position:absolute;top:-5px;right:-5px;width:12px;height:12px;
+    background:#F2C14E;border-radius:50%;border:1.5px solid #fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+    width:30px;height:30px;border:none;border-radius:50%;cursor:pointer;
+    background:rgba(0,0,0,.42);color:#fff;display:none;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);transition:background .15s ease}
+  .gal-nav:hover{background:rgba(0,0,0,.65)}
+  .gal-nav:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .gal-nav svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .gal-nav.prev{left:8px} .gal-nav.next{right:8px}
+  .gal-nav[disabled]{opacity:.3;cursor:default}
+  /* only for real pointers — touch users swipe */
+  @media (hover:hover) and (pointer:fine){
+    .gal:hover .gal-nav, .gal-nav:focus-visible{display:flex}
+  }
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  /* when there is no photo the grabber would sit on the text */
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---- city overview sheet ---- */
+  .about{position:absolute;inset:0;z-index:1400;background:var(--paper);
+    overflow-y:auto;transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.32,.72,.35,1);
+    -webkit-overflow-scrolling:touch}
+  .about.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.about{transition:none}}
+  .about-inner{max-width:640px;margin:0 auto;padding:18px 20px calc(40px + env(safe-area-inset-bottom))}
+  .about h2{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:3px}
+  .about .tagline{font-size:14.5px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+  .about-close{position:sticky;top:0;float:right;width:34px;height:34px;border:none;
+    border-radius:50%;background:#eef1f5;color:#5b6472;font-size:16px;cursor:pointer;
+    line-height:1;z-index:2;margin-left:10px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;
+    margin-bottom:20px}
+  .stat{background:#f6f4ef;border-radius:11px;padding:9px 11px}
+  .stat .k{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#8b8577;margin-bottom:2px}
+  .stat .v{font-size:14px;font-weight:700;line-height:1.25}
+  .about h3{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:20px 0 7px}
+  .about p{font-size:14.5px;line-height:1.6;color:#374050;margin-bottom:9px}
+  .musts{list-style:none;margin:2px 0 4px}
+  .musts li{position:relative;padding:7px 0 7px 27px;font-size:14.5px;line-height:1.5;
+    border-bottom:1px solid #f0ece4}
+  .musts li:last-child{border-bottom:none}
+  .musts li::before{content:"";position:absolute;left:5px;top:14px;width:9px;height:9px;
+    border-radius:50%;background:#F2C14E;box-shadow:0 0 0 2px rgba(242,193,78,.28)}
+  .musts b{font-weight:750}
+  .nearby li{padding:7px 0 7px 27px;font-size:14px;line-height:1.5;list-style:none;
+    position:relative;color:#374050}
+  .nearby li::before{content:"";position:absolute;left:6px;top:15px;width:7px;height:7px;
+    border-radius:50%;background:#9E9D24}
+  .about .foot{font-size:11.5px;color:#95a0ae;margin-top:22px;line-height:1.5;
+    border-top:1px solid var(--line);padding-top:13px}
+  /* ---- wide / landscape: the card becomes a left-hand panel ----
+     A full-width bottom sheet letterboxes photos badly once the window is wide. */
+  @media (min-width:720px){
+    .sheet{left:0;right:auto;top:0;bottom:0;width:390px;max-height:none;height:100%;
+      border-radius:0 20px 20px 0;box-shadow:8px 0 30px rgba(16,24,40,.22);
+      transform:translateX(-105%)}
+    .sheet.open{transform:translateX(0)}
+    .gal, .gal-track img{border-radius:0 20px 0 0}
+    .gal-track img{height:auto;aspect-ratio:3/2}
+    .grabber{top:0;bottom:0;left:auto;right:0;margin-left:0;width:24px;height:100%;
+      flex-direction:column}
+    .grabber::after{width:4px;height:38px}
+    .sheet:has(.gal.none) .sheet-body{padding-top:16px}
+    .sheet-body{padding-right:26px}
+    /* keep the filter panel clear of the card */
+    .panel{left:auto;right:70px}
+    .about-inner{padding-left:26px}
+  }
+  @media (min-width:720px) and (max-height:520px){
+    /* phone held sideways: shorter, so trim the photo further */
+    .gal-track img{aspect-ratio:2/1}
+  }
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Budapest — 2–3 Weeks</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="aboutBtn" title="About this city" aria-label="About this city">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Pin shapes: circles are sights, rounded squares are food, diamonds are drinks. Food is banded by price, not cuisine — switch off the tiers you don't want. Gold rings mark the seven places a first-timer shouldn't miss. MOST MUSEUMS CLOSE ON MONDAYS. Gellért Baths are closed for renovation until 2028 and are not on this map. Prices indicative for 2026; ratings and hours from Google Places, Aug 2026.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <button class="gal-nav prev" id="galPrev" aria-label="Previous photo">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="gal-nav next" id="galNext" aria-label="Next photo">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="about" id="about" role="dialog" aria-label="About this city" aria-hidden="true">
+  <div class="about-inner">
+    <button class="about-close" id="aboutClose" aria-label="Close">✕</button>
+    <h2 id="abTitle"></h2>
+    <p class="tagline" id="abTagline"></p>
+    <div class="stats" id="abStats"></div>
+    <div id="abSections"></div>
+    <div id="abMusts"></div>
+    <div id="abNearby"></div>
+    <p class="foot" id="abFoot"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"heritage": {"label": "Landmarks & architecture", "color": "#6D4C41", "icon": "landmark"}, "museum": {"label": "Museums & galleries", "color": "#1565C0", "icon": "palette"}, "memory": {"label": "20th-century history", "color": "#455A64", "icon": "shield"}, "bath": {"label": "Thermal baths", "color": "#00838F", "icon": "waves-ladder"}, "green": {"label": "Parks, hills & views", "color": "#2E7D32", "icon": "mountain"}, "market": {"label": "Market halls", "color": "#8D6E63", "icon": "shopping-basket"}, "cheap": {"label": "Cheap eats (€)", "color": "#00ACC1", "icon": "utensils", "shape": "food"}, "mid": {"label": "Mid-range (€€)", "color": "#F9A825", "icon": "utensils", "shape": "food"}, "splurge": {"label": "Splurge & Michelin (€€€)", "color": "#C2185B", "icon": "utensils", "shape": "food"}, "cafe": {"label": "Cukrászda & coffee", "color": "#AD1457", "icon": "cake-slice"}, "bar": {"label": "Ruin bars & beer", "color": "#37474F", "icon": "beer", "shape": "drink"}, "daytrip": {"label": "Day trips", "color": "#5E35B1", "icon": "signpost"}, "stay": {"label": "Where to stay", "color": "#795548", "icon": "bed"}};
+const ICONS = {"bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "beer": "<path d=\"M17 11h1a3 3 0 0 1 0 6h-1\"/> <path d=\"M9 12v6\"/> <path d=\"M13 12v6\"/> <path d=\"M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 0 1 0-5c.78 0 1.57.5 2.5.5S9.44 2 11 2s2 1.5 3 1.5 1.72-.5 2.5-.5a2.5 2.5 0 0 1 0 5c-.78 0-1.5-.5-2.5-.5Z\"/> <path d=\"M5 8v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8\"/>", "cake-slice": "<path d=\"M16 13H3\"/> <path d=\"M16 17H3\"/> <path d=\"m7.2 7.9-3.388 2.5A2 2 0 0 0 3 12.01V20a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-8.654c0-2-2.44-6.026-6.44-8.026a1 1 0 0 0-1.082.057L10.4 5.6\"/> <circle cx=\"9\" cy=\"7\" r=\"2\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "mountain": "<path d=\"m8 3 4 8 5-5 5 15H2L8 3z\"/>", "palette": "<path d=\"M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z\"/> <circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>", "shield": "<path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/>", "shopping-basket": "<path d=\"m15 11-1 9\"/> <path d=\"m19 11-4-7\"/> <path d=\"M2 11h20\"/> <path d=\"m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6l1.7-7.4\"/> <path d=\"M4.5 15.5h15\"/> <path d=\"m5 11 4-7\"/> <path d=\"m9 11 1 9\"/>", "signpost": "<path d=\"M12 13v8\"/> <path d=\"M12 3v3\"/> <path d=\"M2.354 10.354a1.207 1.207 0 0 1 0-1.708l2.06-2.06A2 2 0 0 1 5.828 6h12.344a2 2 0 0 1 1.414.586l2.06 2.06a1.207 1.207 0 0 1 0 1.708l-2.06 2.06a2 2 0 0 1-1.414.586H5.828a2 2 0 0 1-1.414-.586z\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "waves-ladder": "<path d=\"M19 5a2 2 0 0 0-2 2v11\"/> <path d=\"M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1\"/> <path d=\"M7 13h10\"/> <path d=\"M7 9h10\"/> <path d=\"M9 5a2 2 0 0 0-2 2v11\"/>"};
+const CITY  = {"name": "Budapest", "tagline": "Two cities welded together in 1873 — flat, dense, imperial Pest and hilly, quiet Buda — sitting on a hundred thermal springs, with a 19th-century boom-town skin and a very 20th-century interior.", "stats": [["Population", "~1.68 million (metro ~2.5m)"], ["Founded", "Buda, Óbuda and Pest merged in 1873"], ["Language", "Hungarian — not related to anything nearby"], ["Money", "Forint (HUF). ~400 Ft ≈ €1. Cards accepted almost everywhere"], ["From the airport", "Bus 100E to Deák tér, ~40 min, 2,500 Ft — needs its own ticket"], ["Cheaper airport run", "Bus 200E + metro M3, 500 Ft"], ["Transport for a long stay", "Monthly Budapest-pass ~8,950 Ft — cheaper than two 72-hour cards"], ["Budget/day", "~€45 thrifty, ~€100 comfortable"], ["How long", "4 days for the highlights; 2–3 weeks lets you use the city rather than tick it"], ["Best months", "May–June and September; August is hot and full, January is grey and cheap"], ["Thermal springs", "~120 under the city, ~70 in use"]], "sections": [["History in five minutes", "Budapest is a young city wearing old clothes. The Romans had Aquincum here; the Mongols flattened everything in 1241; the Ottomans held Buda for 145 years from 1541 and left behind the thing the city is now famous for — the habit of bathing in its own hot springs.\n\nThe real Budapest is a product of one 40-year burst. After the 1867 Compromise made Hungary a co-equal half of Austria-Hungary, Pest exploded: the Chain Bridge (1849) had already stitched the two banks together, and by the 1896 millennium celebrations the city had Continental Europe's first underground railway, Andrássy Avenue, Heroes' Square and a parliament designed to be the largest in the world. Almost everything you photograph here was built between 1867 and 1906.\n\nThen the 20th century arrived and took most of it back. Trianon in 1920 cut Hungary to a third of its size. In 1944–45 the Arrow Cross murdered thousands of Jews on the Danube embankment and the Siege of Budapest destroyed every bridge in the city. The 1956 uprising was crushed by Soviet tanks; communism ran to 1989. This is why a walk here flips between wedding-cake facades and bullet-pocked walls within one block, and why the best museums are about the last hundred years rather than the previous thousand."], ["Culture and society", "Hungarians are formal on first contact and warm about ten minutes later. Greet people, don't assume English in an étkezde, and learn *köszönöm* (thank you) and *egészségedre* (cheers) — they buy a lot of goodwill.\n\nThe language is Finno-Ugric and unrelated to German, Slavic or Romance tongues, which is a large part of why Hungary feels culturally self-contained. Classical music is not a niche here — Liszt, Bartók and Kodály are national figures, and a decent seat at the Opera can cost less than dinner.\n\nOne piece of etiquette people get wrong: **don't clink beer glasses.** The story is that Habsburg generals toasted with beer after executing 13 Hungarian generals in 1849. Whether or not anyone still means it, older Hungarians notice."], ["Economy, then and now", "Pest grew rich on grain, milling and the railway — at one point it was the largest flour-milling centre in the world after Minneapolis. That money built the boulevards.\n\nToday the city runs on cars (Audi, Mercedes and Suzuki plants elsewhere in the country), pharmaceuticals (Gedeon Richter), a very large shared-services and IT sector, and tourism. Wages stay well below Western European levels while central rents chase them, which is the tension behind the 2026 ban on new short-term rentals in District VI. For a visitor the practical effect is simple: eating and drinking where locals do is genuinely cheap, and eating where tourists do is not."], ["Iconic food & drink", "**Gulyás** is a soup, not a stew — the thick paprika stew you were thinking of is **pörkölt**, and with sour cream it becomes **paprikás**. Order gulyásleves and expect a bowl.\n\nThe things worth chasing: **lángos** (deep-fried dough with sour cream and grated cheese — market halls, not tourist streets), **kürtőskalács** (chimney cake, wound on a spit over coals), **flódni** (a four-layer Jewish-Hungarian cake of poppy seed, apple, walnut and plum jam), **túrógombóc** (curd-cheese dumplings), **halászlé** (fisherman's soup, ferociously red), and **rétes** (strudel).\n\nTo drink: **pálinka**, a fruit brandy that is legally protected and frequently homemade; **Unicum**, a black bitter in a round bottle that Hungarians drink as a digestif and visitors mostly drink once; **Tokaji** dessert wine; and increasingly good dry whites from Somló and Badacsony. Hungarian craft beer arrived late and is now excellent — ask for a *kézműves sör*."], ["Unique to Budapest", "**The baths.** No other capital sits on this much hot water. Locals treat them as infrastructure, not spectacle: they arrive at 7am, soak, play chess, leave.\n\n**The ruin bars.** In the early 2000s a few people leased condemned tenements in the old Jewish Quarter cheaply, filled them with flea-market furniture and opened. Szimpla Kert is now a global export and, inevitably, full of stag parties by 10pm — go at 4pm on a weekday and it's still remarkable.\n\n**The M1 metro.** Opened in 1896, the first underground railway on the European continent, and still running under Andrássy with tiled stations you duck down into rather than descend.\n\n**Dual pricing.** State museums and Parliament charge EU and non-EU visitors very different rates. Carry your passport and don't be surprised."]], "musts": ["**Hungarian Parliament** — guided tour only, book weeks ahead (~5,000 Ft EU / ~13,000 Ft non-EU)", "**Fisherman's Bastion at 7am** — the upper terraces are FREE before the ticket desk opens; after that ~1,500 Ft", "**St Stephen's Basilica** — climb the dome (~3,000 Ft) for the best flat-city panorama", "**Széchenyi Baths** — the outdoor pools in winter steam; go on a weekday morning (~11,000 Ft)", "**Great Market Hall** — lángos upstairs, paprika downstairs, FREE to enter, CLOSED SUNDAY afternoon", "**Dohány Street Synagogue** — the largest in Europe; the ticket is steep (~€35) and the guide is what you're paying for", "**Chain Bridge on foot at night** — free, and the reason the city looks the way it does"], "nearby": ["**Szentendre — 40 min on the HÉV H5 from Batthyány tér.** Baroque riverside town of galleries and craft shops. Your city travelcard stops at the boundary; buy the supplement. Half a day.", "**Esztergom — 1h15 by train from Nyugati (~1,100 Ft).** Hungary's largest church, on the hill where the first king was crowned. You can walk over the bridge into Slovakia for lunch.", "**Visegrád — ~1h by bus from Újpest-Városkapu.** Ruined citadel above the sharpest bend in the Danube. Combines with Szentendre in one long day.", "**Gödöllő — 45 min on the HÉV H8 from Örs vezér tere.** Sisi's favourite palace, and the easiest half-day out of the city.", "**Eger — ~2h by train or bus.** Baroque town, a castle that held off the Ottomans in 1552, and the Valley of the Beautiful Women, where you drink Bull's Blood in cellars cut into the hillside. Worth an overnight.", "**Vác — 25 min by train.** The Danube town nobody puts on lists, which is the point."], "foot": "Prices indicative for 2026 and worth re-checking — the forint moves. Ratings and opening hours from Google Places, August 2026. Photos are traveller submissions, credited on each card."};
+const PLACES = [{"c": "heritage", "n": "Hungarian Parliament", "zh": "Országház · 1055 Kossuth Lajos tér", "must": true, "lat": 47.507121, "lng": 19.045669, "m": "4.8★ · GUIDED TOUR ONLY · ~5,000 Ft EU / ~13,000 Ft non-EU · book weeks ahead", "d": "The largest building in Hungary, built 1885–1904 to house a parliament for a country that then lost two-thirds of its territory — so most of the 691 rooms have never been used. Inside you get the grand staircase, the Holy Crown and about 45 minutes. Book online well ahead; slots sell out, and the passport-based dual pricing catches people out. If you skip the tour, walk the Kossuth tér side at dusk instead.", "g": "https://maps.google.com/?cid=3756321742160596846", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCXzSJ7_O8g7fwo8tid7pCYhgaV-SFyWvTbfy7yAkSc6PaMQbUMlzQgCdfNsqBGZ0oNyu8gjSTvI3lW6kH6gAzuESt4te5ASYBYOYfzXN9e5A_1lYwaCGhkFY32-RPJAQ7-DBBXyrArDW9pmA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAos_LUxlyXdN81SsL8d313GEkXdCyOc-vTS4Lt6Meo1-By1BDnp0tWVlXp4gXCgdOdfgc7Lh508OO73by9-I00nkT4gE1glSKiMG4zEAzGXEFe9YJ1J3ky2m1JM6feU3951-w7kKQHTvOp=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDz9CQNpIMlpvKgovBDC3a7SedDdwgD1djh_NZmG4m_XeIZthh_uQgjvI5PnmolPEnEe-RhZWqiT8r24030IwtRPHisnfYHPgOCRnJInj250-XSA4irc-VB3OA2HCD7bvn9jQM-2K4dNwOg_BdC259zcg=s4800-w800-h600"], "a": ["Michal Pick", "- Wenoxys -", "Nils Kleindl"]}, {"c": "heritage", "n": "Fisherman's Bastion", "zh": "Halászbástya · Castle Hill", "must": true, "lat": 47.5021827, "lng": 19.0347813, "m": "4.8★ · lower terraces FREE 24h · upper terraces ~1,500 Ft, FREE before ~9am", "d": "Neo-Romanesque fantasy walls built 1895–1902 purely as a viewing platform — never a fortification. This is the postcard view of Parliament across the river. Two things save the visit: come before 9am, when the upper terraces are unticketed and empty, or come after dark. Mid-morning it is a scrum of tripods.", "s": "The seven turrets stand for the seven Magyar tribes who rode into the Carpathian Basin around 895. The name comes from the fishermen's guild that, by tradition, defended this stretch of the medieval city wall — so a Victorian-era folly for tourists is named after the working men who held the real thing.", "sl": "Seven towers, seven tribes", "g": "https://maps.google.com/?cid=3397469662292958790", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDbAApqyYPn6AEMKH57FnaWds9MdqFvkFfHpwOvM8LE22jnQcQwNmvOst12XFPm1-p-vB5ptq9UBZexRzrP8mbvdvIuGfRZlhnY3gQmkF5pkAVfZNSrbcr06tDub1EoO9o2XiljpafLvAqkzUA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCgsFRA_M7jVwjeNw5fWJFKbmnAST_vALB_lHJ6lVQPhvDRSlgt_kScWk22-CtjldfkU4bFTsHoTj3GkTFOorm7nvuKLar0krnnCmpgOpkC2RFj2gvXKmcgb0F2BTIMgdDcLbEZVFKHqvlk8w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDRrgXm1yG-8XjzG_LRunEJQV8v83hsloLYhwLWYvyP6vYZksGG1XzVM5eMogRCpTX4kfH7rWSlh1MqdY5qdU_V5UwKp7iM3chiWWBQFFNuTq79nBYvdsSmy4VMa-I4xTXtXwaYzdpqV3UR=s4800-w800-h600"], "a": ["dirk digler", "Martin Čapo", "Ozzy G"]}, {"c": "heritage", "n": "Matthias Church", "zh": "Mátyás-templom · ~2,900 Ft", "lat": 47.5019537, "lng": 19.0341617, "m": "4.7★ · 9am–5pm · closes for services, check the board", "d": "The Zsolnay-tiled roof is the point — a diamond-patterned ceramic carpet laid during Frigyes Schulek's 1870s rebuild, when a plain Gothic church was reimagined as a national symbol. Inside, the walls are painted rather than carved: dense Art Nouveau-ish stencilling by Lotz and Székely that looks more Ottoman than Catholic, which is apt, since the Turks used it as a mosque for 145 years.", "g": "https://maps.google.com/?cid=7120316958362913493", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDCC7bkuC0G9A4sVe347b0X-T8_1j6_iOWxdbSkO8zSLSejcHJx9g1ttIVTjKG4_nzIWF9_fOyFP7RbZXdbmfA9J8qHnKfKMPru2CDqFBLghD5Aro7zVGtga4FHhXTjC6sq5Ch7BncteBfE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB_eHPFgbi15IJp5atBPmxY_y78RUwUD-5f_s-_Z-7xT6K5G-TY3JbjnsLj2WGkVGAc-l5EOIHBcOm0xq172VQPBX436TKEIgZlWj4X1sGWBIfV-n3UBGBkVsWit_F_VffA7w-nUxoqjNW1bQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCwSmdnCe9GD8l1Tnzz3lDLWtqfdXOzqV4q8Xydgd_dXUCBXij-ATEsGkZoQS09HSs65Muzl-AcuLMAOCMTJlNq4-wxojUuFonikJzz6XumN0sE7NuNJA3T7vCBh8esRfEPPrOY1nNlKMVxIrc=s4800-w800-h600"], "a": ["John Pullen", "Filipa Castro", "Alena Halačková"]}, {"c": "heritage", "n": "Buda Castle", "zh": "Budavári Palota · grounds FREE", "lat": 47.4962048, "lng": 19.0395666, "m": "4.7★ · grounds FREE & open 24h · museums CLOSED MON · funicular shuts alternate Mondays", "d": "Don't come expecting a castle interior: the palace is a post-war reconstruction and what's inside are two museums — the Hungarian National Gallery (~5,800 Ft, Munkácsy, Csontváry, a couple of Monets) and the Budapest History Museum (~3,800 Ft, the excavated medieval palace in the basement, which is the better half). The courtyards, the Lion Gate and the ramparts cost nothing at any hour. Walk up via the Várkert Bazár escalators rather than paying for the funicular.", "s": "At the Habsburg Gate stands the Turul, a mythical falcon with a sword in its claws. The legend says the bird led Árpád's Magyar tribes west and dropped a sword over this spot to mark where they should stop riding. It is the oldest thing in Hungarian iconography and it sits on a palace rebuilt in the 1960s — which is a fairly complete summary of how this city handles its own history.", "sl": "A bird chose this country", "g": "https://maps.google.com/?cid=4453561264047727990", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAZP45ttX2dOgwExsW6z0y_G-yXyJVb3YCYW-Blt9x5KLUyXrydcCz5miWS5O-plgiL5VPPyG_m9TcWeq-RiBMbJXWucVdc7Fa94te03jM0FcRj1jYbEB5UQjNd7rfc4BXEadr1I-_ZPl5wRg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAC5cEHMHeyHO8YQ36rP9tQUZhybuPa04Oqvosgk3EZGJGR_W2vsyWwA2KrSZ4JBbYx9Uu-5tzOZAE_7LXojYv68pXkOMAYqCXPoJ9SN2aNg6iw3fosRid66qkuMcKzAaeClap6H5mvz5Lucw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBvcKCEyxolqf8hJ_bILdRJre3AEBW6abyTb5g4non4B9zMPiX2Bn-R3fWUTuZJ-1EYU5QcB301ff2cQJ99dSFIk8FuNsiCfEocfzPYptbwNdXG57G33tbZgR7mh4lWZUcX-aqmiBfqPB7qgRiYN2YJ=s4800-w800-h600"], "a": ["Nico Trinkhaus", "Ralf K.", "Lóránt Orbán"]}, {"c": "heritage", "n": "St Stephen's Basilica", "zh": "Szent István-bazilika · dome ~3,000 Ft", "must": true, "lat": 47.5008902, "lng": 19.0539887, "m": "4.7★ · 9am–5:15pm · Sun from 12:30pm · dome lift + stairs", "d": "Fifty-four years to build, and the dome collapsed once en route. Two things to do: pay for the panorama terrace, which beats Fisherman's Bastion for a 360° over flat Pest, and find the reliquary chapel behind the altar, where the mummified right hand of King Stephen sits in a glass box — put 200 Ft in the slot and a light comes on. Organ concerts most evenings; the acoustics are worth more than the ticket.", "s": "The Basilica is exactly 96 metres tall, and so is the Parliament dome. The number is not decoration: 896 is the year the Magyar tribes arrived in the Carpathian Basin, and a city ordinance long forbade anything taller. Nothing in central Budapest has been allowed to break the tie since.", "sl": "Why nothing is taller than 96 metres", "g": "https://maps.google.com/?cid=15943583449437158603", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA9ePQl9ShYxQPYEkoRbyQs_xwpw2knh1Bqd91kGWEWN-8QZb3HFN_zyuf1RA-qceSgbgW9wxA2t7y7n98On_W6efn38-IVpwwyWcFjuughUYvg40aaeTJ5nupAjlgb-N1-xkbeTZj0evGbD1ExFR7q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBtrlqUGWbmpI7xvKQGlmxhH1Ks2b24RUwgYav8JkM4uvnKnfECN3ghyXvq4Q3JIoCsLZNeHNv7wBc9UIPyZ-g3OCixAdUPIkn8iumVPbPGRxavfv1qOhUGaIX5rmMuUHoWVF7RZHQ4OD-iLt8TJkxjQA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCmu5w6DIJd6VL-LfholJZgZ7CvVBE6WbDJyNPu4onfEfGWfi_0xZXgL18erG1RJOSPMUF0uXI-nUGkGw6UZjmXZMHBhEx4LdXxPh7VoSHikAWB1a5WG4ajVyn9Zi6MzWbEoLGkj8TiaHizQFCnXR_bEw=s4800-w800-h600"], "a": ["Koen", "Greg scorpii", "Elżbieta Szymańska"]}, {"c": "heritage", "n": "Széchenyi Chain Bridge", "zh": "Lánchíd · FREE", "must": true, "lat": 47.4989928, "lng": 19.0436994, "m": "4.7★ · FREE · 24h · lit until midnight", "d": "The first permanent bridge between Buda and Pest, opened 1849, designed by an Englishman and built by a Scot, both called Clark. Blown up in the 1945 siege along with every other bridge in the city and rebuilt to the original drawings. Reopened to pedestrians in 2023 after a long renovation. Walk it westward at dusk with Parliament behind you — it costs nothing and it is the single best twenty minutes in Budapest.", "s": "Legend says the sculptor János Marschalkó boasted that if anyone found a fault in his lions he would jump from the bridge — and when a child shouted that they had no tongues, he did. He didn't. He lived into his late fifties, the lions do have tongues (they just aren't visible from below), and Marschalkó enjoyed the story, replying that he was not a butcher, to hang out big tongues for smoking.", "sl": "The sculptor who supposedly jumped", "g": "https://maps.google.com/?cid=2180022421263796644", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCmLhsh_zLFmLzdRYO9Oe1FiVPevobd2BbgKKYg137oZt1IHJhLcTulbErkejK8H1LA3MBDRdPWiDa61X3pbGxRwC87ReIquQrm6Srz_bCJn0zH5gKwpIdguFKjhDyGYkXISKLE5NpP0_-im4BhY1hH1g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDq6loy3mnazOiRu5nVMCjx6114wcKwOusSrM6lDVf-CqqNEb99k3vNtcGW1fQqapfSIXyf6ve5tfimWA2IEYWRqTt2kN8TEx8gz-AsZu35ORFB8iH2P7PptOjOamdrWpupJPv166oE-pASrQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA1xSvHp7T9Ub5goHTAAoCsJk5jX6OhZzJkgEwxMOz0rmozkyTBQzFpf0lV87nijXwa4v5of-wJC4v61VA1u9-RjJ7CUmn6nQRzLA9otjao2Qm1tZ6drPYs-lOBknrI-DIpms1FJB8aTWMtgSo=s4800-w800-h600"], "a": ["Jan Bartůněk", "Maurizio Malizia", "Javi Casado"]}, {"c": "heritage", "n": "Vajdahunyad Castle", "zh": "City Park · courtyard FREE", "lat": 47.5148896, "lng": 19.0830593, "m": "4.7★ · courtyard FREE 24h · agriculture museum inside, CLOSED MON", "d": "Built in cardboard and wood for the 1896 millennium exhibition as a walk-through catalogue of Hungarian architecture — Romanesque, Gothic, Renaissance and Baroque wings stuck together. People liked it so much it was rebuilt in stone. The courtyard is free and best in the hour before sunset; inside is the Museum of Hungarian Agriculture, which is much better than it sounds if you like taxidermy and old ploughs.", "s": "In the courtyard sits a hooded bronze figure labelled only *Anonymus* — the unnamed notary of King Béla III who around 1200 wrote the Gesta Hungarorum, the first history of the Hungarians, and signed it 'P. dictus magister'. Nobody has ever identified him. Writers rub the tip of his pen for luck; it is polished bright while the rest of him is black.", "sl": "The writer with no name", "g": "https://maps.google.com/?cid=13616603132990431118", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDZ1BpuonCOToMQXMglfIE5gOvjQse7FDOgGMjarf1rLFJEYfp0JrwQ6Y3TGCSzJVm0VwXUVwI_ya4nT8WZUFehjLZIv90BN6WkNtmi2IPuGUT4SdMWkxF2ysRNZRdHP-_q2X6MnhhXC84qyQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDzff3CXf5CrdCMvLecS4zU5OyWt6j_G3JEOPPk1K3yJgoxGWShvQZI0V6dH2CKaKfT3mikLxxsN_U3t9Eecqay4uw_c_J_vfwxxVStkjGmt3Dx3w5cNYQeS1iyPnYzDXFp7_xucq-kHMJzAWWuxRiFYA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD60k5vOYdxM2Kh15Lf38EhVn2R74pofLbKSqej3T5RNrpGYpBQKniRajCY3VrPz-zceEXWeKq9Rd3y5TYKeeREEA92PJi4UiPd9J9aCXxDUGClkfvfXqVUB-LO0FRZeOYfg3DW5BRwO7jzBLg=s4800-w800-h600"], "a": ["Bíborka Kvanduk", "hiro", "安东尼"]}, {"c": "heritage", "n": "Hungarian State Opera", "zh": "Andrássy út 22 · tours & tickets", "lat": 47.5027169, "lng": 19.0583076, "m": "4.7★ · guided tour ~5,500 Ft · standing-room tickets from ~1,500 Ft", "d": "Miklós Ybl's 1884 house, restored top to bottom and reopened in 2022 — gold, red velvet, a Lotz ceiling fresco and famously good acoustics for its size. The tour is fine, but the cheaper move is a real performance: standing places and upper-circle seats cost less than a cocktail, and you get the room in use rather than empty. Check the season before you book a tour — the interval bar tells you more than any guide.", "g": "https://maps.google.com/?cid=2392345033008516046", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCJPSz4eAngVF_ioxC0F9FSFgOH_wLu0N02PALdQ2Bva5nCI_2oLCh1YYocRsEsN3bGpcC-gcUFTBGSUXi2lPN3_DZTiV6bAq7zQSUN7ES6im-BnL09LLILa75U_KVqOyOswEEV1V8FlK4Mdg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCdRfEkZn886bQVCbMP7ghEyiG6lVs9xmiJ17iwBLvVFHMRNj7NfWnS1cHQnwzrVj60yNg9tgJkvPd1Oa2oiAOCoupaMGaRVl68Lp0JZbEamRaznZVgU7AY3Wmac1mcbmwe5vuA-ngTXkiA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCzaf4CF2BddrKxhN2F-fjWx3Vb4hkVcFHvQ3KWfrXg9UQkt3xZhHegPQYP4DSZtC1JA6X_DmUVveCazdlqqnUfdvAT8bvX8gmWCeDt3kjUiThwmdb8L5Oq0IidA5gYGB1op7WaQ10-AG5N4w=s4800-w800-h600"], "a": ["PHILIPPE", "luis vidilla", "Danica Ilitova"]}, {"c": "heritage", "n": "Dohány Street Synagogue", "zh": "Great Synagogue · ~€35", "must": true, "lat": 47.4959071, "lng": 19.0606139, "m": "4.3★ · CLOSED SATURDAYS · Fri closes 4pm · ticket ~€35, includes a guide", "d": "The largest synagogue in Europe and the second largest in the world, built 1854–59 in a Moorish style with two towers that look deliberately like a cathedral's. The 4.3 rating is almost entirely about the price — €35 is a lot, and reviewers say so. What you are buying is the guided tour, which is excellent, plus the memorial garden: mass graves from the 1945 ghetto and Imre Varga's weeping willow, each metal leaf carved with a name.", "g": "https://maps.google.com/?cid=4695195454765303304", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDVmHCDUUjCHl5SzTtuvPy_v0qrEOHaltFCG04Ucdt_tVQbMchP3q4EYkQRcjlp35UUP3dzDTfdmvfd_rinMgJr3I2RXPsbYsBuNg-hCd9i0Cx89GlP3mlQpHmaS51ItLHfQfzsSc_IOeIQk3UwhqBPKA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB6pTd7ChOt3QijgNdBtfBSTf7nHjc55krsWG_zzP4A2UOZ3lQt1YxzIglJkeFZuMnlIFWSDm5Ax6n8ZQhR4S9NiSj_gS8WhEMzmuVop2CN4uVsij6ojezxuXz4BJLIB43DnfQk9DIbdQPdGwQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAE5q5SD3RHEO1YWfqMK-ZdlCFVU4zlqiW4Z81KzJLzI_fjuYgfAYIAys7Sqd-pjAxIN2GjRPT-JkgVsxBFR3CCpZoRc956Xw6Y4N3Ja3zsB46UjvI9013p2AFKfhiCmxYN-QwUmKzcBN1CrSA=s4800-w800-h600"], "a": ["Jim Pereira", "Aura Fernández", "Timberland Yang"]}, {"c": "heritage", "n": "Citadella", "zh": "Gellért Hill · reopened March 2026", "lat": 47.4870199, "lng": 19.0456981, "m": "4.6★ · 10am–6pm (Fri 12–8pm) · exhibition ticket; the terraces are FREE", "d": "Reopened on 28 March 2026 after years behind construction hoardings, and now the freshest thing in the city: landscaped terraces, new walkways, cafés and a genuinely good audio-guided exhibition on Hungarian history from the 900s. The view over the whole bend of the Danube is the best in Budapest. It is a real climb from Szent Gellért tér — bus 27 from Móricz Zsigmond körtér drops you near the top if you'd rather not.", "s": "The Habsburgs built this fortress in 1851, immediately after crushing the 1848–49 Hungarian revolution, and pointed its 60 cannon not outward at an enemy but inward, down at Buda and Pest. It was a gun emplacement aimed at the city it stood over. Hungarians spent the next century asking for it to be demolished.", "sl": "A fortress aimed at its own city", "g": "https://maps.google.com/?cid=16470093346710015401", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjChEekAZcTEtokDEOk_fjWyVYbb3SQEASjAn8kqSssSMffVsqFknIMuc7Of6L_KgABN5_1LamuvvrG4zeujiUi96JzfBmVrRAYUnkaWwOV7en4-3S72Ur9GGLfVCn2ukQ4Qd6QHy7W44P2D5g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCd_qSlWDMTeUZ7IzJGbnVH6cZtN5U4W5kAhxd0HNfsKGoW48xeWyWoHa_zipwvpqLkJKtUb6SHr9hoZ93qoRCuVMM5bvi3qVRfw6Jh-4VQbpHfbVk1nv-HoRmhvk9qfC39sSM94eVdoSS902jdk47VfA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCju3WHApA4gWt21KfsbRWoLuP3vbzWFOwEQlW3iRGCI_RGxUeJRdUH0yIEaj0vwOg3gX3lu73sZJyAcbYImgk2E_dg4yMUkaL9gd3KCyirhFtliDYZbC7nJmEmxMxSQEx1abMD1svVQQ2y1g=s4800-w800-h600"], "a": ["Michela Farneti", "Lorant Orban", "Culi Narius"]}, {"c": "heritage", "n": "Gül Baba's Tomb", "zh": "Mecset u. 14 · FREE", "lat": 47.5159689, "lng": 19.0349263, "m": "4.8★ · FREE · CLOSED MONDAYS · 10am–6pm · steep steps up", "d": "The northernmost Muslim pilgrimage site in Europe: the octagonal 1540s türbe of a dervish who died during the Ottoman capture of Buda, restored jointly by Hungary and Turkey and surrounded by a rose garden and terraces over the Danube. Free, almost always quiet, and ten minutes uphill from Margaret Bridge. Come for the twenty minutes of silence rather than the exhibition.", "g": "https://maps.google.com/?cid=13914760493950984019", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBaXjMZC77hCe-k6-KIX5WgzQadYcsV1PLRr6_9WKtZC2uWu3VJCupkCsXvilXqp8bp3--7UKtTvNq-uV4VO99tNK2biPMnV6-sHfVIKvtzJPDqI0xmyjn2IEOMsdq2XSlHzPPFIqldv4BOtw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC1jFd34q_PMxnAwC2VU0qdHtJ4vW9tVDFi199jsnxSYuJDru-_v_OUVO6tCssmlVffBhlzDkCwhKET2xgqBNlKd9S4uZ-6P6xdXFf5RGXRrml0frly1gGm7R6zvAL2-HdAdnx4dt5wQtORH1Y=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDiBsbvVImh6SOSgh8ABtsi_YL4O3YYEFS7Kv5oztE_HogHwVHacEwutC7JwUBkrJjc8YsXWt_9Mf8CiuFxn_RyGwfjEUetXKL3ojszErobAH-vhhVgoiNRnVyqi6kbNL8T7u9rd1ekPvm-Ff0=s4800-w800-h600"], "a": ["Lorant Orban", "堀江文雄", "Daniel R"]}, {"c": "heritage", "n": "Szabó Ervin Library", "zh": "Wenckheim Palace reading rooms · ~2,000 Ft", "lat": 47.4894859, "lng": 19.064838, "m": "4.6★ · CLOSED SAT & SUN · day pass ~2,000 Ft · historic rooms on the 4th floor", "d": "A working public library that swallowed a neo-Baroque palace. Buy a day ticket at reception, take the lift to the fourth floor, then follow the signs through a white door into the old Wenckheim rooms: chandeliers, carved oak, spiral stairs and students actually studying. One of the few genuinely spectacular interiors in Budapest that costs almost nothing and has no queue. Bring a book and stay.", "g": "https://maps.google.com/?cid=4311284635329687671", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCNHaZxc-6ptvv3HZ_PUKPsRjWhNh9DUihh_zk7Kmue2jQr2ySwywCvlC-9J68RIMs3er-fqkbQu0pjfg3onoVFJhHMcpcxO-faQlJp6SoPIJIt-q2JsO02HGi0f1Rcg00PAzwr6APg6rQIUx3bQ-AEnA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAYBoPjQ0bA8I8IpWSPbh3fNLGRlwnsaHz7bP_8IeQ1PmCBWXeXozaJiRIxOCe4lIUXTbEafZzJWOK_ODlrh8nGrcpu-KBE_hdnGyhiAJM9hXS59kPquEgEvLakPNP29E5l2Q4ycTRQtD2hZTM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDwmkQJdpwwCscnf5z5ip6FetQYgtOn1ZSjEZMTzFT9y5sZDUn0LRALI38wJxHXPzH3KNh6LFaac6MATjdNgGIQHWIxil_bVNvlFsqNXMdICyw8bqMVOQ3DMI6mFLFJ2j9pdcYsj2bQq4ck=s4800-w800-h600"], "a": ["Muhammed Raşit Kömürcü", "Christian Borghetti", "Widya Satya Nugraha"]}, {"c": "museum", "n": "Museum of Fine Arts", "zh": "Szépművészeti · Heroes' Square", "lat": 47.5158038, "lng": 19.0768998, "m": "4.7★ · CLOSED MONDAYS · 10am–5:30pm · ~4,600 Ft", "d": "The best old-master collection between Vienna and Istanbul — Raphael, Goya, El Greco (seven of them), Cranach — plus an Egyptian floor and a Renaissance Hall that was hidden for 70 years and reopened after the 2018 restoration. The building itself is worth the ticket. Give it two hours minimum, and start upstairs where the crowds aren't.", "g": "https://maps.google.com/?cid=1966867525584544569", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAUueIgIr7tWGTUFjamZ-Z46eeyioc0qb0-pBtZcBKFebv8ZW9Wfbq6K-9xhcnhcDaQO7OA5l7BeGwIhR6DWkn6sYp3F6YXCABkfvLzaofhu-M6_MlyOjRnpuFPxQ00UmMWcHdsP_JoAnpEa9ik4sus=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDEPFVUl6NGrJ5DAwAmJM1Y0uYM0WWQoxE_fUGb6H7J7yOOcfxTeKj5KXvY8Du85xrP6ruKG2gKO4eQr99Ew841c_79i-WNH5ispMCo_DRSH0DA2VJfdBtiWe46Jrm9r6ZZvc8PBsQE9kxqb9xtUKKs=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBb2JUGNrr2iJMSi58IB-NlNG8i-y1MXhBLt2a1LXhMF-K-tsqKAhoPC8QEKpeEVlen-dVtycftUYNSel2y-pVBbwDBkUFyJ-CQxMYatwUTMjDOtzFHBMZ5ohG29D_OBEkFUyKosdTPcQXQgA=s4800-w800-h600"], "a": ["Alex scorpion_ka", "Albin qwerty", "Nafis"]}, {"c": "museum", "n": "Museum of Ethnography", "zh": "Néprajzi Múzeum · roof FREE", "lat": 47.5115051, "lng": 19.081371, "m": "4.4★ · CLOSED MONDAYS · 10am–6pm · discounted ticket after 4:30pm", "d": "The building is the exhibit: a 2022 Napur Architect design shaped like a skate ramp, half sunk into City Park, with a grass roof you can walk up from outside for FREE and a good view over the park. Inside, Hungarian folk textiles, ceramics and a global collection, all captioned in English with QR codes. Bring a 100 Ft coin for the cloakroom — they mean it.", "g": "https://maps.google.com/?cid=1311647540591065021", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDjmYELQkxBwVgcS_Y2mgHz1kRms3bsm_LIoBtcl2ecCdsl1iuCgsycadfLoAlv8n2uIV3YR-8npgnnBrROBrlP22SS22MErxjoZ7jXfVBdsxVSs9hCFi2Xo6zCuYISOJcW1PJjyvcVpJJH=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAZwGVX3Al_7cZbRPlmVO2DD97rbNhKbjaRZ_7GF5KsiWZtJz_Y9KsOCfYBOlzYpb1QPTNy4P_xCvjAUZprlQLrByOlhu_vn9F_A7NuNiTzZz6637Yvysu7XWQzJzwcZxHd8VdWtibRXyvrlfE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCiBSdsT0zp4X0QJOPl-BWjQGVCc-MmApj3OOHFZEEYK7PBDs_KTH5q183j2BP_o15Q3z6tPDZoqIevvLRji27V7caENxWvRK0ppZJtzDwngHB0c6YP3n4cw3dmEjuLNrrtuY2yYDb32uiAyQ=s4800-w800-h600"], "a": ["Néprajzi Múzeum", "Igor Raisin", "Ali Mashhadi"]}, {"c": "museum", "n": "House of Music Hungary", "zh": "Magyar Zene Háza · City Park", "lat": 47.5131806, "lng": 19.0835936, "m": "4.8★ · CLOSED MONDAYS · late Thu & Sat to 8pm · ~4,000 Ft", "d": "Sou Fujimoto's perforated glass-and-gold-leaf canopy floating under the trees, and the best-reviewed museum in Budapest. The permanent exhibition is a headphone-guided walk through the history of sound with a 360° dome room at the end; the audio guide switches automatically as you move. Book the timed slot online — it sells out. There's a good café upstairs and free outdoor concerts in summer.", "g": "https://maps.google.com/?cid=121656951985616416", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAWvdsFPDxaHPwAu02ZSkKJRHuPxZDb5UdiOoguumRSPmYxmfZcmwvalvWJc6T_k1l527dqlX0oNCnRjzxds47a6azlAoXh7aafs00IsDuUxgWmpksM9GIVHdUZgaqHJkOQKi8qkIYtfnVirA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBMs2dTdCI_GTXfJNOgs9__bWjyMruI_LAP-CGRuZJkm2Iz5_dOsHK665pC0q-Ja7kUJkomoJuhKZyh1G90vAdVz8nfBTa6HRWF3oBBAzENXmdLpVQT_6VtiUzczy694tgA4ZddM0npeeskaA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAIWygwn_g1yZVtpTJg3JNao4fmJljZ_xW-agRVTebAgpbJWM3fTlznoYc-w3Z5Mf-z5in4s0lkOxpmNMiK-SMAswjrVcNK7fnVQe7ljGFwyGN0svM5r1cjtttiAPcXAbTK-vLlxomlzBDCREZyUjKKIw=s4800-w800-h600"], "a": ["House of Music Hungary", "Attila Gábor Viczián", "Henry Hui"]}, {"c": "museum", "n": "Flippermúzeum", "zh": "Pinball Museum · Radnóti Miklós u. 18", "lat": 47.5146449, "lng": 19.0544053, "m": "4.9★ · CLOSED MON & TUE · opens 4pm (Sat 1pm, Sun 11am) · ~5,500 Ft, unlimited play", "d": "A basement in District XIII holding roughly 130 playable pinball and arcade machines from the 1930s onward, including Hercules, the largest pinball table ever built. One flat fee, no coins, play until they throw you out — most people plan an hour and stay four. The highest-rated attraction in this whole guide, and it's a cellar full of flippers.", "s": "Pinball was effectively unavailable in communist Hungary — machines were Western, expensive and faintly suspect. Balázs Pálfi grew up mesmerised by the few that existed, spent his adult life collecting them, and opened this place in 2013. It is one man's childhood deficit, converted into 130 machines and a bar.", "sl": "One man's revenge on a shortage", "g": "https://maps.google.com/?cid=14910926842882886030", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBDhSlHcq8fFFH7ulI2mgvj4VesryijcpabkBCqUgQ8eF_i1wDGH8uJvSTX32QRFVEf-Oqv7cO-8iTPu3BlmoAGBs2fcPFIqONjr5-N0Uox_aD8vtmzfRfthLEVaD1TCdjZROsdqvInwZEGnUs=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDJBdE7h_iIAnUDXofRJCuKbg4tGS8X7H6TxiEE0N5zVbQzU26UoITrLeyu6HkOkR5PhRMwBMj9h3__Y8OJzafSTvdgBw6hrCAaYqNYjrjGa6DHBdd_pMsfgxlCHmxhOdiVD8wiUtuwMEab8zTRKni3=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCKKHCnSFdfud-CZjHPqubTdOrbzJu_0oUg1YC6YZkjsO_3Vc7FKV9SRBBDYUkeAs-1-AfaD2lkg5-HaSpI6WYVSHWGV1N61ShRyWObnmj61RfiRnQ16fWg3Iq_epzwG-mZh-rUWYFAig2rng=s4800-w800-h600"], "a": ["Francesco D'Alessandro", "Josip Jukic", "DirectorDarren"]}, {"c": "museum", "n": "Zwack Unicum Museum", "zh": "Dandár u. 1 · distillery & tasting", "lat": 47.4760942, "lng": 19.0701855, "m": "4.8★ · CLOSED SUNDAYS · 10am–5pm · basic tour ~3,900 Ft, premium tour worth the upgrade", "d": "Home of Unicum, the black herbal bitter in the squat round bottle that Hungarians drink after dinner and visitors drink once. The film about six generations of the Zwack family — nationalised, exiled, and returning after 1989 with the recipe smuggled out — is genuinely good; the cellar of 500-litre oak casks smells extraordinary. Take the premium tour: the basic one is mostly the film, and reviewers say so.", "g": "https://maps.google.com/?cid=16473094901625299607", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCATL-ykRoqRVIJXPj1y_sJfPM8B8-ZPLBMVSkJJtakKeOetUOeJcLZ0dZE7AAup7lXs-569cOIE-JBU6nAtU80cBNKd2VvGmjKXAeb421MIy8R4HufB5aJK8Tz0zRNcWBwQynNlk53ZoM3=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAU3nedjE_PvJMpyTWg3sazf1wgk0bIaGZ1U8nPcuyDspwl1gC0Mm4Ej6HP6on4HTH8VqbkeTAwkF4-h-rD27tsNqyJqu7dr3W4YhBpvWLb14njrOFEs24s1yGrWve_8EoHTOg7iGIO3siL05C0ZhOrNw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAzwwgkDeY3cT9o2mSb2kTlUj8yEr8Kxs2eon2vdTbSyyx6syvF_j_2xQjfQW_lvMgfFerVjhjipSSnpFbSMUAGCYbizyFJVQLAtOzDRHN52zEwvk1coQkjdfxM-Ssn9TY6ixb5TVN2kDb82g=s4800-w800-h600"], "a": ["Unicum Ház", "Uršula Ambrušová", "Zoso Car"]}, {"c": "memory", "n": "Shoes on the Danube Bank", "zh": "Id. Antall József rkp. · FREE", "lat": 47.5039274, "lng": 19.0448015, "m": "4.7★ · FREE · 24h · 300m south of Parliament, on the embankment", "d": "Sixty pairs of 1940s iron shoes bolted to the stone, men's, women's and children's, left where their owners stood. Two minutes' walk from Parliament and easily missed if you're looking at the buildings. Go at dusk when the candles people leave are lit. It takes five minutes and it recalibrates everything else you see that day.", "s": "In the winter of 1944–45 the Arrow Cross militia marched Jews to this embankment. They were made to take off their shoes first, because leather was valuable and could be resold. To save ammunition the militia tied groups together with one length of rope, shot the person on the end, and let the body pull the others into the freezing river. The sculpture is by Gyula Pauer and the film director Can Togay, and it has no plinth — you walk straight into it.", "sl": "Why the shoes were left behind", "g": "https://maps.google.com/?cid=17766165534871349974", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAFTDU1z1z4DQ70cBY6zskmPNXry8ftzc3AuA5lZjsHu8jSwFBiJOz_Edcca2AcRN-aQo0o9YhTirpXo0KhEqggpDgDqavRiDLwbK4mE6iv-2tg4vIJJWvR6K3dS270TwGbqVYiDqWi4AqFPfI=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC7sd1EIN1t66Jmyb61Hu4E4FWYiU02t84C8-yb1gIRZ8RpaajI2-9WJ4TVJXuY6EnLh3QgPVwP3g1X0oaUtQcwYFOGXXtEvcVru35oqT0ou9wpqfpHoLiXeMlMOjuBHPSPc7BH4Xo98dc8=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCsBCD3siShOhgkNLMC3Itj0PAOcuaFE3wHNlVzm2qHDnfX59bqqO9RXd1y2ihCP2xU-FMPAmpqx5HsAuOd4onkzGhTbFGBPJtnr5TQpiP9OIQfvjxQIJQZ7HkwDxikQMtAlKQCL7flL-gy=s4800-w800-h531"], "a": ["Tommy's Guitar", "Waresul Mahbub", "zsuzsanna s"]}, {"c": "memory", "n": "House of Terror", "zh": "Andrássy út 60 · ~4,000 Ft", "lat": 47.5068935, "lng": 19.0651261, "m": "4.1★ · CLOSED MONDAYS · 10am–6pm · NO PHOTOS inside · take the audio guide", "d": "The building was the headquarters of the Arrow Cross and then of the communist secret police, and the cellars where people were interrogated are preserved. The 4.1 rating reflects two real complaints: much of the wall text is Hungarian-only, so the audio guide is not optional, and the exhibition is politically pointed about which regime it dwells on. Go anyway — the basement cells and the lift that descends while a former executioner describes his job are unforgettable. Not for young children.", "g": "https://maps.google.com/?cid=12529372124038485725", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDnkqFDR7oLb8KcpCiIlj8NIdQ81amWbZBA1gLlFCeQ1Mt_uy6rp-nHlj-TYq86m19Tv7_hdyAs4iDiAXwd4OHY_nDX3rejn4qQUiIXw5CtJaA-wQAtMmBlwwe6g5edNqq9Az_LPi3fAuneWeg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBqZjSczuwniD4x6s65x43M8rlwDCCmNpSU6hQVsCRMEZ6OGM_GXCb8Q5KTCnjg5nmir6OTpawP7FrrX2SBLYxlsaJaOFrcA8bMkqzfabd5Rf9S7gImqFGA8FIQgPhY29Sa40EkNZvHP_YO2eE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDgMWZ0BGL_W4hjBz_UG4AwnjsF8fT6Fx_IcAJdKJCbw5imUX8I78ezaBrsdUX3hnsCnHnPLkphUX5R1pb0CiARkqX4xF0vUbQJU3VEc8BfBRFYKN4lT2vaIIhy5UmgKSxNS7DTZe9PW3mg0g=s4800-w800-h600"], "a": ["Jean Menezes", "Denis Macena", "Balea Daniel"]}, {"c": "memory", "n": "Memento Park", "zh": "District XXII · ~3,000 Ft", "lat": 47.4263652, "lng": 18.9989299, "m": "4.2★ · 10am–6pm daily · ~40 min from the centre · almost no shade, no café", "d": "Where the communist statues went after 1989 — Lenin, Marx, heroic workers, and Stalin's boots, all that was left of the giant statue the crowd cut down in 1956. The 4.2 rating is fair: it's a bare field on the edge of the city with minimal captions, so either take the guided tour or read up first. The barracks cinema showing secret-police training films on how to recruit informers is the best part and the one most people walk past.", "g": "https://maps.google.com/?cid=13256786935437747148", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAPCUASWZhGNSk-Fz8LUTktoExZc1tfHN-nqzf06R2EOFNtzn_j2f_QtyO5AJumI6JHPhx8wYDovQ8hw5nj-4njfpGROolFOTNK1baDWwvqjnQBkDP4jQs_i7FoBF5_26gLXiBftHkG_hmZ4jh5THw4ew=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAwfEbspa093j3ZXJsvxPViuVnR-HGckNuxcx-efk4_920eHX5EER6nf1_G0dFaqvVFYqqCBmcsxZzScaKMGsZqZcHT4xmzuu9YsyKZmTH3hCzSSWOXLM0JDuB1LKXo_6_e7qtIr9VCYsj91O4=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD-xbDavnxSyfvDt-9T7KIEUOBLQ48ulDgibosLDjRjG9Pe4waJNW-LlTLMvQxnL-sxI8WW9LY9O2HsVx6uGlZjJIK-Nfu_VlPW6DUpb-mwiV7EpDCP5WR2mkVls7akC8m7A-y7OesKiCy725g=s4800-w800-h600"], "a": ["Runar Pettersen", "Marinus Spiekerman", "Petr Hrabala"]}, {"c": "memory", "n": "Hospital in the Rock", "zh": "Sziklakórház · Lovas út 4/c", "lat": 47.5007642, "lng": 19.0315115, "m": "4.6★ · 10am–7pm daily · GUIDED TOUR ONLY, ~60 min · NO PHOTOS · book ahead", "d": "A military hospital built into the natural caves under Castle Hill, used during the 1945 siege and the 1956 uprising, then converted into a secret nuclear bunker and kept classified until 2002. Wax figures, original equipment, a full-size helicopter, and a temperature of about 14°C — take a jacket in August. Tours run hourly with capped numbers; book online or you will be turned away.", "g": "https://maps.google.com/?cid=9087949874976848010", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCG32NKE1MgzPcqVv-t1LN496kT62z1vNCW7AVhLlZcvBQendgj62j3S5DCC_9iLkehqew8o4uP1ypSBfpEoOSjPgqILhUgKyOf-wFA9WdC8BqkKgx5BLPtAwYBm0p4vlJ_wiobNdi43Rd9eQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDGAp18y0M-p0q0cMXkEjCwuqS7s-sLEQTiJPY6RrH7BDjoNx61fCEo6bTNfDd7OAYnJXdgsk0covFj-_HueDxKQAEU9MmcIkxAV4Beo-Y3CFsyPrjsFbiE5HW-nokF6fpVPFUnKNyeSv3Ia_s=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC8kum-N91RmXS4uv7bymLMEkGibdbYa8S3EgRRFoieclVEo7l2UYdK0oBfVFN89Ca6FXHWxD67rlYAnm_5Hcrg9kB3K6PbNsSnVa5lZ7sjYy_2GKCWpkLlqGo0ieVAtD0JaGkqgpNLVUov1sg=s4800-w800-h600"], "a": ["Sziklakórház Atombunker Múzeum", "DwaDwadziescia", "Orestis -"]}, {"c": "bath", "n": "Széchenyi Baths", "zh": "City Park · the big one · ~11,000 Ft", "must": true, "lat": 47.5186568, "lng": 19.0823791, "m": "4.2★ · 7am–8pm (Fri to 10pm) · book a CABIN not a locker · bring flip-flops & a towel", "d": "Eighteen pools in a neo-Baroque yellow palace, three of them outdoors and open all winter — the steam-over-snow shot is here. The 4.2 rating is crowding and upselling, not water quality: go at 7am on a weekday and you get the place nearly to yourself. Book online, choose the private cabin over a locker, and skip the on-site food. The 38°C crescent pool at the far end is the one everyone means.", "g": "https://maps.google.com/?cid=14681949227417674770", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBF61ECGIhwP8tu0BwjCVhdLa6sJ2iI0iJf9MQX8M78a2S20HelWjGfDBCY5HyEY8kPjBFiVbV8DQt_4CVtNQXWWJloHGdHWltD21wDcwGRPeHsK5WJadHTPEYXf0E6y-cL3WAy2sKrlCGX04Y=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCAUabs3Qrqxc058eu4nYi9PRJo1QOON5Y4-dNSQhFDDkq09ePuOKEvry2PaC5NS2zuzhA-ACEH59nrOfW6EWU2yf1ujJEXyrAnVjoHIhjnvrNenlHkou2KPgS7bVlC8OZF0MXdjani1E4Y=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCREoD0FyNlm1nCHMa8HFvKc4BJ9uSHhKTMespGYUDmE-j5OvEP4veUMbZgUnucaWzC1qv0Kizbh3jMztv1nwTaQNuQ1iqfcOEYEk_NwMwxfgUEo2C1JJrhHEWjaRZnsoKucCca0iwozEAU=s4800-w800-h600"], "a": ["Corrie Bolton", "Lóránt Orbán", "Pranjal Nandi"]}, {"c": "bath", "n": "Rudas Baths", "zh": "Döbrentei tér 9 · Ottoman dome + rooftop tub", "lat": 47.4891599, "lng": 19.0479716, "m": "4.3★ · FRI & SAT NIGHT BATHING 10pm–3am · weekday Turkish section is SINGLE-SEX — check first", "d": "A working Ottoman bath from the 1550s: an octagonal pool under a domed roof pierced with coloured glass, plus a modern wing with a rooftop hot tub looking straight up the Danube at the Elizabeth Bridge. The historic section still runs single-sex on weekdays (women Tuesday, men most others) and goes mixed at weekends — check the current schedule before you turn up with a partner. The Friday and Saturday night sessions until 3am are the best-value thing in Budapest after dark.", "g": "https://maps.google.com/?cid=16360560525800700026", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCTLVzdzXht6s_eLAwCF6GYmi4vuSQie9BcolqJ2mfHVCy3gq6qzhZp2ruXfLykNf_N0kfDzJdhma4b_5_PIZFpeYmM6x__Jan-Sr6w8JjiPy-cKjnrnXliE3tWhagMEKT8cd1Noxhcc6mDtA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAKJ3pbUA_eB64EVxuTM2XE0Rle_9oxY1G1VbYr5WK8NzEONNnLE7daGbm8fnn0oTdylPCpO67V2Vjh2HkwYykUmNXyRhQ9sV3QO_6zDpmhbgS_HtwFaUDgg-Z-NWlEEnM-HM1uvcYM1R7ZJA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDPYHs9eWgROpR8bvuVIh45haTEs3GP-53TeAEMEDFhIq1nE_ZQ5o_a9CDJZC45jHsokB--qJ0I8RpMxpiF8LODDJV1atGc_UeA1b5MDMw8zO2rn2np373D2XHqh8SlTQgqTFI92l4mNgRdFfJ_jruVRw=s4800-w800-h600"], "a": ["Tyrone", "Tamás F.", "Dikla Zury"]}, {"c": "bath", "n": "Veli Bej Bath", "zh": "Árpád fejedelem útja 7 · capped at 80 people", "lat": 47.5190282, "lng": 19.0370026, "m": "4.5★ · ~7,200 Ft for 3 hours · NO ONLINE BOOKING — turn up early · 80 guests max", "d": "A 1575 Ottoman bath, beautifully restored, hidden inside a working hospital building — which is why almost nobody finds it. Central octagonal pool under an ancient cupola, four smaller pools, two steam rooms, a proper lap pool. Numbers are capped at 80 per session, so it is calm in a way Széchenyi never is. Tickets only at the desk: arrive 10–15 minutes before a session starts. Entrances from the riverside, the café or through the hospital lobby.", "g": "https://maps.google.com/?cid=15216623339457363709", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDDuAjbXBQmqwJbbceK4DbZp_iFihJ6q6epewJ1ZbrelRouAC7jNhcduQjOWAwdJRPo_TFlxU8rbc9lU9tTqme-4ihjqXfNtJbEiMs7RysaEXobpb3V_tz_Nkre4sUua9hTyen23D-aY3_QaAF77PtbKQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjABmb_W43nULzcvstRZEExKOF2W7lHBtMBbzPk4wWz7wLmho0xPSHNkPPfPwJKjza2OPRPRCJPwEztvKTYkxeYjeKKLLxaAawwynj29tGdsEi52Dg0RThdAhIiq-bdfnQzqpQIEy6TrhtsNgzCA86ivzw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCta3SEhkWirSp08MjEJxCQ4Na9TmsFnUom7PpJp1DPFRzl_6278onOhqHJOOd3sFep9INNQGB5U0cSlBEmKP-y227FTu1n0EW0wdKWhw5cU0TiCryscAXUKNjgMVkSA9dkrgRlbFkFsDvaWQ=s4800-w800-h600"], "a": ["janos horvath", "janos horvath", "Alexey Plut"]}, {"c": "bath", "n": "Lukács Baths", "zh": "Frankel Leó út 25 · the locals' bath", "lat": 47.5177775, "lng": 19.0368998, "m": "4.3★ · ~7,000 Ft all day · SWIM CAP REQUIRED for the outdoor pools (2,000 Ft to buy)", "d": "Where Budapest actually goes: no time limit, low prices, three outdoor pools (22°C, 26°C, 36°C) and four indoors up to 40°C, with a 1950s municipal atmosphere and modern changing rooms. Bring slippers and a swim cap or you'll pay for both at the desk. Read the marble plaques by the entrance — decades of thank-you tablets from people whose backs the water fixed. Next door to Veli Bej, so you can compare.", "g": "https://maps.google.com/?cid=10443683327666316607", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA_yT9L1qJau1puISsCUXVDtp_VwF35JeComdUQOEFTMq94QKOq4gC0MVKfj1suLK4Km9TEcy9J_Kex9j-NmqeZ5NIuY2U0NdVWiu__81vdGN8ZKUx0jCxAjXSTHFRACC_mgE5FOweNlQesIw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDKV3WeG1RnpdcoUSoQl1TaQtZsP__wWhcpFoC39pwLW16ml5K1vnHZaY53J19MeUnq0xVlpW4ValnRcEzV1dJM83t26RawP4THbfl6dm8F7y-SME9aXxMdEBut51SMDEawIxU5V-_o0eFuSBJ3o_6e=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD9qQOeNKz8oU_EXSuIAioA0kLY5lnJd_LMhss2QZQ-LEl8r1QK-goYGZ45N8tkCgLKu4yXJDhg2tTPOPBuQUowFEyllBLEt0HqBUaacmVjWILbdHjPbLuacKW4DXrishxLSiB6JNS8hQ1pzw=s4800-w800-h600"], "a": ["Каріна Мацібора", "kathryn pailing", "Víťa Knejp"]}, {"c": "green", "n": "Margaret Island", "zh": "Margitsziget · FREE", "lat": 47.5266408, "lng": 19.0463939, "m": "4.7★ · FREE · 24h · no cars · musical fountain shows on the hour", "d": "A 2.5km car-free island in the middle of the Danube that has been the city's park since the 1870s. A running track circles it, there's a rose garden, a Japanese garden built from the debris of the old zoo, the ruins of a 13th-century Dominican convent where Princess Margaret was sent as a child, and a musical fountain at the southern end. Rent a bike or a four-person pedal cart at the Margaret Bridge end. In a long stay this is where you go when you're tired of the city.", "g": "https://maps.google.com/?cid=7538880289480003837", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDmSg_cTH-5uEOptZoHgL3bmxkPKpdUq3zSW-W56tWJgqp3JRa1VyBpCGP_IzEAq7tFBvZvWv0TpENVj0t4qRNk4f60vwFUUpovplNpzpJzjGe8jvMBk8bUS5ujkq_COpc8O9Hqz-T0taOa1w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBEnx3hBT1QLlFlTEcWedZkYR5pxR7UHf6McG2mHD4xFMYS8aybPXQB1WZIwQwWA29EYeord3zs2LnkheFSDsFqMVf8p5nD-YnL4T7OYpyUamO5LWZ9hN8O7OeAdgObdPmMEOzctiHJCq2YPzXEHx3FpA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjADPxJAoKIO1oRVGiC-4y_ldYMkYGwtKgX87en3Biq5lrzgYXIFIUPLpbf9KjqDtydDvzb2Aq5kTHPbypKUz9hmVKKACjCwQ3Qgqn96TyRwrzX9VciZQKbzjj8Q7kDb0rbMqGyYnfAvpOPJw1Zb80XmjA=s4800-w800-h600"], "a": ["Jozsef Nagy", "Gianfranca De Moliner", "Kriszti Ádám"]}, {"c": "green", "n": "Libegő chairlift", "zh": "Zugligeti út 97 · ~2,000 Ft one way", "lat": 47.516626, "lng": 18.974513, "m": "4.7★ · 10am–7pm · CLOSED every other Monday for maintenance · 12 min each way", "d": "An open two-seat chairlift that carries you over the treetops of the Buda hills up to János-hegy, the highest point in the city. Ride up, walk 15 minutes to the Elizabeth Lookout, and ride back down — the descent is the better view. Bus 291 from Nyugati or bus 21/21A gets you to the bottom station. Combine it with the Children's Railway, which runs from the top and is staffed almost entirely by uniformed schoolchildren.", "g": "https://maps.google.com/?cid=2841059089711021581", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAXVyM1gTPRmyVuhE5pzSgCBKQOqTkYm7JT6H9JGewHIjA4hU_3D5YW6_DDRU7xD5mYc4ZwoMDYH10hTZOXgvSTPHiZy0y5Ng6jaEhX3tBBTeIiybU1ppOSpMO2zCxnoqkleTcoa6M2GaNcMGs=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjClGLnq3D5yuzQafjh9Us-rX6LCPuPFPsrh_e6AtlzR2Y2lcnXBAAPwDKjflSayHnnBTbdq0m8gPfZFgK4AGOvvOtSitYQSdiqIsurmD9SARtPsWNSoa2hACJvoanW5FTnTGC8lPx-SPEiSIlZK9x1NjA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDcQvlC1wYhnHy1ohtXdbIOUD32utGtPX8ll6Tgagw9Xr0O5BPrNe4l498t8_h2dBUaZePmpqlYwDTT32RYYOI-VmVooiuM8nBhQCDrSJEXpWdhcJWWUP1gZ-VgTcJ2WcC6n2w35ieWfOKXgQ=s4800-w800-h600"], "a": ["Richárd Kovács", "H. S. Katalin", "Jeremy Arnie"]}, {"c": "green", "n": "Elizabeth Lookout", "zh": "Erzsébet-kilátó, János-hegy · 527m · FREE", "lat": 47.5181968, "lng": 18.9593825, "m": "4.8★ · FREE · 24h outdoors · the highest point in Budapest", "d": "A white neo-Romanesque tower on the summit of János-hegy, built in 1910 and named for Empress Elisabeth, who walked up here. Free, open, and a genuine 360° over the city, the Buda hills and, on a clear day, the Danube Bend. Fifteen minutes' easy walk from the top of the chairlift, or a proper forest hike up from Normafa. Bring a picnic; there's nothing to buy at the top.", "g": "https://maps.google.com/?cid=8834754797016502667", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjApfnsVDKmGfSpLW_C6gYOmfqgNlvyuNXsEzZf2ZdBsAIqfPA9bcTPJ5RxRjTWPlhLxJMxy4-8oWfVvVpNdw_xrPSJp7NAS34R7ud11jgpT-pTVrxYUwXamrYsvnJF643PlaDxLVTFS2Tp9di0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBh_6FAr8DDdWCPNKyJHh0H6gUdMc0Xiz7nsnMeYQr1WyuBFSgBJoNxHpszfj4ZSoIB_89WO1NzdavFJ5tnNia4H2tXbzU98zJrvcKWyeCICnLtlLZZ2CKaguy3qxHeojhk69Ncryn8WHUIkw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAf1Zh3mwRWEz-E6vSdAO9hygiEUyyfvQ4hFDylPeqdQsymEc6sax3A8XG4kLJfx14by5O5ZUHSSGqZEGuCsQsm1Ixi_Or5DNM6JfVmbPeiNmAhlZuWCE_d0L60NYFPA41BdaN02m5uLfgQ=s4800-w800-h600"], "a": ["Mathys de Wit", "Dani Baróti", "Cass"]}, {"c": "market", "n": "Great Market Hall", "zh": "Nagy Vásárcsarnok · FREE", "must": true, "lat": 47.4870848, "lng": 19.058493, "m": "4.3★ · FREE · 6am–6pm · Sat to 4pm · SUN 10am–4pm, most stalls shut · CLOSED holidays", "d": "An 1897 iron-and-Zsolnay-tiled hall at the Pest end of Liberty Bridge. Ground floor is the real market — paprika, salami, pickles, fresh túró; upstairs is souvenirs and the lángos counters. Go before 9am and it's Hungarians shopping; go at noon and it's a coach park. Buy paprika downstairs, where the same product costs half what it does one floor up, and eat lángos upstairs anyway.", "g": "https://maps.google.com/?cid=11568679947849051852", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDd6iiSK2w__z3gbYkb-KdjyNevtDRP4npU-DQADhA49_rA_E4ryFL2DzQoFEJ-ob84P4C6DIEGe5vxUGTMTZiT2L7-wwgrl65BIBDCYvvtj2MDVbLCCr7nKP2cGz5bnK6d0hiEZ5bEJE2BqK4=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBah_wnRaCsV6r5H8CPBoafqM6vIYP4uo1HxKzYvXDGK_T85xk4fLqFym5YjpyGT8fa6Gr9RMmDlVjl7EIQXY0MHdT_nT9blZRDExYqtWYIzr9CpAzV5I3wYHrCEoqdKTbSZyH7aY_S6fOUgNuto2t0nA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBDi2l3uNZTlQH1CkxreIqv9kQbvqHolz-RMQ9K_nS1Z01SdgKXjlkKrOepriRpeTGZq0IE5LREjkbakza1AHd4Mfij7SDRDMxGof3RPzUV0VMXz5YKwI9h47RpfMT6G0S6LpK7UuyleWCQZt38DDMw=s4800-w800-h600"], "a": ["Heinz Deotto", "João Martins", "Piotr Przyborski"]}, {"c": "cheap", "n": "Kisharang Étkezde", "zh": "€ · Hungarian canteen · Október 6. u. 17", "lat": 47.5016717, "lng": 19.0508857, "m": "4.5★ · 11:30am–10pm daily · expect a short queue outside · kid-size portions available", "d": "Thirty years of home cooking two minutes from the Basilica, at prices that shouldn't exist that close to it. Order the chicken paprikás with nokedli, or the potato lángos, and the cucumber salad. Small room, shared tables, quick turnover; if there's a queue on the pavement they'll often hand out mulled wine in winter. The daily menu is the cheapest way in.", "g": "https://maps.google.com/?cid=18119793088895232929", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC24XkiEgYDM1rJVdMWkjv0ybHgeE0QjSSAJkl-EfpV9Yu60-awrhgsu3pnZiUHzfk12WWXl-TPbRH6E4ZyDQNRhEh5-lqtnm09FCfsYVjPsranS8fSJpXqmoribTqS8rzDxa2sD-SQATZvj4Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAEx2mOsaSK5gN3LiNlI_VIGH-KX1cAeL_5FYAHSvIlzPRsEXqlEaAXbsVxWF2NihXBmQsz4xzc0rmhpBxLJfVA_A4Pbe5EhzlCcO8Hbjy3VGp0Newr1uezZorMdl0NyaLm3yFV40QvmSxp048IsY0YJQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC75gCHEe9g2dY-AzKg8nbOMVUuiT-lZUlDPE2BPVfws9oUz5YtlnHRfZBJyKw-O9paF0eg-9qup-2lzFwNGEIvrFPJk3bep26YC1ZYK9fjMrc5DEVnlofe1mjxv5-r2to7rCwIGrTsr2e5SKmTve_GSQ=s4800-w800-h600"], "a": ["Kisharang Étkezde", "Sergey Bukovskiy", "Doka US Rus"]}, {"c": "cheap", "n": "Frici Papa", "zh": "€ · kifőzde · Király u. 55", "lat": 47.5023394, "lng": 19.0637114, "m": "4.3★ · CLOSED SUNDAYS · 11am–10pm · the cheap prices you saw online are the LUNCH menu", "d": "A no-frills kifőzde that has fed District VII for decades: goulash, roast pork knuckle, chicken paprikás, rakott krumpli, mákos guba. Portions are enormous and bread keeps arriving. One warning that trips people up — the very low prices quoted on blogs are the weekday lunch specials, not the à la carte list. Menu is mostly Hungarian; point confidently.", "g": "https://maps.google.com/?cid=12328810978525493972", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAZ6BpAZmFlqsmKrIps27bLkcvYqK_mmkeNhe-Uv9TckC8Nr-et2KxXyq_9UVqflNUR4pBU_cF5CkIVg7WrPI_6B2bB9lJovx-NWMCjMNiTYvFBbD-1_fORWd2w75sjcWWxrG9lsRk3EVVSHPAXczzG=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBN_PPGo7AqSOcpds7kgZXNmxfE5X9bYNSHu_Oljy6xStmEtGNRUUPAyW7daaYvaVJh2FMbHFF9nFyJ9yDZQtVe05oW3_d9O2LP2H-_CGU3ez8uAquY50v9dwuTyKrCEDrcYhga41X0StDXSHDNnW0KJg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBsXbpevL4T0ripY8KOfQKULswiNdRgViSVNjTmBINJWCkDF-lvHXD-Rv8mK3LZ1qkTHn3iga8kGozhiUPrsSEaTAPHhgSEc9RFA0UL6fcTAyrLL6yEK4p0NcxRwKsZd8YxMqImz82j_bDtrbjbN5t78w=s4800-w800-h600"], "a": ["Rogelio Flores", "francesco tramontin", "Hector Cuadros"]}, {"c": "cheap", "n": "Kabul Bahar", "zh": "€ · Afghan · Népszínház u. 27", "lat": 47.4949709, "lng": 19.0754773, "m": "4.8★ · CLOSED SUNDAYS · 10am–10pm · counter service · ~2,700 Ft a full plate", "d": "A tiny Afghan kifőzde on Népszínház utca, opened by Khairi for Budapest's Afghan community and then adopted by the neighbourhood. Kabuli pulao with lamb, dal, kebabs, and bolani — a stuffed flatbread cousin of lángos — made fresh through the day. Ask what came out best today; he'll tell you. Enormous portions, prices from another decade, and the highest food rating on this map. District VIII, so it looks rougher than it is.", "g": "https://maps.google.com/?cid=4256642564889004583", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAVdJg_mDCePW7sqrpbV3JYQOVfvbEwhe-8x4jwwDSkThV3NJ6JoplKpQs4RpxUQjfo1gujZymyv7Pf40zIlTfmmkTBM3o4OL9NllFjFp-t1RENe9C8Aj7-kVlBDI3udsMR5i5vMwygT50fsjUB6naESA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAk3PrF4Z3uXSqrk2-9yWUIbWM7UxnHAhyIT2AjPkCfFBQ_sf5rn4J7sF8DaL33TzoBlhjaF9f1orpqn0Y_4IaeepCWGktmupPaT2CvyaqTw45KNWX11mXwLOwZYr03nAAqbdqFoR3YT9TK3oLWgC0fnQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAZK2pJZwAHG2P_4HkpPou9cvF1XZKT8gr48MuTLqeizyutekFVipLE4GD867Op1TmennKEbaHm0S6MVbsKYSB3or4KXfqs6JdQxC75UvEIjUV_0HIUc3jGGQjnMdIgBZR3H7HvlFDMQDc8MXI=s4800-w800-h600"], "a": ["Márton Óváry", "Adnan2997", "Jozsef Lendvay"]}, {"c": "cheap", "n": "Lángos Land", "zh": "€ · Fény utcai piac, 1st floor", "lat": 47.5086224, "lng": 19.0242269, "m": "4.8★ · CLOSED SUN & MON · 8am–4pm, Sat to 2pm · MORNINGS ONLY · cash friendly", "d": "A market-hall counter in Buda making what most people who have tried both consider the best lángos in the city: not greasy, properly blistered, generous with the sour cream, garlic and cheese. Take the escalator to the first floor of the Fény utcai piac and look for the corner with the plastic tables. One is enough for two people. It shuts at four and all weekend — this is a breakfast or lunch plan, not a dinner one.", "g": "https://maps.google.com/?cid=16335344581143071661", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDsPD2hpLhZKZCKeZ4bQIFiXl7Hfjk-u0Euakp4E3uKFXx3Cp7SZUE9LZ65i55Nrwu3qnkJyXvvDLtaOSXeKLovAFHqqUtBBm-UTsCn8j3Ua4t3jV2FzIWV8JvClwCd1FatEs1NIzAudzeWUj0ODEZXag=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDFHk2ZchVhPLOhW7EmeLyHr2ziltjG_cZ6V2gG-qipbc-hqqOSz_hQOKcD28sFkA5bPmK2lbUdfIbTtkpe29LFpDgbjtwHTQ6TwL5fWW6XMwUXUVMBZlX5lCMg-9KPQJdnygI-TcD1JPZKzy96EGnEwg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDylG8XeB31WZi090H35dP_5iyRFvNQf6Iu9lHZAIPeS9zolN18svAlOE_-OM1qTkfDI6jMjJk8tj-bSD41BTdUK9RqCtnfRJo6QWMNVoXQyGdaSItRwo0iD9ztBxNIzatbn50EensKVofU4g=s4800-w800-h600"], "a": ["Fazlı Boluğur", "Andreas", "Li-Yun Yin"]}, {"c": "cheap", "n": "Bors Gasztrobár", "zh": "€ · soup & baguettes · Kazinczy u. 10", "lat": 47.4967267, "lng": 19.0635487, "m": "4.8★ · 11:30am–9pm (Fri–Sat to 10pm) · tiny room, eat standing or take away", "d": "Two soups a day and a short list of pressed baguettes, made in a space the size of a corridor, and the best cheap lunch in the Jewish Quarter. The soups are the reason to come — Mexican tortilla, gorgonzola, pumpkin with raspberries, whatever they felt like — and they change constantly. Star Wars puns on the menu board. There is nowhere to sit; take it round the corner to the Karaván tables.", "g": "https://maps.google.com/?cid=2789081712543594489", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAXNU9Yy3n8vvQGCMhGFfpvjKnC4wTTl9_pIhnXSLnqwD3P5emjspSSNI4eBbbMkfYRLx4RKHfq8hj5LFVjTRsU9ygzkQ0uNnurrNQXPWBYSwCWIe6Isc1PVIgmEf40tM1ConyGBtG7DRSQbIJJedwz=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBZXMc3AUrEPzYoyBp6MYINSCwV9sFqExftwvsPXsHmm9HYEWmz-N-VXQjD0aB5lxdAn5q23c28y8TmkxICQFu1y1Z2bZSEi9fBZ6ofuADjErwJcpBw50GsIRWVur9rWl4qEwldw7JUPawA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAdoTz7Rkp92e3Hp7UUklU4hxy1oyJUcsMgj-cWpAyI5qj17et5j8sPxTRUM4Och0DQtAG6qJzhrBKcJ6Xxz1AZihH8XtmOsVAg4z21p0QHUzFoAfp-0W7RpHBOP95HkyyFNzo-BXYD4hi7X-AmeBxdzg=s4800-w800-h600"], "a": ["Tyrone", "Bors GasztroBár", "Ry"]}, {"c": "cheap", "n": "Street Food Karaván", "zh": "€ · food yard · Kazinczy u. 18", "lat": 47.4971528, "lng": 19.0630857, "m": "4.3★ · 11:30am–midnight daily · outdoor, no roof · wifi and toilets", "d": "A yard of permanent food trucks next door to Szimpla — lángos burgers, Hungarian street food, vegan stalls, beer. It is unashamedly a tourist spot and the 4.3 is about right, but for a long stay it earns its pin: it's open when everything else has stopped, there's plenty of seating, and it's the obvious place to eat a Bors soup or feed a group who all want different things. Watch where you sit; the sparrows are regulars.", "g": "https://maps.google.com/?cid=9954132998036314126", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA30QeEVScjuhiydShdSx8VBchDXxDwKKo2YYE6IvT9R1ejh6fv3PFEGkPfBnGzOcRIeQ6XnZwjL_Zfsbrkin87srACy7KvNeEJ99KmTjjPm76qW5dTsOpb4mimJk6cYILPgczyRkaW_qMLP_QM1YDZLQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCtX-o9LZmBgIU1_cTuCat8t603jBcrBBYuo6CnVkM_AUKBE88wHR9yOmIs5wDX6EJ1qhevMhg9qgHRF5seAbNqB64XNFrPECcNa9OhNNA99dngeFPxN-0grkrOEJrsqAy0yJNeTRNoCVjaVF6d44G-WA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDcD2mz2ruKlP07DmXod92yOV7y8GhSZfmADZfCHwrhY7sa5xLrrgnagyumYvoyVTFbATAgjYxvd371kSgjr3wPwmK5sbVZCTP_OePo2oKQJ9_TPHttnDmwilMaYrl75IDAVkoqgUZ70l5jKxsGDDxVrw=s4800-w800-h600"], "a": ["zsuzsanna s", "Street Food Karaván", "Lama"]}, {"c": "mid", "n": "Gettó Gulyás", "zh": "€€ · Hungarian classics · Wesselényi u. 18", "lat": 47.4973807, "lng": 19.062396, "m": "4.6★ · 12pm–11pm daily · RESERVE — it fills every night · LOUD inside", "d": "The Jewish Quarter restaurant that does the classics properly: goulash, veal paprikás with túrós csusza, stuffed cabbage, Hortobágyi pancakes, bone marrow on toast. Retro-canteen interior, big portions, fair prices for the location. Two honest caveats from regulars: the room is very noisy, so it's no good for a quiet conversation, and service can slow badly when it's full. Book, and order the bread.", "g": "https://maps.google.com/?cid=14030660410251791828", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB-xgavUXjbbcd1gMtOBJlrqclIQ8Ige50odYmMeyqSLnOj0xnlEB-iSB6DmGSBssu7R5WKRePMa3BDLVxfIzXhFestp4X3xWVkKW-OzH4PCPx8DcewTd6OJNI9cIuZxr4iyM1Gbm__u7kSdQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBVOvOuwiiGKx99RxJouympGTYXfSipEXaBfjL6YEfD0HrI_NTWJWlyORVKEQ-v3x1tjBrGD-7oUN69ozJXu5e6jMtg4LEmFcXYf3UlKiipFGJeeHuywgy1aMTVHUGtc-Ycb7cxFkcMXsHZzIBUrXWb=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCIYEwh-lFzyj1pMPu7lE1FE-7th6U46HLGrn_OFaCAHj4WVPjXkRSArwwIiCwLlqI6kA1ix9ml32Fl60QNGABzu_CHTo4FP_9pvmyzKcrL7hAcbxq1UaJ6O5U7feaOXxZIVQm4Fhet9zs0bieOO4xVaA=s4800-w800-h600"], "a": ["Gettó Gulyás", "Krisztián Hajtó", "Gettó Gulyás"]}, {"c": "mid", "n": "Rosenstein Vendéglő", "zh": "€€–€€€ · Jewish-Hungarian · Mosonyi u. 3", "lat": 47.4983761, "lng": 19.0822508, "m": "4.6★ · RESERVE DAYS AHEAD · mains ~€15–25 · CHOLENT ON FRIDAYS", "d": "A family restaurant behind Keleti station, run by the Rosensteins for three decades, and the place Budapest food writers send people who want one serious Hungarian meal. The catfish paprikás with crisp pork fat is the signature; the veal schnitzel rivals Vienna's. Friday is cholent — slow-cooked beans, barley and brisket — after which you will do nothing else that day. Finish with Judit Vámos's flódni, the four-layer Purim cake. Not kosher, despite the menu.", "g": "https://maps.google.com/?cid=4964424927299032337", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDuNHjoN7Z1GtqRbuKvm65o-SRjgluePs_sBRDZKb11d71VcFK6EkCLFZ1BRfFUyJJaqUBQ-RpgqMPtgQp310glmadxAbh78XfH24nrNj7NsvxdFY9wVJo-z1TjRO7IHuRMS0Mp7SrbMUH54pXz2nHQAA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCLbNE_jvrNDIl4-QDtz-CkUN10Khlto15-HtSrkHGZdR1FAfT5DtfyUivc3AP9LQTMKUXLE-x7cMTc0ULSSiiF9IIfCRmX-O7gUIInuD8FiG8Q83i7aQTJfbepyM-_ov2ojQHC9ePU2RvZR8E=s4800-w800-h540", "https://lh3.googleusercontent.com/place-photos/AG9NLjBW_TOuzfBCvI24TDVbDBGod5lznrUpVKLR4Y3dG5CvTnSZl2cuKfT3BoU8pQEtATdStvH6IToxuRNpeLnaEgFloVhUAECB4o7nz4NMqbtNyEj485AEDiA3b4y4DbHuzdh11irKFeGCjPCq1SXiRT1O=s4800-w800-h600"], "a": ["Ria.n", "Rosenstein Vendéglő", "mk"]}, {"c": "mid", "n": "KIOSK Budapest", "zh": "€€ · updated Hungarian · Március 15. tér 4", "lat": 47.4928309, "lng": 19.0521621, "m": "4.4★ · 12pm–11pm (to midnight Thu–Sat) · big terrace, no traffic noise · book at weekends", "d": "The reliable answer when someone wants somewhere buzzy but actually good: modernised Hungarian cooking — chicken paprikás, egg dumplings, pork neck, a proper ribeye — in a big room by the Elizabeth Bridge with a terrace that isn't on a road. Live piano most evenings. The menu is badly organised and doesn't make clear what's a starter, so ask. The kitchen also cooks for the city's homeless, which is why locals stay fond of it.", "g": "https://maps.google.com/?cid=15460091422600332766", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBrl9Q3cFnuTxHMdWANlsweT5L5SZMEn-r2ZhtoTR2NyuA6-AiSYmNX9ixKxOT0vXk-qEY18rbm1q2mXe_5qN0COY_YGiL5uhI361EqaLHAKIMQT_hoZMl8URazINDUEAuqjVdA1dI8a7-uZQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBYRmmi5bemLuc5WeNCe-HVn42ePDwMZdyS8FBD9wWZssO77L1ZBUslSyzZz09gqn-SuoAQfXaDrOIeal6MWp9hpQXUKrjnf9gN92DbrwtBjF_oYNMfqGEU1qeFnhpRCAtcbWsYRfSPax9UKw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBE7IrOFJys49uZ4mgAeCSBKLmgX-neKMs79b6XsU5U6Q4Ug87ePZQiDOaqQu2Y05WH1V30r3pI_cNHSBg7lFPkjAwFBD04PyqCXTBALYZzlq78seyZfGKMc_WiW1pSW6UtQzT4yjaDGGxAgoexDMuP5Q=s4800-w800-h600"], "a": ["KIOSK Budapest", "KIOSK Budapest", "Jacint Ujlaky"]}, {"c": "mid", "n": "94' konyha & bar", "zh": "€€ · Vietnamese-Hungarian · Bib Gourmand", "lat": 47.5011036, "lng": 19.0616159, "m": "4.5★ · CLOSED MONDAYS · 12pm–11pm · 2026 Bib Gourmand · small room, book", "d": "A Bib Gourmand with only 156 Google reviews, which tells you how far under the radar it still is: Vietnamese cooking rebuilt with Hungarian ingredients and European technique. Rock shrimp, gyoza, caramelised pork with egg, tôm chiên cốm. Not the place for strictly traditional Vietnamese — it's a fusion kitchen and unapologetic about it. Allergens aren't listed on the menu but the staff will sort it out if you ask.", "g": "https://maps.google.com/?cid=6856949233112568196", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCJybv1Vpt-7BjyebWYk3P9U_s_ZHZ7WHd_upbUuToKRiXU5ExgB2Du8zFIci_SmGz_IVqQSo0_8qi6A66y0L2u-PNwU2ijxJh2aA_IyiQSYK-lfINAG0a5HBnfjTn_3D2zT9c-RXUTBRwXQ_s=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAJweUoowBqJyzQj9v54FWUNYCn3zIDDQ0nv-EZNZjFeinhtvD2loZpRIbNgnbdRoI6mxPV0YCQy5dVwXp7_8IMvJiEMJotVCthPaKpWyT3tYjURFP-QUHT4WOcjCcuaPPGCV_Pfvn8bh-zug=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAboz3K8P4z19FCTWPC7cW7MARmrBYWa-W6Rw1C4csIrU7jNwZxWoRlDu2NQ0MrwVZT_59k6xYEP6jJXegznSyLDYdkOu2IuvM5kJZqPSFL7FjyZx1WIcVUDINpTi0MqRccpzE87rXLzRvJj2FOwN1zCQ=s4800-w800-h600"], "a": ["94' konyha & bar", "94' konyha & bar", "Mindaugas x"]}, {"c": "mid", "n": "Time Out Market Budapest", "zh": "€€ · 11 kitchens · Blaha Lujza tér 1", "lat": 47.4963412, "lng": 19.068943, "m": "4.4★ · 11:30am–11:30pm daily · portions small for the price · no reservations", "d": "Opened inside the restored Corvin Palace on Blaha Lujza tér: eleven kitchens and three bars under one roof, curated rather than random — CANTEEN by chef István Pesti does lecsó and apple pie, Casa Christa does Balaton food, Szaletly reworks Hungarian classics. The point for a long stay is triangulation: try five chefs in one sitting, then go to the ones you liked. Portions are tasting-sized and priced accordingly.", "g": "https://maps.google.com/?cid=10007750883464289653", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAwx2gDVxBMkmV-avnYvLTJChjAd4J-8v2nvo0aYjBgt625eFxzMkl5EbPjmcndjx330bTxphpjwnASJikFzYkhe1M22oXJ5ZIyhpSG74uJRuCN32V5XnNiqtyis5ED_GRltZQKLwQn6UIyMTvBcdhEzg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBmAW8wGEZibKNH46amOHh8iHDQSR0UwFhHAdgkUycA79lfXpPLywf-1UxQY6NFsGL39dQIKIeAUgSVj96dKuDRj901P1AR8u4gihzCBafPFEjwlBAECGU98emr_jPC72dP6DjPeVgiKjurJAIwmgGjFA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAWaQnaSIkNfzqQKkMNTZ6cYKchE1_cYqXWRw3gSLow13K6duOkelythMC3x3xJRR2m4N2dj4-nkrWr5InRr_6nSeFqh0CPSQKfRfjvg_OlTy1WVNZTlOB1s-_cqm6LyQcBS5tamYTcoIfL7sBSk6Mnjw=s4800-w800-h600"], "a": ["Time Out Market Budapest", "Devangi Yagnik", "Time Out Market Budapest"]}, {"c": "splurge", "n": "Goli", "zh": "€€€ · Middle Eastern · 2026 Bib Gourmand", "lat": 47.5025028, "lng": 19.0532749, "m": "4.6★ · dinner from 5pm · brunch Fri–Sun 10:30am–4pm · DAIRY-FREE kitchen · book", "d": "Israeli chef Harel Zakaim cooking over charcoal in a room with loud electronic music and an open grill at the centre. Smoked watermelon 'sashimi', charred cauliflower, the Moroccan cigar of hanger steak in burek, ribs in tahini. Everything is dairy-free and they bake their own gluten-free bread, so allergies are easy here. Sharing plates only — go with people who'll share, and order more mains than you think.", "s": "The name honours the Goldberger textile dynasty, who owned this building before the family was murdered in 1945. Their name is still on the facade above the door. A Middle Eastern restaurant now cooks under it every night, which the owners chose deliberately rather than quietly.", "sl": "The name still on the facade", "g": "https://maps.google.com/?cid=13410630835215560250", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCFEZMuSsDR9BSoqBl223JBii2G4fL-YXf9QMNFayIUlrreBvJn4RRhXfzlfJzTiTcFJhmz0OI9FQoPQ-dnzp0pkZsY2jT8-0yO3bCHDnkSFcpji11Pll7z22kRbKkP6BH2N3f195Ri6wMmB6F0HzCXjw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC9k7pQpW9FVmrVI7NFiErZQvZEI0lITirais6R91DU_ndOnHaJZ2fg4Xslh6QubxNjVnU77n9KglKChy-ii-CANs4_8ctv2JzRxh10NrorrlF6Hdefk1hS6wErDlEM4HYp38SqwGaByu4_W-LG7dwC=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB6noAs37pzTQLo-F-Yrtw8BANYbgtmRSXIWIgOZVuYbPCTbieRoJgWQMvCsrOfrqIHEPXt5mnl6p5v_nZVzOp_-dVxDQM49jIK7uJz3Uw2-8yQaby0HvNLGkY9BXPWL8xs_0zla-5VIkrpZRGO0rbQCw=s4800-w800-h600"], "a": ["Goli Restaurant", "Goli Restaurant", "Kyrill Feoktistov"]}, {"c": "splurge", "n": "N28 Wine and Kitchen", "zh": "€€€ · Bib Gourmand · Nagymező u. 28", "lat": 47.5039929, "lng": 19.0592823, "m": "4.8★ · CLOSED SUN & MON · lunch 12–3pm, dinner from 6pm · mains under ~10,000 Ft", "d": "The best value in the entire Budapest Michelin selection: chef Szabolcs Nagy cooks Transdanubian food — the German-influenced western Hungarian tradition — with real technique, and the wine list runs the whole country by the glass from around 2,000 Ft. Won Michelin's service award in 2024 and you feel it: they'll pour you samples before you commit. Open kitchen, so ask for a seat facing it. Book well ahead for weekends.", "g": "https://maps.google.com/?cid=2690038183351292138", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAGI9hfufnGFHXGMqBPzebu_iwfULANpoEIW9P1EkIDMurkCOEOx_UG5VcL1hM70vX-AOqYmAcu-VHStyLNRvw4O-OFJ4e6tzd9SsjFuEccxy5ooE-hO7boKcg61c3UzON93uwXaAoFUd54qQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDEd1MEm5cZ09F5uz1OBDS3osNCKsAcsq1zyrNn_SUas8q-jT01mmo9-ADaaEQSGbkKqWvgLQAwb6AU-xT2ZWssGazEUd73GT88_MBK1L6nyhy3nRgZH8UWoRqREQgDiait4w_-x4qDCk-qehfYd3RaWg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBXT1NZbLgtDI62zgdgq-rcEoOi3xZBvlZN7uQgp52QGT-e9SctdtgQIku5DMJTvRtbRJHxmKV8ajPVUL9gCaB8hEJ-a_7Gk7YvZ7dc5tOR8NSi_kCtLU5ogwHV7wlVkuoijWGRPt1yPBf6CQ=s4800-w800-h600"], "a": ["N28 Wine and Kitchen", "IAN COLLINS", "N28 Wine and Kitchen"]}, {"c": "splurge", "n": "Cabrio", "zh": "€€€ · small plates & natural wine · Bib Gourmand", "lat": 47.494809, "lng": 19.0565058, "m": "4.7★ · 2026 Bib Gourmand · small plates — order ~3 per person · counter seats for walk-ins", "d": "A stripped-back bistro on a quiet square behind the Franciscan church, doing inventive small plates and natural wine. Plates are genuinely small and priced accordingly, so under-ordering is the classic mistake — three each, then more. If you have no reservation, ask for the counter; they usually find room. One recurring complaint worth knowing: dishes can all land at once, so tell them to pace it.", "g": "https://maps.google.com/?cid=17947436892141608730", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBCx02gZvRYHnz95pRfbPJJkGZ5TUzLGRk1c2aJ-0HJOZDzZPW99nTt9vmm_Mda41u4GTEfVT93VvZK0CZaS8p9VJxLzDt1RMDiK_SGDLq5ZmLITalFMm95AOvzOFq5wZGw8QqpGyj4WgW6qVXL3zae=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDWbe5e6GnIM-pxC7XoA5RlIK4fxJIkfpsawAaa8kREB9vmTOEDDSO9Q6K4wqdlb0yBqU3a3L0fZbHSE4NaLiKSWG9abr-NzZF-IESjis3qW3yzRxP-2UZaOa6wZ99_yDytAqj6NiMa6yN8KaE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBDQFag2bnsl8FvKZtM597XCYPW5nSK4B4DtGvsKi0X-j26P9C5yVRye1C3B8g9U6kWe_JkXsijjSlK0yM-_G_4XC4qd4OouvhDhrsKQQTYDO6m8ZRgLAwcQJPKUxECxjHi2SWgdtcZukNUlBIWWUz7rg=s4800-w800-h600"], "a": ["Cabrio", "Cabrio", "Ildikó Vanco"]}, {"c": "splurge", "n": "Borkonyha Winekitchen", "zh": "€€€ · one Michelin star · Sas u. 3", "lat": 47.49959, "lng": 19.052559, "m": "4.6★ · CLOSED SUNDAYS · dinner from 6pm, lunch Fri & Sat · à la carte, not tasting-menu only", "d": "A Michelin star behind the Basilica that hasn't turned into a temple: you can walk in, order three courses off a menu and drink from a 200-strong Hungarian wine list without committing to a four-hour tasting ritual. Duck liver, fish soup with a serious broth, dessert built around rhubarb or chocolate. The gap between courses can be long — this is a leisurely dinner, not a pre-theatre one.", "g": "https://maps.google.com/?cid=9985995967375721525", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAjpQ3ruQay4fm0j5OB9p-UfqS4W93ssZ4BdWdQM5XKZ3PM16xmONM6hWBs479Bz-lGIW1TD1NdLhTAxsqsy3W_S3vXJ92U7E970kuPkla_HH0JAhlltTFiEeJKisfmY1jkGJerMU7XxmEGI2wcvIb9Qw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDawXlAirEZvg6gxpnFVvZx-mylIz8Qzr5uvdoNKpsvbyduPcFcrrpQxs3ZeydxpcfgJLxUEciBWgG59P5NjMV6h1Yvws2ulxHEk6F8XrSHbSwEzENlJkMATPkgbq0vGBgCdH_km3EqG4LkEiEcomXAbA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCf2IwaeANqkJf5QqmPCBtBydNvO4g9tzgfWykbS246e2A8wszCz1Grvhyni0S7LmiEM0qAQ_LBszAi7TEgQmD7EeYz80cBNcWQt_C4ZlHi8oMSuqHXJ-Trv5hO3bQLJaVXEf2Ij-yu-TMINmU=s4800-w800-h600"], "a": ["IRMA Seoane Rodríguez", "積高之", "Mikael Pettersson"]}, {"c": "splurge", "n": "Stand", "zh": "€€€ · two Michelin stars · ~89,500 Ft tasting menu", "lat": 47.5002597, "lng": 19.0595407, "m": "4.8★ · CLOSED SUN & MON · dinner only · BOOK UP TO 60 DAYS AHEAD · ~3 hours", "d": "Hungary's only two-star restaurant: Szabina Szulló and Tamás Széll rebuilding Hungarian dishes at the very top end, with a beef Wellington that people fly in for and a Tokaji pairing that justifies itself. Book the day the window opens; it sells out. Flag dietary requirements when you book and again on arrival — the one repeated complaint is courses being silently dropped for allergies while the full price stands.", "g": "https://maps.google.com/?cid=1230155733135461759", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBmX3E35c73Jhvrk8adA0Ip_kp5iZBhzRLbdPJH78UExXabkwR-1tRNK3aLAmYtaySK_zeXb6-blQjuA96OFMPSGSIO7sCKy3qBNFKDyDZy6fRNkAHuHu1oQ4rKDSvjDWDhSLhrMTeGwx1kfFej_KTDCA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjALCuYCr-WT0dEzq3nbzVMx-nF9lu86vIGx8tICpAMbfVUf-eusJb6YQ1VSV-swy6OUGzQvKa81Qo6vmtyQXegzXP1IhXwKASr1sWZ0qdNgKghiGszpGFcj8e0TOxTHW3000CnAb330Pi2JO6XHnVEcww=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDNeOOAsoRsYyQSFtIzbmPXy3IywEEc_1_WyywE8vHKUzEjeHkR809FyFF-mmmDaGodUP3CmtQnGRNo6aydOKTJa7-it_QVRYXBjyih13OUmldSsCtWUM-UJn6yOsHtk5xGhV5TQUapGKnog4N0KRy-=s4800-w800-h600"], "a": ["Stand Étterem", "Stand Étterem", "Divya Singhal"]}, {"c": "cafe", "n": "Ruszwurm Cukrászda", "zh": "Szentháromság u. 7 · since 1827", "lat": 47.5012276, "lng": 19.0330045, "m": "4.2★ · TINY — expect a queue · cash-friendly · steps at the door, not step-free", "d": "The oldest confectionery in Budapest, in the same Castle District room since 1827, with Empire-period cherrywood cabinets that survived two world wars and nationalisation. Order the Ruszwurm krémes — a custard slice with an almost weightless top — and don't bother with the lemonade. The 4.2 is honest: it's small, it's touristed, the service is brisk and the prices reflect the postcode. Go anyway, once, early.", "g": "https://maps.google.com/?cid=16497301985358086280", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAKMDxP540z-f6c62BdA9DNx0Qi_C8Kr3Tm_5DoO0cOjih4sKJjCd32Qk_wsTtpwzXcpUCG_cNziTeV114x1Cfxb-3RbP_m1BGkb_E-BtPjSW1uMyZeJbXH30w58ku4Jjj5IgcBSjRyTYHv=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDh7eEdQq_0wUuz7GZKXE3slAbiH2OJ8MtuY7nb3UVQJfa-iDrIsk3g3RR904HMtxrGjttpJ2ou822FDtNBFoW9rBo0WLLQcBjy86_aPsNIHFkoRcRqSIUPpaI2btHrvQE5viuLE5kCUcgf4Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBbf6i8yGCC0rOgMb0tkcBHvQQJVlj5qPD09S0MmcFBLBsPFK6U7_CSyfzwiB1XYP7yqhijEf0mv1fHhOBnss0jitHLfLzlNQ7gd5UVeOgLCIvlxu5KwjCsMFPs7GVUsy4b7CxckhDLZuXLeJEN7WOo=s4800-w800-h600"], "a": ["my travelisso", "Pál Gergő", "GAMZE ÖZMEN"]}, {"c": "cafe", "n": "New York Café", "zh": "Erzsébet krt. 9 · the famous one", "lat": 47.4987259, "lng": 19.0704556, "m": "4.0★ · 7am–midnight · GO FOR COFFEE, NOT DINNER · queue at the door most afternoons", "d": "Routinely called the most beautiful café in the world, and the 4.0 rating tells you exactly what's wrong with it: gilt, frescoes, marble and a piano, attached to slow service and food priced for tourists who will never return. The move is a single coffee and a cake mid-morning, twenty minutes of gawping, and dinner somewhere else. Writers used to throw the keys in the Danube so it could never close; now it closes at midnight.", "g": "https://maps.google.com/?cid=4261763148092989728", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCkEy49qDq7KeIZlI28YAECvhoUdOlQ2HEZ3u-2T7MPSyEh0enzqyLaWfNo8Kd_RN3sKhfjYeuGlr_Dk68KU6g5Lbq84my6NSBO9D2Wf6hKYJqKjkEhApU_vTvnPtjoIevApHQSjtXxRlBZHaU=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAXZilz9yI9CeDwKozdpcGAwpvv3FBLxufLV15EpIwPo6WA6T4rm74rHZXztcIfJH7lmEWV5AiB7vytNk0XsMwWZas6vac4Pgbwvz5HXmiYkWYGaUEaJ40S_Oi2ni3ZxAJdHpOyu3tyt7KqcW5D3c4_cA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAzCmdJZTbZOfwjAgqDH-LH_DukWnQpFrU3CSapeJ9BickK1oBHQC_Jnb7dQCI6xfSTMR7h0OYp6SPm5q2ItETRhtAghyh1KsTsJcZiK4VeiYEG-0TpbGbGt-LkOAW_8tOAvMcRYo6fIiBAUw=s4800-w800-h600"], "a": ["New York Café", "Gomedh Tak", "lan Amy"]}, {"c": "cafe", "n": "Espresso Embassy", "zh": "Arany János u. 15 · third-wave coffee", "lat": 47.501941, "lng": 19.049828, "m": "4.8★ · 7:30am–5pm (weekends from 8:30am) · CLOSES AT 5 · dog-friendly · free water corner", "d": "The reference point for specialty coffee in Budapest since 2013 and still the best cup in the centre: their own roast, good filter, a matcha tonic that works better than it should. Busy but not loud, and full of people working — this is the laptop café for a long stay. Order at the self-service screen, which everyone complains about and nobody avoids. Pastries aren't warmed.", "g": "https://maps.google.com/?cid=15361289221119408278", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCEg7a1teEgaFNAH3E0cbtnRS262y5orD6ugVtQKQ2OrOjWhjDWCT8qmPcEz1iTQeOMsGr_ZH4dnal8nOh5a0VgIDUIBcFEpcNny5jgx1U7hIlqaXyhRnpMmp82ngjwue-5CyYzi8pKM4mrAw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB1OCUajYPDboEkgaY6NQds9I2OFLqrmKwlstn1sQHpf4jH6CLjhramuwLXBwNw0XHh-38y6dWfy4ZJyZU076ZRHM2z0wukxG46WRSnhDf-Z83VYxGr7r9qBudGpnLEYZv3rYcC3QOK9Q0qUg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAPfauDmvE-cp0jxeYvv1owfBVvxoaHdmxjiGvifkPEb69bKomSLEycrCMrC5oYyScGRkhLpAw6asyBGd-ikMUZH8b_VZYA8bt5X-V9frr3p5jzl8IWDTTpzOlSY0plkb97z_pfIc-BL8Oz4cWQNUQE=s4800-w800-h600"], "a": ["espresso embassy", "espresso embassy", "김선재"]}, {"c": "cafe", "n": "Molnár's kürtőskalács", "zh": "Váci u. 31 · chimney cake", "lat": 47.4926471, "lng": 19.0530854, "m": "4.5★ · 9am–8pm daily · ASK FOR ONE STRAIGHT OFF THE SPIT · ~2,000 Ft", "d": "Kürtőskalács is Transylvanian: sweet dough wound round a wooden spit, rolled in sugar that caramelises over coals, then unwound in a spiral as you eat it. Molnár's bakes continuously in the window and is the most reliable version on Váci utca. One thing decides whether it's good — insist on a fresh one rather than a cold one from the rack, and eat it plain or with poppy seed rather than buried under ice cream.", "g": "https://maps.google.com/?cid=12384746519510096538", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAT6h68vN8a-QBPqNdkkzmD0eid4JbP8Ci_9ALdWfoHAxU3VugkHQbgl4gg0aMkoBaONYye4qC57bdR4I74n9CNG6p6_MD7xD8z36dEQ-v9fpI1BTeu-Q6fi-2SniQIAO9KxGJTSK0ldC5OzA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCf3sM8nPXWnMiTw9brrpx_fDqQ4JL6xs1KGhaps258oRE_hFvNLgwm_SRLZNo6FOE3MJ8jUv_OtiHhGPgYZK9iQc6sOnlC_sRyNO8K_RLc95uifJVYpJsOyhAz09SezU-kv-F1hfF9rozImGk=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB6wCG6Vke00ELKkAV0dIGNxaPdADC8A9B9Bx7MvqYKZ0v4Cj5G6KqXIau3zWApxV3bJcJf0isGFgI75yDb9fAFDH-LgCS2R76D8E2dtV4wbcekciuxkJRug-fa8HMANtJ0sGAOl4M_4t9HaHknL2Rzfw=s4800-w800-h600"], "a": ["Xenia", "fmarman", "RAFFAELE GRAZIANO"]}, {"c": "bar", "n": "Szimpla Kert", "zh": "Kazinczy u. 14 · the original ruin bar", "lat": 47.4969648, "lng": 19.0633459, "m": "4.6★ · 3pm–4am (Sat from noon) · SUNDAY MORNING FARMERS' MARKET from 9am · free entry", "d": "The bar that invented the genre in 2002: a condemned tenement filled with mismatched furniture, a gutted Trabant, dangling bicycles and a courtyard with films projected on the wall. By 10pm it belongs to stag parties. Go at 4pm on a weekday, or better, on Sunday morning, when it becomes a farmers' market with producers selling cheese and sausage in the same rooms. Drinks are tourist-priced; the atmosphere isn't.", "g": "https://maps.google.com/?cid=2771757573889662372", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD5p4dgP48OgTvjfpt7o4DCgr5R38kxXU8QTn00lrToivuZyX9L7Lgdb7pTk0HfoxWufunHo0e33NG1LautjvEMTeXp-aCwHiz6GBlw1879Aexl858BCSo8mApiLMuKgSrkWd-J24v3m2_gpRM=s4800-w800-h455", "https://lh3.googleusercontent.com/place-photos/AG9NLjBNoytr75Wvt3WY8DuadaBbtZVS6rbbDQqaifytBeBEa_GiLYD0iFf2CVYWbPzB9evcbpPQMNMLGTVjjjqjKRrTO54w_4SQzUSXgPhkE7s1R1ZdblPDWLErmh4aEZJW91JewDS_cTVIoY36Vbkr1aCiZg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCxWG6SE5mR9NBaimbU1Cfz1dD8CKzu47ZXX5KsWwdF5f7M0uD7hBAG5doPLWvp09GyW-VmHVwpr6t3InKSEo7tAg4zoK4VCAI2ZzNtFOymdA9Wlen455faJGm2BJbmlz9-wvlHLYA-ZsXYhgs=s4800-w800-h600"], "a": ["Szimpla Kert", "Life Forever Forward", "Szimpla Kert"]}, {"c": "bar", "n": "Élesztőház", "zh": "Tűzoltó u. 22 · craft beer in a glassworks", "lat": 47.4835732, "lng": 19.0726474, "m": "4.5★ · 3pm–1am (to 3am Thu–Sat) · 20+ taps · self-service at the bar · District IX", "d": "A former glass factory in Ferencváros converted into a courtyard drinking complex: two beer bars, a cask ale room, a butcher counter serving sausages and schnitzel, a coffee shop, a wine bar (Vino Piano) and a hostel upstairs. Twenty-plus Hungarian craft taps at prices the Jewish Quarter can't match, and enough space that it never feels crowded. Order beer at the bar, food at the butcher; they bring the food out. They donate 10% of orders to people in need.", "g": "https://maps.google.com/?cid=9172482781679187469", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDZYpTvuCHvVncb2rn2NfJZ5m3KfpR2JvZ7VS9HVKcvlVXHrM6f7LMfJG3f-RFVX6a5Yu42ZKAxXW5SgmBqeYF9SB64L1GA8sE4D5eWMv7rV3YmKBHp0Dwt5Od0zMVWIWF7sCSxkTtcthdy2w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCkddxyFAiQwQ-VDXXb-1F2kQT5_j0v9ZQERZetLhG3aXoWDcFnCfjsA3AN1MgjMcmSLdK-G-cEe-opGQXMLmJy15fYtN51b0D_Y91IRXHVuydxWc2AQxT4kps3JFvGftuWiqw2PKeZc22laQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCXfUCWAn_05gTx0w2HSqpU6nzkcjLqybYIq83U4WFarVKfY0sO3Ei7HPKWecMeMznMSQhSrh3U0aF_yFoq_U9AnEHTxhSu7YvLaQE97MO1mJHEJJaj0fLgfopKdU27o2yCUlDwsyh0hYeWMPHvDVc0bg=s4800-w800-h600"], "a": ["Élesztő", "Élesztő", "Miro Matotek"]}, {"c": "bar", "n": "Fekete Kutya", "zh": "Dob u. 31 · 'Black Dog' · locals' bar", "lat": 47.498839, "lng": 19.0620831, "m": "4.5★ · CLOSED SUNDAYS · 5pm–1am (to 2am Wed–Sat) · beer ~850–1,050 Ft for 0.33l", "d": "A narrow, scruffy bar two streets from the ruin-bar circus, where beer costs roughly half what it does on Kazinczy utca and the crowd is mostly Hungarian. Short tapas menu, tight craft list, loud music, underground decor. Recent reviews split: some regulars think it has drifted upmarket and priced up since the tourists found it. Still the closest thing to a normal night out in District VII.", "g": "https://maps.google.com/?cid=6932952040854158115", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB1ZCnEaHgE8RIg-YotBMpcTNHU8CEDd-ummdmmJvBriiZEPFZYWZujSIMHLCVqXoxJQc6mBtfCgm4dsWUI2ceYSoZL0PXfnmqYz6KxFVW6s9QK62gsPJtbMPEb3wtSYGSSSiSMxccyEdh52w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA32LBMmLy9E-bk-cfZlUKrB5gbIaPhHa4GI70_LbZUeqke5j9aVt8FeNWT3XOIiGqCPIo7kRCLxGbO1mbffgOmKq_ObJmWxDt4_wHmNA3zAyS3NeUGkjBv-fauo9Jy5lnlPS3DgDCf51cmjZ9IEprA3g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA8ba_IG2qKc8M0ub6QzMwZdDsQXD57IucGN57dV42nN_xPMDKfN4SemvGwMmtYoj9OpJ0tPaAeNIjcVDZF8fxhw3feBVfasD5Y7_RSc3JFMl4RdO8p2X-bDsetkAPoX3GglB7tJpistgldKQhNa6GI=s4800-w800-h600"], "a": ["Imre Tevan", "Zsófia Handlery", "Zsolt Gellén"]}, {"c": "daytrip", "n": "Szentendre", "zh": "40 min · HÉV H5 from Batthyány tér", "lat": 47.6675593, "lng": 19.076259, "m": "4.8★ · half a day · YOUR CITY TRAVELCARD STOPS AT THE BOUNDARY — buy the supplement", "d": "A Baroque riverside town of ochre and pink houses, settled by Serbian refugees in the 17th century and colonised by painters in the 20th. Galleries, craft workshops, Orthodox churches and a marzipan museum that is exactly as odd as it sounds. Two hours covers the centre; walk the Danube promenade for the views back toward the hills. Busiest at weekends, so go on a weekday.", "g": "https://maps.google.com/?cid=16802574755336100975", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAL_mGpxYB9PmwGsEDLb78rSWF9dnLdOfi0fPqdyVIBODmoXUsHrwpFy-8-QdVtFFqdj9ZwI2FGBA9736x-HQ0w79fpjPOBu0I1_K4JUZ8pKqt2xNxw89YRmLciEwIPAcjPyqsh-xJeYP4_hg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAdAQQasJ6HNckiF1NV-AIwt9phJ415apwtF6NtOrPLgcxB2l11EpOKEAZLSAA8adGCTqlVAnevYVu2S3Eb6jsAwMytgUUBcBdHvvf6Ne-J34uSeca6FM5Jyrvi6TdvrTrPSOz_LY9tJM67fg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDoqyafOY6GtprWgyZ_FApfh04YgTGXvPRYwNgngtymQmXRBZjCiI1U4_WHIqSKZTJGFWJxXZUYSNHHY1w2p2tsZirE0TLkR3VHYyL_ZEbKhGeZLjyrq6Djq7BkGTsiWlXJGql5yROGxYFJ=s4800-w800-h600"], "a": ["Mirosław Ciesielczyk", "Feco M.", "DAMIENCKC"]}, {"c": "daytrip", "n": "Visegrád Citadel", "zh": "~1h · bus from Újpest-Városkapu", "lat": 47.7937484, "lng": 18.9804442, "m": "4.6★ · 9am–6pm daily · NO DIRECT TRAIN · steep climb or a taxi up · NO EU DISCOUNTS for non-EU", "d": "A 13th-century hilltop fortress above the sharpest bend in the Danube, with what is probably the best river view in Hungary. The exhibition inside is modest — you come for the walls and the panorama. It is a genuine uphill hike through forest from the village, or about €15 in a taxi shared between up to eight people. Combine with Szentendre for one long day, or take the summer Danube boat one way.", "g": "https://maps.google.com/?cid=8179319733154523512", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDyAlQwNvkN2tYRyvl-HhN2fEtqBs1CRMNAP_GZUWrAQoTo-zHemN1zlIQLvhQK_RU4QvB4UZbPp2dz0V8cc_mer8shUdENHs0JDp_InH38nTyWPPpWIhRqoyABMdHeusN6ihY584BGM7xWkYE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCBTnk8GYl5-AqzYgsdtmHjWyVMnxGHANHfkitvi7jB0c__J_HXbfk_snSP3s634U6i8MRYlSKTIqEZxH6MAwdusPwkqp24_G7ezNutY-dMBqB627cuA_FBlzpt2Q4A9m_WHoLAWftvF6E2_w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBqFC3_HfmXUQPhK8_G5FtWVOSXeCdr5ICmaiOEbJJ48owZG6kM676GGzYa3VfimD_vSNsykbSnp-dEyKFa-_3RVxo4sUijwV3KCyYO0o5HbqnVAihbfwEGDbConGhxiuBOpZBVX7U-RNxBYA=s4800-w800-h600"], "a": ["Zsolt Horváth", "an ching chung", "Balázs Máté"]}, {"c": "daytrip", "n": "Esztergom Basilica", "zh": "1h15 by train from Nyugati · ~1,100 Ft", "lat": 47.7990667, "lng": 18.7365247, "m": "4.7★ · 8am–7pm · CHURCH ENTRY FREE · dome, crypt and treasury ticketed separately", "d": "The largest church in Hungary, on the hill where Stephen was crowned in 1000 and the seat of the Hungarian Catholic church. Entry to the nave is free; pay for the cupola climb, which is 400 steps to a view over the Danube and into Slovakia. The Mária Valéria bridge crosses to Štúrovo — walk over for lunch and back, no passport check inside Schengen. About 25 trains a day from Nyugati.", "g": "https://maps.google.com/?cid=17286173913086321449", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCvyb8qZPjIbgIo2_0ISvdPXd8FwXH5rkRxrwtVmUIhwCGTvbprZLLOGTVyDHW6VsE5-LJNkpR7EohOSkvoZnfMOJlLMYhoDx0CFqPOeqYKpdOD8Rmq55omHnZ3_xmvAQtAC_l6ZLfGvObu0_c=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAmwbZGzcNHkxOvqiBNPb6rRGwIZUTjORdQiFv4OiiVN73giMqLUZ1cu4QCfrwpBufjqSmP1TBvfs41eYxAOHm85zaZkrsrZSGRekciOSZ8GidqWQc4dmqFouvD_z6KxQPaSXGRUOKR1bb2o5g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAW2XK4tUPCg9PtafC4MHPWacBSko1GNewTRodK0pzY7s4hXIlq5ksn09cMAzrlUQxu_Q6Cm4cdCxDB4_51r_qvzGtQRxl1nJFo74b04plffhTGXUSPh387_EQGlBdorTezvjlu9lUiKF1v6Xqd81m1vg=s4800-w800-h600"], "a": ["Esztergomi Bazilika", "Šimon Kvapil", "Judit Ambrus"]}, {"c": "daytrip", "n": "Gödöllő Royal Palace", "zh": "45 min · HÉV H8 from Örs vezér tere", "lat": 47.5960091, "lng": 19.347578, "m": "4.6★ · 10am–6pm daily · captions in 4 languages · the park is the other half of the visit", "d": "The Grassalkovich palace, built 1735–69 and later the Hungarian home of Empress Elisabeth — Sisi — who preferred it to Vienna and was, unusually for a Habsburg, popular here. Baroque and Rococo rooms, her personal keepsakes, and a large park behind. The easiest half-day out of Budapest: HÉV from Örs vezér tere, get off at Szabadság tér, walk five minutes. Hungarian teacher cards aren't accepted; foreign student cards sometimes are.", "g": "https://maps.google.com/?cid=4094408566720241632", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBYRYmOddrMErEafDnmOaLI7PoK5WwR4VrT6pupzb-5CXulWRxqDpxYKxqQecIArgPGHlL9Xg67sP0Xy2kaZqxP692LZhAR6NstOIEfsnfzJs20D6RWP445jEgoMFsRoos-MT7RGmLKwrpDOio=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBrY1DzEdYkzZHk57S8QzVhS7SH7w87XomXYmDOZV7wI-6BbehQgliGliTYokuOkrOCTDN4xX1IqpNeBDEP9FqpqPNcrAr8CR0EXh43nO5-hBy8zzNqEtkR-FdRti-aMe0V_GcTGoOz3e1F=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCoYFBeuh3Z28tOBaSgolOLh9dcu97ckRrtaYQ4a2Z_lC8HHDPRjx71gDnIUCqKdtjRMtZcxHkHbMYjuTkDcjU-h_X9KtuU3vFckUoydpibQ9HZddLITDoNRbkpIXdxNfKIV_53y-MSFUstiQ=s4800-w800-h600"], "a": ["Gödöllői Királyi Kastély", "Lóránt Orbán", "Ito Imaji"]}, {"c": "daytrip", "n": "Eger Castle", "zh": "~2h by train or bus · worth an overnight", "lat": 47.9045098, "lng": 20.3799052, "m": "4.5★ · 9am–6pm · cheap EVENING TICKET for the grounds only · check for construction in the main square", "d": "The castle where 2,000 defenders held off an Ottoman army in 1552 — the founding story of Hungarian stubbornness, taught to every schoolchild. Casemates, a decent museum and a view over a Baroque town of pastel churches. The other reason to come is 20 minutes' walk away: the Valley of the Beautiful Women, where dozens of cellars cut into the hillside sell Egri Bikavér — Bull's Blood — by the glass for small change. Stay the night; the train back is long.", "g": "https://maps.google.com/?cid=10286125429106956104", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDGe4inSDFy8DSgXqbaVAPnWDidDBycF6vRZcLissKVJX4LgFNNWbDS8_Nf-ETlamlGyjH_Ik6ZUIC-lcjUiD3b2CskxWNI9kqjaHFXYJSmBWOI-qPs2c2uyR5Ed8_NHPbiX8GnqBEw3j3AitM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB6oOdxtfKFhG8DW3XtAovsDFawNR-DjdaibTmW_zpX3_Styiz_APFZf6DFa_J1BQ4zGzMA6UZyi5AoCHVuSa-HrVeaJSPL5s6HRO7S9Bu1mNMO18DAvj4he0k8T1Rg3mInc3-A-8XTuek9pg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDESrrHUilPEu7W0ifbzBKKcSZyDFTNT0UC2VAktwoFMoge2hDKEtvFyHlFPGTUo91FNIzFE6ujGPKm8sUHZCw4eGtXRHWRS_6eMFtA1SuFDLv7nb6pVgymN07q5E-BaxIP3X_PTVlZHJLk2A=s4800-w800-h600"], "a": ["Egri Vár", "Gábor Édes", "L V"]}, {"c": "stay", "n": "Újlipótváros (District XIII)", "zh": "the pick for two weeks or more", "lat": 47.5155, "lng": 19.051, "nophoto": "district, not a business", "m": "Leafy, residential, 15 min walk to Parliament · trams 4/6 on the körút · Margaret Island next door", "d": "Tree-lined streets of Bauhaus apartment blocks just north of the centre, with neighbourhood bistros, a real market, and none of the late-night noise. Cheaper than District V, close enough to walk everywhere, and bordering Margaret Island — which matters when you're here long enough to want a running route. This is where to base a stay of a week or more.", "g": "https://maps.google.com/?q=Ujlipotvaros+Budapest"}, {"c": "stay", "n": "Lipótváros & Belváros (District V)", "zh": "most central, flattest, priciest", "lat": 47.5, "lng": 19.052, "nophoto": "district, not a business", "m": "Parliament, Basilica and the river within 20 min on foot · best for a short first visit", "d": "The government-and-banking core plus the old inner city: flat, walkable, and within twenty minutes of almost everything on this map. You pay a clear premium and eat surrounded by other visitors — the local advice is to sleep here and eat one district over. Bus 100E from the airport terminates at Deák Ferenc tér, in the middle of it.", "g": "https://maps.google.com/?q=Lipotvaros+Budapest"}, {"c": "stay", "n": "Erzsébetváros / Jewish Quarter (VII)", "zh": "liveliest — and loudest", "lat": 47.4975, "lng": 19.0625, "nophoto": "district, not a business", "m": "Ruin bars, street food and synagogues · NOISE UNTIL 4AM near Kazinczy utca · pick your street", "d": "The most interesting square kilometre in the city and the hardest to sleep in. If you want to be in it, book a courtyard-facing room and stay two or three blocks off Kazinczy and Gozsdu, which is where the noise concentrates. Note that new short-term rentals are banned in neighbouring District VI from January 2026, which has pushed both demand and prices into the Seventh. Avoid the blocks immediately around Keleti and Nyugati stations, and skip outer District VIII entirely.", "g": "https://maps.google.com/?q=Erzsebetvaros+Budapest"}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+(pl.must?' must':'')+'" style="background:'
+         +CATS[pl.c].color+'">'+glyph(pl.c)+(pl.must?'<i class="star-badge"></i>':'')+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true,
+    zIndexOffset: pl.must?1000:0});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galPrev.style.visibility = pics.length>1?'':'hidden';
+  galNext.style.visibility = pics.length>1?'':'hidden';
+  galPrev.disabled=true; galNext.disabled=pics.length<2;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+  const multi=imgs.length>1;
+  galPrev.style.visibility = multi?'':'hidden';
+  galNext.style.visibility = multi?'':'hidden';
+  galPrev.disabled = i<=0;
+  galNext.disabled = i>=imgs.length-1;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+/* arrows, for mice and keyboards; touch users just swipe */
+const galPrev=document.getElementById('galPrev'), galNext=document.getElementById('galNext');
+function galScroll(dir){
+  const w=galTrack.clientWidth||1;
+  const i=Math.round(galTrack.scrollLeft/w)+dir;
+  const n=galTrack.querySelectorAll('img').length;
+  galTrack.scrollTo({left: Math.max(0,Math.min(n-1,i))*w, behavior:'smooth'});
+}
+galPrev.onclick=e=>{e.stopPropagation();galScroll(-1);};
+galNext.onclick=e=>{e.stopPropagation();galScroll(1);};
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng+"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  panToPlace(pl);
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+/* Wide screens show the card as a left-hand panel, so the gesture axis and the
+   map centring both have to change. Keep this threshold in sync with the CSS. */
+const SIDE_MIN_WIDTH = 720;
+function sideMode(){ return window.innerWidth >= SIDE_MIN_WIDTH; }
+
+function panToPlace(pl){
+  const ll = L.latLng(pl.wlat, pl.wlng);
+  if(!sideMode()){ map.panTo(ll,{animate:true}); return; }
+  // shift the centre left by half the panel so the pin sits in the visible half
+  const panelW = (document.querySelector('.sheet')||{}).offsetWidth || 390;
+  const pt = map.project(ll, map.getZoom()).subtract([panelW/2, 0]);
+  map.panTo(map.unproject(pt, map.getZoom()), {animate:true});
+}
+
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the card down to dismiss ----
+   Touch: drag anywhere in the card, but only when it is scrolled to the top, so
+   reading a long card still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    // In side mode the dismiss axis IS the gallery axis, so the gallery wins
+    // any gesture that starts on a photo.
+    if(sideMode() && e.target.closest && e.target.closest('.gal')) return;
+    // Vertical scroll only conflicts with the bottom sheet.
+    if(!sideMode() && sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'go':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  const side=sideMode();
+  // side panel slides out to the LEFT; bottom sheet slides DOWN
+  const along = side ? -dx : dy;      // movement toward dismissal
+  const across = side ? dy : dx;      // movement that belongs to the gallery
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(along)>Math.abs(across) ? 'go' : 'other';
+    if(drag.axis==='other'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(along<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=along;
+  sheet.classList.add('dragging');
+  sheet.style.transform = side ? 'translateX(-'+along+'px)' : 'translateY('+along+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();   // distance OR flick
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='go' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  const ab=document.getElementById('about');
+  if(ab && ab.classList.contains('open')) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- city overview ---------- */
+const about=document.getElementById('about'), aboutBtn=document.getElementById('aboutBtn');
+function esc(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function rich(x){ // allow **bold** only
+  return esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+}
+function renderAbout(){
+  if(!CITY || !Object.keys(CITY).length){ aboutBtn.style.display='none'; return; }
+  document.getElementById('abTitle').textContent = CITY.name||'';
+  document.getElementById('abTagline').textContent = CITY.tagline||'';
+
+  const st=document.getElementById('abStats');
+  st.innerHTML=(CITY.stats||[]).map(s=>
+    '<div class="stat"><div class="k">'+esc(s[0])+'</div><div class="v">'+esc(s[1])+'</div></div>'
+  ).join('');
+  st.style.display=(CITY.stats||[]).length?'grid':'none';
+
+  document.getElementById('abSections').innerHTML=(CITY.sections||[]).map(s=>
+    '<h3>'+esc(s[0])+'</h3>'+String(s[1]).split('\n\n').map(par=>'<p>'+rich(par)+'</p>').join('')
+  ).join('');
+
+  const musts=CITY.musts||[];
+  document.getElementById('abMusts').innerHTML = musts.length
+    ? '<h3>Must see, do &amp; try</h3><ul class="musts">'
+      + musts.map(m=>'<li>'+rich(m)+'</li>').join('') + '</ul>'
+    : '';
+
+  const near=CITY.nearby||[];
+  document.getElementById('abNearby').innerHTML = near.length
+    ? '<h3>Nearby</h3><ul class="nearby">'
+      + near.map(n=>'<li>'+rich(n)+'</li>').join('') + '</ul>'
+    : '';
+
+  document.getElementById('abFoot').textContent = CITY.foot||'';
+}
+renderAbout();
+function toggleAbout(open){
+  about.classList.toggle('open',open);
+  about.setAttribute('aria-hidden',open?'false':'true');
+  aboutBtn.classList.toggle('active',open);
+  if(open) about.scrollTop=0;
+}
+aboutBtn.onclick=()=>toggleAbout(!about.classList.contains('open'));
+document.getElementById('aboutClose').onclick=()=>toggleAbout(false);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') toggleAbout(false); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+let wasSide=sideMode();
+window.addEventListener('resize',()=>{
+  const now=sideMode();
+  if(now!==wasSide){ wasSide=now; if(selected) panToPlace(selected); }
+});
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!-- city-guide-maps template v7 capabilities: swipe-dismiss,drag-handlers,click-away,escape-key,gallery,side-panel,must-see,overview,filters,fullscreen,geolocation -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Kraków — Where to Go, Eat & Drink</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{position:relative;width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .pin.must{border-color:#F2C14E;border-width:3px;
+    box-shadow:0 0 0 1.5px rgba(120,80,0,.55),0 2px 7px rgba(0,0,0,.45)}
+  .star-badge{position:absolute;top:-5px;right:-5px;width:12px;height:12px;
+    background:#F2C14E;border-radius:50%;border:1.5px solid #fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+    width:30px;height:30px;border:none;border-radius:50%;cursor:pointer;
+    background:rgba(0,0,0,.42);color:#fff;display:none;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);transition:background .15s ease}
+  .gal-nav:hover{background:rgba(0,0,0,.65)}
+  .gal-nav:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .gal-nav svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .gal-nav.prev{left:8px} .gal-nav.next{right:8px}
+  .gal-nav[disabled]{opacity:.3;cursor:default}
+  /* only for real pointers — touch users swipe */
+  @media (hover:hover) and (pointer:fine){
+    .gal:hover .gal-nav, .gal-nav:focus-visible{display:flex}
+  }
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  /* when there is no photo the grabber would sit on the text */
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---- city overview sheet ---- */
+  .about{position:absolute;inset:0;z-index:1400;background:var(--paper);
+    overflow-y:auto;transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.32,.72,.35,1);
+    -webkit-overflow-scrolling:touch}
+  .about.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.about{transition:none}}
+  .about-inner{max-width:640px;margin:0 auto;padding:18px 20px calc(40px + env(safe-area-inset-bottom))}
+  .about h2{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:3px}
+  .about .tagline{font-size:14.5px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+  .about-close{position:sticky;top:0;float:right;width:34px;height:34px;border:none;
+    border-radius:50%;background:#eef1f5;color:#5b6472;font-size:16px;cursor:pointer;
+    line-height:1;z-index:2;margin-left:10px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;
+    margin-bottom:20px}
+  .stat{background:#f6f4ef;border-radius:11px;padding:9px 11px}
+  .stat .k{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#8b8577;margin-bottom:2px}
+  .stat .v{font-size:14px;font-weight:700;line-height:1.25}
+  .about h3{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:20px 0 7px}
+  .about p{font-size:14.5px;line-height:1.6;color:#374050;margin-bottom:9px}
+  .musts{list-style:none;margin:2px 0 4px}
+  .musts li{position:relative;padding:7px 0 7px 27px;font-size:14.5px;line-height:1.5;
+    border-bottom:1px solid #f0ece4}
+  .musts li:last-child{border-bottom:none}
+  .musts li::before{content:"";position:absolute;left:5px;top:14px;width:9px;height:9px;
+    border-radius:50%;background:#F2C14E;box-shadow:0 0 0 2px rgba(242,193,78,.28)}
+  .musts b{font-weight:750}
+  .nearby li{padding:7px 0 7px 27px;font-size:14px;line-height:1.5;list-style:none;
+    position:relative;color:#374050}
+  .nearby li::before{content:"";position:absolute;left:6px;top:15px;width:7px;height:7px;
+    border-radius:50%;background:#9E9D24}
+  .about .foot{font-size:11.5px;color:#95a0ae;margin-top:22px;line-height:1.5;
+    border-top:1px solid var(--line);padding-top:13px}
+  /* ---- wide / landscape: the card becomes a left-hand panel ----
+     A full-width bottom sheet letterboxes photos badly once the window is wide. */
+  @media (min-width:720px){
+    .sheet{left:0;right:auto;top:0;bottom:0;width:390px;max-height:none;height:100%;
+      border-radius:0 20px 20px 0;box-shadow:8px 0 30px rgba(16,24,40,.22);
+      transform:translateX(-105%)}
+    .sheet.open{transform:translateX(0)}
+    .gal, .gal-track img{border-radius:0 20px 0 0}
+    .gal-track img{height:auto;aspect-ratio:3/2}
+    .grabber{top:0;bottom:0;left:auto;right:0;margin-left:0;width:24px;height:100%;
+      flex-direction:column}
+    .grabber::after{width:4px;height:38px}
+    .sheet:has(.gal.none) .sheet-body{padding-top:16px}
+    .sheet-body{padding-right:26px}
+    /* keep the filter panel clear of the card */
+    .panel{left:auto;right:70px}
+    .about-inner{padding-left:26px}
+  }
+  @media (min-width:720px) and (max-height:520px){
+    /* phone held sideways: shorter, so trim the photo further */
+    .gal-track img{aspect-ratio:2/1}
+  }
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Kraków — Where to Go, Eat & Drink</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="aboutBtn" title="About this city" aria-label="About this city">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Pin shapes: circles are sights, rounded squares are food, diamonds are bars. Colour bands food by price, not cuisine. FREE DAYS DIFFER BY MUSEUM: National Museum branches (Czartoryski, Sukiennice) are free Tuesdays and shut Mondays; Museum of Kraków branches vary — Schindler's is free Monday, Rynek Underground Tuesday, Old Synagogue Monday, Eagle Pharmacy Wednesday. Anyone aged 7–26 with a student card pays 1zł at National Museum branches. Kraków uses the złoty, not the euro. Cash still matters: markets, milk bars and the sausage van are cash-only or cash-preferred. SCAM WARNING: on Szewska and Floriańska, being invited to a club by friendly strangers ends in a bill many times what you expected. Walk away. Dropped from this map: the Tytano / Dolne Młyny nightlife complex, which older guides still list — it closed in 2020 and is a building site until 2026–27.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <button class="gal-nav prev" id="galPrev" aria-label="Previous photo">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="gal-nav next" id="galNext" aria-label="Next photo">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="about" id="about" role="dialog" aria-label="About this city" aria-hidden="true">
+  <div class="about-inner">
+    <button class="about-close" id="aboutClose" aria-label="Close">✕</button>
+    <h2 id="abTitle"></h2>
+    <p class="tagline" id="abTagline"></p>
+    <div class="stats" id="abStats"></div>
+    <div id="abSections"></div>
+    <div id="abMusts"></div>
+    <div id="abNearby"></div>
+    <p class="foot" id="abFoot"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"heritage": {"label": "Landmarks & squares", "color": "#5D4037", "icon": "landmark"}, "church": {"label": "Churches & synagogues", "color": "#6A1B9A", "icon": "church"}, "museum": {"label": "Museums & memory", "color": "#1565C0", "icon": "palette"}, "view": {"label": "Mounds & viewpoints", "color": "#2E7D32", "icon": "mountain"}, "cheap": {"label": "Cheap eats (zł)", "color": "#00ACC1", "icon": "utensils", "shape": "food"}, "mid": {"label": "Mid-range (zł zł)", "color": "#F9A825", "icon": "utensils", "shape": "food"}, "splurge": {"label": "Splurge (zł zł zł)", "color": "#C2185B", "icon": "utensils-crossed", "shape": "food"}, "sweet": {"label": "Bread, cake & ice cream", "color": "#EF6C00", "icon": "wheat", "shape": "food"}, "market": {"label": "Markets", "color": "#795548", "icon": "shopping-basket", "shape": "food"}, "coffee": {"label": "Coffee", "color": "#6D4C41", "icon": "coffee", "shape": "food"}, "beer": {"label": "Bars & beer", "color": "#37474F", "icon": "beer", "shape": "drink"}, "stay": {"label": "Where to stay", "color": "#8E24AA", "icon": "bed"}};
+const ICONS = {"bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "beer": "<path d=\"M17 11h1a3 3 0 0 1 0 6h-1\"/> <path d=\"M9 12v6\"/> <path d=\"M13 12v6\"/> <path d=\"M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 0 1 0-5c.78 0 1.57.5 2.5.5S9.44 2 11 2s2 1.5 3 1.5 1.72-.5 2.5-.5a2.5 2.5 0 0 1 0 5c-.78 0-1.5-.5-2.5-.5Z\"/> <path d=\"M5 8v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8\"/>", "church": "<path d=\"M10 9h4\"/> <path d=\"M12 7v5\"/> <path d=\"M14 21v-3a2 2 0 0 0-4 0v3\"/> <path d=\"m18 9 3.52 2.147a1 1 0 0 1 .48.854V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6.999a1 1 0 0 1 .48-.854L6 9\"/> <path d=\"M6 21V7a1 1 0 0 1 .376-.782l5-3.999a1 1 0 0 1 1.249.001l5 4A1 1 0 0 1 18 7v14\"/>", "coffee": "<path d=\"M10 2v2\"/> <path d=\"M14 2v2\"/> <path d=\"M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1\"/> <path d=\"M6 2v2\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "mountain": "<path d=\"m8 3 4 8 5-5 5 15H2L8 3z\"/>", "palette": "<path d=\"M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z\"/> <circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>", "shopping-basket": "<path d=\"m15 11-1 9\"/> <path d=\"m19 11-4-7\"/> <path d=\"M2 11h20\"/> <path d=\"m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6l1.7-7.4\"/> <path d=\"M4.5 15.5h15\"/> <path d=\"m5 11 4-7\"/> <path d=\"m9 11 1 9\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "utensils-crossed": "<path d=\"m16 2-2.3 2.3a3 3 0 0 0 0 4.2l1.8 1.8a3 3 0 0 0 4.2 0L22 8\"/> <path d=\"M15 15 3.3 3.3a4.2 4.2 0 0 0 0 6l7.3 7.3c.7.7 2 .7 2.8 0L15 15Zm0 0 7 7\"/> <path d=\"m2.1 21.8 6.4-6.3\"/> <path d=\"m19 5-7 7\"/>", "wheat": "<path d=\"M2 22 16 8\"/> <path d=\"M3.47 12.53 5 11l1.53 1.53a3.5 3.5 0 0 1 0 4.94L5 19l-1.53-1.53a3.5 3.5 0 0 1 0-4.94Z\"/> <path d=\"M7.47 8.53 9 7l1.53 1.53a3.5 3.5 0 0 1 0 4.94L9 15l-1.53-1.53a3.5 3.5 0 0 1 0-4.94Z\"/> <path d=\"M11.47 4.53 13 3l1.53 1.53a3.5 3.5 0 0 1 0 4.94L13 11l-1.53-1.53a3.5 3.5 0 0 1 0-4.94Z\"/> <path d=\"M20 2h2v2a4 4 0 0 1-4 4h-2V6a4 4 0 0 1 4-4Z\"/> <path d=\"M11.47 17.47 13 19l-1.53 1.53a3.5 3.5 0 0 1-4.94 0L5 19l1.53-1.53a3.5 3.5 0 0 1 4.94 0Z\"/> <path d=\"M15.47 13.47 17 15l-1.53 1.53a3.5 3.5 0 0 1-4.94 0L9 15l1.53-1.53a3.5 3.5 0 0 1 4.94 0Z\"/> <path d=\"M19.47 9.47 21 11l-1.53 1.53a3.5 3.5 0 0 1-4.94 0L13 11l1.53-1.53a3.5 3.5 0 0 1 4.94 0Z\"/>"};
+const CITY  = {"name": "Kraków", "tagline": "Poland's royal capital for five centuries, and the one big Polish city the war left standing. A UNESCO Old Town, a Jewish quarter that came back from nothing, and the best-value eating in Central Europe.", "stats": [["Population", "~800,000 (metro ~1.4m)"], ["Founded", "10th century; capital 1038–1596"], ["Students", "~130,000 across 20+ institutions"], ["Language", "Polish; English widely spoken in the centre"], ["Money", "Polish złoty (zł/PLN) — NOT the euro"], ["From the airport", "18 min by train to Kraków Główny, ~17zł"], ["Warsaw", "2h20 by express train"], ["Auschwitz-Birkenau", "1h30 by bus or car"], ["Budget/day", "~180zł thrifty, ~450zł comfortable"], ["How long", "3 days for the city, 4–5 with day trips"], ["Best months", "May–June and September; December for the market"], ["Watch out for", "winter smog, and drinks scams on Szewska/Floriańska"]], "sections": [["History in five minutes", "Kraków is intact because of two accidents. The first was in 1241: the Mongols burned the town, and the rebuild in 1257 imposed the grid and the enormous market square that still define it. The second was 1596, when the capital moved to Warsaw. Kraków stopped being important, stopped growing, and therefore stopped demolishing itself — while Warsaw modernised, was flattened in 1944 and rebuilt from photographs.\n\nUnder the Austrians in the 19th century it became the safest place to be Polish, since Vienna permitted a Polish-language university and Polish newspapers when Russia and Prussia did not. That is why the city carries so much national symbolism: the mounds, the royal crypts, the Kościuszko cult.\n\nThe Germans occupied it in September 1939 and made it the capital of the General Government, with Hans Frank governing from Wawel. They did not level the city — but they murdered its Jewish quarter of roughly 60,000 people, arrested the entire university faculty, and left Kraków standing and hollow. Afterwards the communists built Nowa Huta, a steel town for 100,000 workers, on the eastern edge, explicitly to dilute a place they considered dangerously bourgeois. The steelworkers went on to become one of Solidarity's strongholds."], ["Culture and society", "This is a university city first — around 130,000 students, and the Jagiellonian is 660 years old. It shows in how cheaply you can drink and how many bars are hidden up staircases and down cellars.\n\nIt is also the most Catholic of Poland's big cities, and the John Paul II connection is inescapable: he was archbishop here before 1978, and half the churches have a plaque about it. Kazimierz's revival is the other defining story — derelict and dangerous into the 1990s, brought back partly by *Schindler's List* being filmed there in 1993, now the city's best neighbourhood and openly wrestling with the difference between remembrance and theme-parking."], ["Economy, then and now", "Salt and the Vistula trade made medieval Kraków rich; the Wieliczka mine 14km away was one of Europe's great money-spinners for 700 years. Communism added steel at Nowa Huta. Today it is tourism and software — Kraków is Poland's largest tech-services hub, with Google, IBM, Motorola and hundreds of smaller shops employing tens of thousands, which is why the coffee is unexpectedly good and the rents are climbing."], ["Iconic food & drink", "**Obwarzanek krakowski** — a plaited, boiled-then-baked bread ring with EU protected status, legal to make only here. About 170 carts, roughly 5zł. Best warm, which mostly means not from a cart.\n\n**Zapiekanka** — a half-baguette baked with mushrooms and cheese, invented as 1970s convenience food and perfected at the round kiosk on Plac Nowy. 15–26zł, best after midnight.\n\n**Maczanka krakowska** — slow-roast pork in its own gravy in a soft roll, historically the cart-drivers' lunch, now revived by food trucks.\n\n**Pierogi** — ruskie (potato and curd), meat, cabbage-and-mushroom, or sweet with fruit in summer. A plate is 20–30zł in a milk bar.\n\n**Żurek** — sour rye soup with sausage and half a boiled egg, sometimes in a bread bowl. **Oscypek** — smoked sheep's cheese from the Tatras, grilled with cranberry, sold at markets. **Kremówka** — vanilla custard between puff pastry, permanently associated with John Paul II.\n\nTo drink: Polish craft beer is excellent and cheap (16–25zł a pint), and vodka is drunk cold and neat alongside food rather than mixed. Kraków also has a real specialty-coffee scene, clustered in Kazimierz and running back to Karma opening in 2009 — look for a visible roaster, a scale on the espresso bar, and filter methods on the menu."], ["Unique to Kraków", "**The hejnał.** A trumpet call from St Mary's tower every hour of every day, played to four compass points and cut off mid-note. The players are firefighters. The noon one goes out live on national radio.\n\n**The mounds.** Four artificial hills of piled earth — two prehistoric and unexplained, two built in the 19th and 20th centuries as national monuments. No other European city has anything like them, and they are the best free views you'll get.\n\n**Milk bars.** Subsidised communist-era canteens, mostly extinct elsewhere, still operating here on the condition that they stay cheap.\n\n**Kazimierz.** Not a museum quarter but a working neighbourhood layered over an emptied one — seven synagogues, a Renaissance cemetery, and the city's best restaurants at street level in between."]], "musts": ["**Rynek Główny at the top of the hour** — hear the hejnał, then walk two streets off the square to eat. FREE", "**St Mary's Basilica** — the Veit Stoss altarpiece, opened at noon. ~20zł, closed Sunday mornings", "**Wawel Royal Castle** — courtyards and terrace FREE; pick one paid route, ideally the Crown Treasury & Armoury (~43–57zł each, timed)", "**Czartoryski Museum** — Leonardo's *Lady with an Ermine*, close enough to see the brushwork. 65zł, free Tuesdays, 1zł if you are 7–26 with a student card", "**Schindler's Factory** — the occupation exhibition, not a film set. 60zł, free Mondays, BOOK WEEKS AHEAD", "**A milk bar lunch** — pod Temidą on Grodzka for ease, Górnik for the real thing. Under 25zł", "**Maczanka at Andrus** — the pork roll almost no guide mentions. ~30zł", "**Sausages from the blue Nysa** — ~20zł, cash only, closed Sundays, from 7pm", "**Krakus Mound at sunset** — the whole city, for nothing. FREE"], "nearby": ["**Wieliczka Salt Mine — 30 min by train or bus.** 700 years of mining, 135m down, with chapels carved entirely from salt including a chandeliered cathedral. Guided tour only, ~130zł, booked online. It's genuinely extraordinary and genuinely crowded; take the earliest slot.", "**Auschwitz-Birkenau — 1h30 by bus.** Entry is free but a timed reservation is compulsory and releases three months ahead; the guided tour (~120zł) is worth it and required in peak hours. Allow a full day, budget for the shuttle between the two sites, and expect to be wrecked afterwards.", "**Ojców National Park — 1hr by bus.** Limestone gorges, caves, a clifftop castle and the small Renaissance castle at Pieskowa Skała. Kraków's nearest proper countryside, and the local trout is a regional speciality.", "**Zakopane and the Tatras — 2h by bus.** Poland's mountain resort: wooden architecture, oscypek stalls, and serious hiking or skiing depending on the month. Better as an overnight than a day trip."], "foot": "Museum prices and opening hours here were taken from the official Museum of Kraków and National Museum price lists and from wawel.krakow.pl. Anything written with a ~ is an estimate I could not confirm from an official source — that covers St Mary's nave, the obwarzanek workshop and restaurant dish prices. Wawel sells each route separately and its prices are quoted differently across resellers, so treat 43–57zł as a range, not a quote. Free days and monthly closures change; re-check muzeumkrakowa.pl and mnk.pl before you set out. Sources: Michelin Guide Poland 2026, Museum of Kraków, National Museum in Kraków, Jagiellonian University Museum, GPSmyCity walking tours, Polish-language food, coffee and beer blogs, Wikivoyage, Google Places data."};
+const PLACES = [{"c": "heritage", "n": "Rynek Główny", "zh": "Europe's largest medieval square", "must": true, "lat": 50.0618971, "lng": 19.936756, "m": "4.8★ · FREE · 24h · 200m × 200m", "d": "Laid out in 1257 after the Mongols burned the old town, and never rebuilt since — 40,000㎡ of it. Stand near the Cloth Hall a minute before any hour to catch the trumpet call, then walk out to the edges: the square-front cafés charge roughly double what you pay two streets back on Sławkowska or Św. Tomasza.", "s": "After the Mongol raid of 1241 the town was replanned from scratch on a grid, with the square sized for a trading city rather than the village it had been. The gamble worked: within a century Kraków was on the salt and spice routes and the square was one of the richest in Europe. It has not been re-laid since — you are walking on a 13th-century property speculation.", "sl": "A medieval town-planning gamble that paid off", "g": "https://maps.google.com/?cid=14107513768635600179", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBg8yWw3SEcuWESYgW5pme09asXTogf0RQYQrig2zUpmodcYuzVgJwdpNvKrQZyy33vjM92FOwTJ6hm2qgUGvfPsTfg9rHnmhe3Hcm8tmYvmE_YPXeysb-RoWt8KYX2Z_QI75jKBHon6dL6MQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBjkPwAquZNAwnNCKPv_DGJ_rAtiBTQZEKRVmmHbBYo0xFP6HGRloT5mcA8EN4G7Da1lGY_8MF6t3VeVHENURwE9ZTcegp-T-DtuH8lh3dcUt4XPpIrDRxp3OjuFxs9zhqWDaLHlHf8p2Cdsg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD4VCHE20x1khVqNTSS4PvwSPqen5ZUq7Y3sWr3Zi4u3hHRzqPYIRF2cOAz6yCvV80IS-qGWnnT3pLosIUytkDg-0V7oFbnhV1m8WFCiV88xalH_UUB3uj3WhXCKl4sDo_Kaw4E9HFEZa-h=s4800-w800-h600"], "a": ["Maksymilin Szczepański", "Michał Skarbiński", "Dan John"]}, {"c": "church", "n": "St Mary's Basilica", "zh": "the hourly trumpet call", "must": true, "lat": 50.0616411, "lng": 19.9393903, "m": "4.8★ · ~20zł nave (prayer area FREE) · SUNDAY FROM 2pm ONLY · TOWER: SAME-DAY TICKETS ONLY", "d": "Go for the Veit Stoss altarpiece — twelve years of one man's carving, 13m high, opened at noon each day. Tourist entry is the side door on Plac Mariacki, not the main west front, which is set aside for prayer and is free. The tower climb (239 steps) is entered from the Floriańska side, cannot be booked ahead, and the day's tickets are limited — go first thing.", "s": "The call breaks off mid-note. The story says a bugler warning of a Mongol attack in 1241 took an arrow in the throat — though that version was written by an American novelist in 1928, and the earliest record of the tune is a city pay ledger from 1392. What is true: the trumpeters are serving firefighters, they play to the castle, the square, the Florian Gate and the fire station in turn, and one family held the job for three generations.", "sl": "Why the tune stops halfway through", "g": "https://maps.google.com/?cid=15940242599518715698", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD-H32LmsDFYbMsaf4yRpI7yb1AgztpuFP-W5eQU5Nbjth_9cmKLjFX5XtCQmOwjOh7vcDpuEDKfEzK7Gxh2dxb8bkRp7fohBQVp1TXvCTakAQ4sFCUhSBat1_RJmcSrUIjLld79_cge3gABg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAvxUMrhi5t6YBZmdL9Vkp07JyRQdEvIoinYZ5lZmjKXZeVasI-2aH4C25Aos1RRYhZ6-b_XSOPCDAKaUp1sKTftQylyRspwgwVBhLIA_BcgqwRd9fA-LBdAOPsbiYhL6SAigfMeCaRTxTzvyg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAVCmdDal2u78sztQ_C08Cmlr9RsTj4NltyutHMcsNf7LBmSBC9rmx-jgR2OfUsqD6Kk_Zxx75zQPjNE1DWVtDnrE1q1Ws41rLco84dZ5yPfMkxUW9k3T0JadIhdIt_OXJViAQELNDTjmSbaw=s4800-w800-h600"], "a": ["Michał Skarbiński", "Wacław Laba", "Godwin"]}, {"c": "museum", "n": "Sukiennice Gallery", "zh": "19th-c Polish painting, upstairs", "lat": 50.0617132, "lng": 19.9373488, "m": "4.7★ · 35zł · FREE TUESDAYS · CLOSED MONDAYS · 10am–6pm", "d": "Almost everyone walks the ground-floor amber stalls and leaves. The gallery is up the outside staircase on the north side and is the best half-hour in the square: Matejko's enormous history canvases and Chełmoński's *Four-in-Hand*, paintings that taught Poles what their own country looked like. Anyone aged 7–26 with a student card pays 1zł — the single best deal in Kraków.", "s": "A knife hangs in the passage at the Cloth Hall entrance. The legend attached to it: two brothers built St Mary's towers, the elder killed the younger out of jealousy when the second tower rose higher, then threw himself off the taller one — with that knife. Historians have never explained why the towers are different heights, which is presumably why the story survives.", "sl": "The knife hanging in the passage", "g": "https://maps.google.com/?cid=14996824190985924979", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCGTwRc68-Qwgkoxin_4Agn9gZdyyZ9CDdgDvxMEYJvG7aJ6j5OHlTmMQ__lx-TtI_7YAYlO8iZ5-Na-e_itmuEuatu1wHl_xCSVAoYHwbByFwiRGEHDEQPWBj0m-o-Fd3_1qDGztpowngLJg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAVUHgLZQGmMnefePD8JnulcPt0Amrs0B8wDl3OtBO_2KQcJ2YE_17KD5sY2SI7SiOZKeX1yoe-kaOcMrBZcUKwAzx99mf0vIZLCKq3lFKcoHTQ7hRFBk19nCdrJGD6bqEkzzZpmnGAOvTL0B8=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCdgTohd08t_reRJU-kDf3LOCU6iSeC3-v8an-3o_rG1ZBkv20zSrvkXF_aYTIaunDu_YeWjqW-XXVgdsQatdcx5aihKfNPWAh-G02urWtKiNRtJLalnlyN8n3tXemMnatTmd4-K_vpFIBaEyQ=s4800-w800-h600"], "a": ["Michał Skarbiński", "Vasile Dorin (V451)", "Youngkwon Je"]}, {"c": "museum", "n": "Rynek Underground", "zh": "the medieval town, 4m down", "lat": 50.061934, "lng": 19.93777, "m": "4.4★ · 45zł · FREE TUESDAYS (Tue closes 3pm) · CLOSED 2nd MONDAY of the month", "d": "Four metres beneath the square: 13th-century market foundations, cart ruts, a lead-smelting workshop and a graveyard, presented with holograms and projections. Buy at the ticket desk round the back of the Cloth Hall — the entrance is a different door on the opposite corner, which catches almost everyone out. Free on Tuesdays, but Tuesday closes at 3pm and free tickets are same-day only. Allow 90 minutes.", "g": "https://maps.google.com/?cid=11901569443430393763", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAvHGFAVJKT0L19M71kktahfrIjJWti7Z4ItHeDJD4q98dRvegg6GsSTJ5DZ96yVxT9Iiyh_8s1o1WxVIgk3U9FRBa0EnOv6NqUZ6XT1NJlsi8sjBDrAW5CyhufzFzHzw7VePBW_h5ZWoE01LAM1G2V=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCenEEm2TV6OgVVSMnNTrtltnqtAy-bCAtyE6xZmyia5hrmb8wn4W2kd4MnZeWLfg7hED-RNjW1WLhfIroqiayoD6Dlq092hmnMswv0r5_3tTUFK0tTm6cSmuPEcU5PcetJH7ErfDWp4uNN-JU=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAduSi-7Qo8mJ8nMIRepfVj5IbDoc3on1AGmtgUSRY3wqOMjdjMZ69sBqdCBts7l0rTA4b84qUqLAWqcJBS2dk8QmhQoMtmRNXtju7zdy-B1FLelIMGdVpPKBJC1MZrMM7YxCIfKFZmG6hWqig=s4800-w800-h600"], "a": ["OldRich War", "P P", "Miles"]}, {"c": "museum", "n": "Collegium Maius", "zh": "Copernicus studied here", "lat": 50.0615639, "lng": 19.9339308, "m": "4.7★ · 17zł guided only · COPERNICUS ROOM & AULA CLOSED FOR WORKS · CLOSED SUN · courtyard FREE", "d": "Poland's oldest university building, 1400s. Check before you commit: the Aula and Copernicus Room are shut for renovation, with some of the astronomical instruments moved into the Globe Rooms — those are guided-only, in English at 1pm Tuesday to Friday. The Professors' Garden is also closed indefinitely. The arcaded courtyard stays free, and on odd hours a door opens and carved figures process out to music.", "g": "https://maps.google.com/?cid=8368277763198466291", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCmwMngv9pGvz45rQ6hD8IWEtbZBUb4a55f7Add6tF_Ov4SU-MbfEladSjoUquTMu7xh9XUB9hqwGsyieO5cckHKD2bHHgswUAjXRzSk_JwJgiKfLFqNOCd-qht69V8YcQEzhx3LKpIUBCmsgg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBwc8SyksMo8sJ5oJChs9PxKTdhTJpm8kNXiHEDOKE8XxqAw9i7M5tNgMHMHbxT2gEHMqRu4HDcXKpRGIuQHo8oqBExIKFoJ5uczsUjcO9K2GwcqnrqmAK3RnQqoa3hVinD1-ntUPwt6edt4A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCWinQbSLL_Z8CJZhjR3vv7XQ1LQzvBaZ6y6BXZ8L7_pPz3GkHb1JObi4o5QKI0NRkFlQBMNI1LSkm24Qc4Kq8fB9RPmpb30AA5MgdAn3ZBhlQo-hYELSMMqEy0a1Mj01Qe31zo0XoFzInEeA=s4800-w800-h600"], "a": ["Rafał Winiarski", "Grażyna Rompel", "Photo Explorer"]}, {"c": "museum", "n": "Czartoryski Museum", "zh": "Leonardo's Lady with an Ermine", "must": true, "lat": 50.0646918, "lng": 19.9400993, "m": "4.8★ · 65zł · FREE TUESDAYS (long queues) · CLOSED MON · timed entry, book online", "d": "One of only about fifteen surviving Leonardo paintings, and unusually you can get within a metre of it. The rest is a Polish aristocratic hoard — Rembrandt, Ottoman tents, Egyptian oddments — spread over three linked buildings with a confusing route; take the map at the desk. Free Tuesdays means a 30-minute queue from opening, so pay on another day if your time is tight — unless you are 7–26 with a student card, in which case it is 1zł any day. Tickets are sold for a fixed time slot.", "s": "Hans Frank, the Nazi governor who ran occupied Poland from Wawel Castle, wanted it, and hung it above his desk. Fleeing in 1945 he took twenty paintings to his house in Bavaria, where the Monuments Men found it; it was handed back to a Polish delegation in April 1946. Raphael's Portrait of a Young Man, walled up alongside it in 1939, was not among them. It has never been found, and is generally called the most important painting still missing from the war.", "sl": "One of the three came back. One never did", "g": "https://maps.google.com/?cid=3894300125810232296", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD6_25wUunhAlMOihn17e5f_rnE6OP74rc3BOeOsuBMx_IwrXt3jY4oerAw6RYdn9jtCwV-CP2D5wStq6I5sdfYODnofi1zqXqho1TyxX5b_k3Uq0bcFjR0dLSEvSCP1PkBMUH7qtLYHzz6gTwzdtRs=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDRaypnsCngi5SGBZeizaYM05ttdknmiKk7mDa-84nekwprcY3EDvBlQsMPeiDj3Bh7GDkPGp-g3-nMKnWMYZr5u55n15vmXbHoc8HAwbqmTpHnJbfT5wbW4NCt6-3sCYQS5a5udU25jLQB=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDnXlMq7VIWK2BDZGohrrkJTd5KMswUNgV3WIBrsJybiE7FNgCa6i3vh-rAfbv5l7sFZ246A5KR_RhA4PMo34n5BEIHLoSSHzfgWK5AJcPOkd1sa_y9DHjowt0Um_ZK9aczXY9iXWOMht8f_A=s4800-w800-h600"], "a": ["Antonios Cherouveim", "Włóczykij", "Pavel"]}, {"c": "heritage", "n": "Barbican & Florian Gate", "zh": "the surviving 200m of city wall", "lat": 50.0654718, "lng": 19.9416613, "m": "4.7★ · 22zł inside · CLOSED MON · 10am–4pm only · from outside FREE", "d": "A circular brick gun-fort of 1499 with walls three metres thick, one of only three of its kind left in Europe. Honestly: the interior is a bare courtyard and half an hour is generous, so the outside view is most of the value. What you're really looking at is the last fragment — the rest of the walls were pulled down in the 1820s and replaced by the Planty ring park you're standing in.", "g": "https://maps.google.com/?cid=11940862024594805379", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC9Q5rTsvgFx6qUP5Q_yH6vCl8Fi-JOLEDv4g5hM_HCbzY5QRItwVgVA_uKMOcwlZwQKkqTmoFFCY4UFAG08OEPXzr8ylpzSMVsyvx2ZN_jGaKFuGzjWz50f2lJ1ngA4_sFJ15xGVK04PxbaKE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAb6_5fVM7oHv2TvjAkzqUkgjRmIsLDW25D3MERpPeKKiGNMR4gJ0wdts4Qlb7NB_5YNSCPloScCY-Iac0DKYWp763lpuOOePYSGwIqGB1nRNSq0KiQQtFnDPMWc77z4-MIt6L79zJKaChnbS0EAitHIQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD98_0nnTslpurt9__EJydgcWyf2wPxGqQ9FTuSHKdNV2Y9tlS7_M3o3Tw8wfD9y9koOJlHG_KDpT5MPJOfF7dQMZCcRKsNMXmh_0hrwZ8Lhsb8dbewmFcHzcOxc89xqwKVwwmo058IaLveMLiZ_cBz4A=s4800-w800-h600"], "a": ["Del Herridge", "Stefan Gehring", "kutay erkmen"]}, {"c": "heritage", "n": "Wawel Royal Castle", "zh": "every ticket is separate", "must": true, "lat": 50.0541115, "lng": 19.935423, "m": "4.7★ · courtyards FREE · each exhibition ~43–57zł SEPARATELY · timed tickets released ~1 month ahead", "d": "Coronation seat of Polish kings for five centuries. The trap is ticketing: every route — Castle First Floor, Second Floor, Crown Treasury & Armoury, Castle Underground — is a separate timed ticket at roughly 43–57zł, released about a month ahead and sold złoty-first. Pick one: the Treasury and Armoury, for Szczerbiec, the only surviving piece of the Polish crown jewels, and the winged-hussar plate. Selected exhibitions are free on Mondays but you must collect a free ticket at the office and they run out. The hill, courtyards and river terrace cost nothing.", "g": "https://maps.google.com/?cid=12446225081720350104", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCJkNi5QSIuDiuQjipcHK3pfLeNQtw7TbZEYtEqEp_7nT4Y1aPFzmTo6ceuiPwXKq_WM97HgCTnAKXfi3ZN5pRoAy09rHAsgTlraE_aYaNT-ZKUxOaWG-1Y3KCUg04crF4m0yuVcO5J0KQdqw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBClbqR7YywKuPAKIhNt8S288HsAfoKN5XhNzXQNHn5PupxRas4i_ppnOmK1bGskp5_wgUnRvksETPITNRXcnEvykyxjvBO7e0IITv_zW3nT1EgXXqSKmTV3ZzXKwpWl8jcdf0_c4a72l2QJ58=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCy04RGTnXlbnFrrDbqjmcRCooC93dkMC08vAfbX8UzPHu1SBt2kXBzI1t-lmcrL9Gik421kw44JWbIlmSf68r8YUrtl-QLWeZHIkI5qAFeAju1pxP4ig0Byu5cM4h_tRdvKQrGLcpJnu-e4g=s4800-w800-h600"], "a": ["photographer not named by Google", "photographer not named by Google", "photographer not named by Google"]}, {"c": "church", "n": "Wawel Cathedral", "zh": "the royal crypts and the big bell", "lat": 50.0546371, "lng": 19.9354684, "m": "4.8★ · ~25zł incl. crypts & bell tower · SUNDAY FROM 12:30pm", "d": "Poland's coronation and burial church: kings, Kościuszko, Piłsudski and, since 2010, the Smoleńsk crash victims all lie below. Climb the wooden stairs to the Sigismund Bell — 12 tonnes, cast 1520, rung only about thirty days a year — and touch the clapper, which locals say brings luck in love. Tickets are sold from the house opposite, not at the door.", "g": "https://maps.google.com/?cid=8718087342619719207", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAwdeN1Kh_HTdZSLR0aSpM8fB4lcveDnaefb_0OEFUNjpgglsL8-D0X43SQQ8C-IA3CyGjMMVpzMXZflXFNeCeGAd1cTvWyk2ipZ6dZabjcw1pweDS_FkMwhNlHBpraCL_Dscf-QWqaf-wOXrs=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDmVOfcO8paRjjjIZl7AJdGtJqgJ8yuKev2n8A7Qn7DhnlzHlFURRf3-5Q9PFeMUSklL4rW_jMBYtF8vauUayOpjSLpNrezvIGtokCyBNGAiC9OpzpgkiBBhcsl3Oh1XvNeHpDm8ut7xkyycQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB_r18WVvv7LdrGdTIx93SqDH5-B21BQ4sT1Hydk0pWsaDGZhyn3cGypI3GoNK5W1ElQmOfXpSrDK06WsvvMYC9ZsWszGe0a_-CQuUVYGa-tW2JZNP0ust94_17wpcW3Eznbnw9ooUMeZJw2A=s4800-w800-h600"], "a": ["Michał Skarbiński", "Michał Miłek", "Rafał Antas"]}, {"c": "heritage", "n": "Wawel Dragon", "zh": "it actually breathes fire", "lat": 50.0530183, "lng": 19.9335845, "m": "4.6★ · statue FREE · Dragon's Den cave 15zł · flames roughly every 5 min", "d": "Bronisław Chromy's bronze, moved here in 1972, shoots a real gas flame every few minutes — you can also text the number on the plaque to set it off. It stands at the exit of the Dragon's Den, a limestone cave under the hill: 15zł, one-way, entered from the top of the fortifications and exiting by the river, so do it as you leave the castle. Come at dusk.", "s": "A dragon under the hill demanded cattle, and in the darker tellings young women, until a cobbler's apprentice named Skuba stuffed a sheepskin with sulphur and left it at the cave mouth. The dragon ate it, began burning inside, drank from the Vistula until it burst. The tale was first written down by Bishop Wincenty Kadłubek in the early 1200s — as history, not legend. Kraków's founding myth is a tradesman out-thinking a monster rather than a knight killing one, which locals will tell you explains a lot about the city.", "sl": "Killed by a sheep full of sulphur", "g": "https://maps.google.com/?cid=9914501735572340072", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBuGD1zpV6Md8xGvfOysRIqLpKlU1HY08C5NazhjQHFtJxaPZfMOupsvjVAsNWNA-53ONTB_U-H9zavqHSfbVWU-LXix4Ld-gTRTBCE27nEmJEXpkGednxbC6BFpbXGmDyhgZKauHn5mp1vndm9Ninp_Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCmzEnZw3hx1vGdA6R8_LBQJo-8VUOklU7ypzsP_I3NFPg3XX8AtNFCzJBxO1MtkZDmt3oOWZ36FK1_IAWFQ9_pJBJ-OU2YzOxfWahUoUseFpVEDpPepcyE5IUWE48-qSoaeejD_GIsodVi=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCuvm0igjvb92cGcyoosn6HMP2FjtSL8Gr7vlCGGTXFRTj3eP7C_WxOLZm_JKDNkG_4hQLCn3f1DGQbsXUEaKThJWDCumyeXxTIPmtK0ST-KezopA_VbbVzvx5uTslREfoITgRNSqcMayHj=s4800-w800-h600"], "a": ["Borislav Angelov", "Vladimir Meshkov", "Vidmantas Urbutis"]}, {"c": "church", "n": "Remuh Synagogue & cemetery", "zh": "the Wailing Wall of gravestones", "lat": 50.052678, "lng": 19.94765, "m": "4.2★ · ~20zł · CLOSED SATURDAYS · cash preferred", "d": "Small and quick — two bare rooms, and the reviews that call it overpriced have a point if you expect a grand interior. Come for the cemetery behind it instead: opened 1535, and after the Germans smashed the stones the fragments were cemented into a wall that now runs the length of one side. The rabbi Moses Isserles' grave still collects handwritten notes.", "g": "https://maps.google.com/?cid=5004951228732228112", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCXg7-r-eclKWQT_OsgBEPRP-GAvtWVN-8_KykkbsrKO8EU_4yk4dHabsq3AyduKvnMVleJheepe__qsmuZrQ7MVtqn9S9nKihQ6mXVNZx5B8q4BwPRlp03CDaoKi8uz7OG_KwDnF311lN2-w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB7dm9tRIg5_w_LWkh5rc5XbH_bPOZFVXG91V-jYwbSIffrOB9TdBUUngSZOz-rpXOBHTRYm4Ny6iqC-1gq7SvY7Bv7BrkE_2CsEoAr5Vdz-lr3KWxOKaV6x_xMc7Pgt3URZUBkKyR0Dyv7YA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAGZMCr4EjW6T8AsNdt1xkgSIVAawE9jfAH0IeuuCZRSThmn8jkiygmVmd4cVxZ1gvbzKgm6F5az1sGkkx-67rrE5a8AmoI63plu0IidOV0gu5M7j7la_VKffVHihW8lNIZTBb5acJpYoo2Ze4=s4800-w800-h600"], "a": ["PfadiPaul Hopefor", "Krzysztof K", "Kateryna Melnyk"]}, {"c": "museum", "n": "Old Synagogue", "zh": "Poland's oldest, 15th century", "lat": 50.0514597, "lng": 19.9485937, "m": "4.4★ · 22zł · FREE MONDAYS (Mon closes 3pm) · 9am–5pm", "d": "A fortress-like brick hall from the 1400s, now the Museum of Kraków's Jewish-history branch: three rooms explaining the festivals, the ritual objects and the community that made Kazimierz. Half an hour is enough, and reviews are right that the fabric is mostly reconstruction — the Germans used it as a store and stripped the interior. Best done first, before you walk Szeroka.", "g": "https://maps.google.com/?cid=5623518211080575812", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAUXKafMy89FKwjZIrcVCma3kvhSW8VWp2Db3yokS1r5o85l8KrorlWGb6V_pGS9neP-hDlbah0OarVQ1WJLHmo4klBbprLsHfeAZS_w8Y_6_QGJyOwN1nHdX6Gz7FCsIKIA8shkJtKDhqASjQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD7eAqov8Wp6y4F1_gHi__MSAQMJcVDzyxssTkVcqCmO_IfznX8B0DEMbMgsa_R1ECe6bxvj0waWA5S2tUu8dk6ETHYGMjftEO_cTXYKwDpbbEHAcuXjpZq-Pnzh24tQt0gg6oMQ9nNzRIT=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBx4avCUGRw_pHBIqtHWOZkaaXvfc4NgaSo65Yp1MC-4tZdViU-x9gFC9KYFiqGfL-AmGH8gtjb8XPB2LYQ-R5uEM0UADNUFxWe9y-pEcvYsRNVY8i-Ohtt9Alb-tRRSWdFgHeh_wfOM5D_ros=s4800-w800-h600"], "a": ["Tomek Czapla", "Harry", "Pavel"]}, {"c": "museum", "n": "Schindler's Factory", "zh": "Kraków under occupation, 1939–45", "must": true, "lat": 50.0474296, "lng": 19.9615736, "m": "4.5★ · 60zł · FREE MONDAYS (same-day only, Mon closes 3pm) · CLOSED 1st TUESDAY of the month · BOOK AHEAD", "d": "Not really a Schindler museum — the machines went after the war. It's a walk-through reconstruction of the occupied city: a tram, a barber's shop, a ghetto street, ending at the wall of enamel pots and Schindler's desk. Online tickets open 90 days ahead and sell out; the ticket office only sells for the same day. English guided tours run at 10am, noon and 4pm (90zł). Last entry is 90 minutes before closing.", "g": "https://maps.google.com/?cid=3670197855150446585", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDe1QuNf243KA4YRXa0aukE3mZehuzKy0_DYLmURpTqNSDHu5tAnTYqafdEpjlLVoGwYi7JnIxV3ZK-D3deuXovX6S3nW63ZFWVBMw6WBjgtxJtxxRxL6Z27F0EC1CRRc38-LctdCqN9oyl=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjASSzTTYRvSlgTYG7MJ0fdIBDIBTtbcNeTAfAw9DKJUkCvE9GK6zFmQyurs9geA_3tU0a1P9oFWbg_JTZhX_1mOiqeZZNtptdQqNBUKciglghchQKA38ZAlu5OVyQuQ1nT_oBY-fLaumBcPpUg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBXOKMDLUFRTitTsNgvk3kGCqGef0-rdQTCPumK2I_xyB7g9mrVuR-X3SmsAViSF8CwfmYdTOt8Qn1lH0ngbua9TLx7JF6I8tFATlu627wJe9wnrzhPVVybFsRrLIClUJWi9JdfJE61fR7oEw=s4800-w800-h600"], "a": ["Alexei Tishurov", "Gabriela lulić", "Torben Mauch"]}, {"c": "heritage", "n": "Ghetto Heroes Square", "zh": "the 70 empty chairs", "lat": 50.0466767, "lng": 19.9544482, "m": "FREE · 24h · 70 chairs, installed 2005 · 5 min walk from Schindler's", "d": "Seventy iron and bronze chairs by Piotr Lewicki and Kazimierz Łatak, put up in 2005 across the square where deportations were assembled — thirty-three large ones in the middle, smaller ones out at the tram stops. You will be told each chair stands for a thousand Jews; the architects have never confirmed that and the arithmetic does not work. Some visitors find it thin as a sight — there is nothing to enter. Ten minutes, on the way to or from Schindler's.", "s": "The chairs come from Pankiewicz's account of the liquidation in March 1943. People were told they were being relocated, so they brought furniture — including chairs — to the square, expecting to be rehoused. They were put on trains to Bełżec, Płaszów and Auschwitz instead, and the furniture stayed where it had been set down. The memorial is that emptied square, kept empty.", "sl": "Why chairs, and not a monument", "g": "https://maps.google.com/?cid=3405431942770048144", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCE8_fUQrHVABOiuH7gTCtwL7vJs0zOacccYtoSLOVWdAMeEEWYoCo3YmHPty8u2xXIiTlYUabQqAl0qEQIbihtf2CBfYbxz23jb1U9sEBZBMJ1xZ1oPtW6jctrQHSyFojldrZ_rXMjITGe=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCsSZkJb90d4bGKA6QladCSqXd_LAG9dHv3tr_7F5iAi1_XNpMaNgo-WBTdReAq0l3sp6bNgNIBkg0LDBEn8FdNbDK5QMep90zkUhAx5kac3L4R6xAvXWSoa_9J_h6a2ZEf4V8cUj9A9Xl-rg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBU8AgJ3Y8qv1jnxV3Ogkhd7FyRMcn1G9mWyzsbHNq-Z4B5Qf8zuG9rkEbxRhx83RDwdu-azDv94IcKraYAYEWzw72_6OwKorHEAf24hmm-MiXjL3iiHPLbc_ZXYm-pdaVwIr3Lru7q1yJ8KhQ=s4800-w800-h600"], "a": ["Jus rx`", "Juanan Muñoz de Arenillas", "Katgerl"]}, {"c": "museum", "n": "Eagle Pharmacy", "zh": "Apteka pod Orłem", "lat": 50.0462361, "lng": 19.9542789, "m": "4.5★ · 22zł · FREE WEDNESDAYS · CLOSED MON–TUE · 9am–5pm", "d": "Two rooms on the corner of the square, and the most affecting small museum in the city. Tadeusz Pankiewicz was the only Pole permitted to keep living inside the ghetto, and ran this chemist's as a message drop, a hiding place and a source of hair dye and sedatives. You open the drawers and cabinets yourself to find the testimony. Text-heavy; allow 45 minutes.", "s": "When the ghetto was sealed in March 1941, Pankiewicz's was the only pharmacy inside it and he was the only non-Jewish Pole allowed to remain and keep trading. He bribed the Gestapo from his savings to stay open, hid people during round-ups — one survivor remembered being pushed under his desk — and concealed Torah scrolls that were recovered after the war. He published his account in 1947 and Yad Vashem named him Righteous Among the Nations on 10 February 1983.", "sl": "He bribed the Gestapo to keep the lights on", "g": "https://maps.google.com/?cid=16986334189233221958", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAEV9h_tBP6yKC3IEGYCjRU_hjPkpfApUIAm7JrIRAHDo0gP0Mk4uCeCagHkoCe401QIh067C7b2PbqpuuBfR3Wcj781bUEzvHITRnSNxqpfUkZ2dCw240tjLuOdWQK9cseDHzZgH8q3J70KAw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDsq4la7Yj2hWN3FGbSR6cIldUQrExvzdBnKR6xXBc2omll_ESiZsytTzMX6AHucfSvadfpG_XAD6dZ9MAxv9LSREzyYcV3Wb_bEq6arDZLsB5ceXfjOl4nEosNL1Z-7t6TjB5MfZMX-ysN_cEZuzTbeA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD__FrjKZUqvH49-xwnT0dBC5D5ekOEY19x-29hbqyD2zB2BR4HVQdzFgD4XlGiHBDGrRMjoAjitGJ5QxKCOMwRgBvlMhg5-IxsBJ3MhIF45c05R1m8baCU5M6bzXcOEk87QJc9wSP9YSCO=s4800-w800-h600"], "a": ["Krzysztof K", "Alex S", "לאון נחום"]}, {"c": "museum", "n": "MOCAK", "zh": "contemporary art, next door to Schindler's", "lat": 50.0476242, "lng": 19.9615334, "m": "4.5★ · ~25zł · CLOSED MON · parts closed for works — check first", "d": "Purpose-built in the old factory halls, and the obvious antidote if the Schindler's exhibition has flattened you. Strong on Polish women artists and post-1989 work; the bookshop and café are genuinely good. Recent visitors report renovation limiting how much is open without the website saying so, so check before paying full price.", "g": "https://maps.google.com/?cid=3161161310612925206", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDkiCk_AgJ7bIDUPGEv9zNlOGoW2pBft2jqY25yD0mRxlW1Pg28N13P1Av3yAYmvynbq6hWz2pgPxY-7WOrsEQTUGE5kmUU-b1EoAvi7ngbpM74r5ACssMIpHMzZRMHOXsefn89U9Tf7_tO8Ds=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAzwFI3BDN6y8VSYZQx6cFT7lpfKuk3sMxzEzrOpYCHwT129NuqbnokLPQEvirQHHyFfbCAIpwxksOXNCN2L-11JdGN9tUupYc6eRZNUSKoALJGojkCb1mYfR8Hwt7YNFBD44Em8EG1YYiZTOtvZyVHfg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjADi-dxwATzOo_3Sta7-Sbl54mckV_ojY0SXr57MVisoRwPFCFtio_YHOn1Fry50ANVOh9q8Z23kEDr3bJkqBQCXuyG9gSTHVJzwQk2uFgUHLLgmEd4rZh67yr8TvQxgstzj0qwHJPI_gdrDh4=s4800-w800-h600"], "a": ["MOCAK", "Hardianti Larisa", "Chilly Palmer"]}, {"c": "view", "n": "Krakus Mound", "zh": "best free view in the city", "lat": 50.0380786, "lng": 19.9584364, "m": "FREE · 24h · 10 min uphill from the tram · come for sunset", "d": "A prehistoric earth mound, probably 7th-century, on a hill above Podgórze — nobody knows who built it or why. Five minutes from the Kopiec Krakusa bus stop and a short grassy climb, and you get the entire city, the Vistula and the steelworks chimneys in one sweep. No fence, no ticket, no café. Bring a beer and a jumper; it is windy.", "g": "https://maps.google.com/?cid=8535268205227721883", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjATQto4_vCsGRjlSA4yu6WJfmVgBIsjgVOCHcr_03MCPs8byjfdFLuONiMnY1JyQN1nFRpCeQ-nRNJd0xqzqcXqECKZZZMD3FYUDunB9uB1F2Y3_DAgvH814gsGSj-_aluCxotmqr3tIP9gzZc=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjApJh86WJqKT1UuHFULEKA0EttIMnnkeVsg2hJyBMEk_oUWt92jHJZkTJUVYRY0KVq3Ub5EqlzqFuy-5hUISVjPTaPeH8yON2N8QYXJcr8kfUL7olBFQ782TRcdVmRmxnLzc-pogidyAunq-d0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCS6hJFt8OknLOr1omsqdgVcPU1T_dB5isx9T70wcnks5HvFInbPY6F6v9OVG-Kkg9rqWmsY0gapZtXXULqkpR03_8mXmS7uWaC5IJFHNw9oZR61UlWXJJo4lxSLJIiARD4i9KAA_eHqv2U0A=s4800-w800-h600"], "a": ["Krzysztof Grabski", "Maciej Warcholak", "Mateusz Soćko"]}, {"c": "view", "n": "Kościuszko Mound", "zh": "a mound inside an Austrian fort", "lat": 50.0549029, "lng": 19.8932496, "m": "4.7★ · ~34zł incl. museum & fort · 9am–7pm · 1hr walk or bus 100/101", "d": "A 34m cone of earth raised by public subscription in 1820 to a general who fought in both the Polish and American revolutions — Poles carried soil here from his battlefields, including some from Saratoga. The Austrians later built a brick fortress around it. Ticket covers the museum, the ramparts and the climb; the view west over the river valley beats the city-centre towers.", "g": "https://maps.google.com/?cid=7424255749708340275", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB9G-eR7jSFt0p4JYg69d2rgcxMI8ZaLShLGQ_b09F5rX7LRClk3W5g4qDIVTlgOhFUUCciND56t_CZvnScYrKmkSx3zx41ycObeSVQ1kWaQvstfT-saCRIHvOiYpjwBpNT17yK0VJahUhb2g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBtL-ryeBlEWwy7NKW7JE6OlwVacAaQ1zAwgwapQiRi39g_v05wblpXxldClpObv-RTfn0JEblYmhkyU7JvhSFN2MfDQKKqBQwexJrC_5dAULUxkxHptsrvlu0TAT0h2j66fcDQj4kwCoD99g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAWUy9jEskATv3qLySjBLgdy4-T0crnmFCPFrsedGfYLwaEudFDY270oa4hD5ydlE2e254qI3bsHzLbywBqdE9uWC82zS-WwI7zoZZmr8uDV2ss-rJnohgXC6sU_ZHkmFt_IGiqjZBZzjLhwzk=s4800-w800-h600"], "a": ["Kopiec Kościuszki", "Klub Podróżników Śródziemie", "Šimon Kvapil"]}, {"c": "cheap", "n": "Bar Mleczny pod Temidą", "zh": "zł · the easiest milk bar to find", "must": true, "lat": 50.0577852, "lng": 19.9379461, "m": "4.1★ · soup ~15zł, mains ~20zł · 9am–8pm daily · self-service, English menu", "d": "A state-subsidised canteen on the Royal Route with the blue-and-white *Bar Mleczny* sign. Queue, say the dish, pay, wait to be called. Order placki ziemniaczane with mushroom sauce, or barszcz with an egg. The 4.1 comes from people expecting a restaurant: dishes sit under lights and the borscht can arrive lukewarm — go at noon when turnover is fastest.", "s": "Milk bars began in 1896 as cheap dairy canteens, were nationalised into a nationwide network under communism, and mostly collapsed after 1989. The survivors are still propped up by state subsidy on the condition that they keep prices low — which is why a bowl of soup here costs less than a coffee on the square fifty metres away.", "sl": "Still subsidised by the state, on one condition", "g": "https://maps.google.com/?cid=4164392488523934074", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCecDPk0dEPUks5jN6iHNdrqAaq10o-CcTJ4nhp6T8BHq0_Dq3OHLoq4Mqx5SdlIu1_nmDnE5NNTQlKcC7dk3uZse8ImNtEvCGzx0RPyWqiiOALItGBjHQriZQKcwxiVZ9YgK5314SR9Dq15Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCmTi8x1EX-nogj6VJeBTEQKuMZj0bgCRWvBHzxY15JPLsEiCGnv6De88mrETKIdAfrabN9jkG5AdIJTzvpZb4qg_nnWx7IXn1-GEwrOhZ1CGg4n5htgh26C7uDDGRKQctDGuhzx2DUmWEel5KnwxHKjg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBaviHgDTtfVrZywvH12q2pk3PywKVsT1yi5ogoRI2iSiBevwK828ZLQAqZVE5Ca_pOrqZZ8VTCCqtXV3WHaT0NxNsKazJrbgQNcI9lVmkQws-hv6Cv94DrqCjdPS0FauBSEPs5Cc0UdjzCNsoBfvCh=s4800-w800-h600"], "a": ["Virgílio Carbonell", "Polyanne Nogueira", "Mr. Y.O.D.A"]}, {"c": "cheap", "n": "Bar Mleczny Górnik", "zh": "zł · five tables, no English", "lat": 50.0639507, "lng": 19.9276667, "m": "4.3★ · a full meal for two ~20zł · MENU IN POLISH ONLY · tiny", "d": "A corner milk bar west of the Old Town that locals rate for pierogi ruskie above any of the tourist pierogarnie. Five tables you will be sharing, a handwritten board, staff who will not help you translate. Point at what the person ahead of you is having, or take it away. Dishes run out as the day goes on, so come before 1pm.", "g": "https://maps.google.com/?cid=7925568424299925098", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBf7nAOx9zDVpgGRTYc5VJBPyug-zb3SxNSKc_AfnC5umd-iM11ODO4rtz1PjWie1sg2_-rlRRoIFPPOKBY6RVMzH2wPOns9od4QIb2_Tpve-9q4PAYD6MU1pu2pO9T09AQkWNJa8p3fInFFQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB0yetqjo6Q4iI7x3EFhvbEsHcYINXuyU8f9H7Yzp_FvKQjMfHBf9fLBm7efiFpKzzEZAPsDsGii68naCvDVCWed_0spoQhRh_ootGZkUJ5R0twVvnCEKPz0LwLdv4JR2lJKPzfD8HtHRupww=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjClrYZa1AYbOltAMNXQwtd4KQPKRuiJqhRyZTsH9AMvIu1x2J_orEhqis9VaK1h3xKo8FKD6NWcVzjQ42kCNP2dpi63zhbd_n8TtE3EhyOYFtL1pjla4c6dX2MtNxqfOjq0WR__yn_EIEeTtA=s4800-w800-h600"], "a": ["Stephane Godts", "Robert Pejšek", "Edoardo Herik Gottero"]}, {"c": "cheap", "n": "Bar Mleczny Centralny", "zh": "zł · Nowa Huta, 1950s and unchanged", "lat": 50.0734214, "lng": 20.0374659, "m": "4.5★ · three courses under 35zł · CLOSED WEEKENDS · 11am–6pm · cash easiest", "d": "On Plac Centralny in the steel-town suburb the communists built to dilute Kraków's intellectuals — 20 minutes on tram 4 or 10 and worth the ride for the socialist-realist boulevards alone. Three courses for under 35zł in a room that has not changed since the estate was finished. Go for the experience, not the cooking; reviewers are blunt that it is ordinary. Note the Nowa Huta Museum branch is currently closed, so the district is a walking visit.", "s": "Nowa Huta was laid out in 1949 as a workers' city for a vast steelworks, next door to a university town full of intellectuals and Catholics. Planners left out a church. Residents put up a wooden cross in 1957; permission was withdrawn, and in 1960 they fought the militia in the street to stop it being removed. Bishop Karol Wojtyła — the future John Paul II — said open-air midnight mass on the site every year regardless of weather. Permits came in 1967, and Arka Pana was consecrated in 1977, its facade set by hand with two million river stones.", "sl": "They fought the militia over a wooden cross", "g": "https://maps.google.com/?cid=2972549731083455869", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCwlmFpreOKEO8z7Wv5d_OdLUQlGbRmtnmN8UAvSvjSRowfjKo-fF9oAFmjIrYtQHaB4hsG_O-efvz8xVtK4bx2ZgYvCZh5_jQH11uGlogHwT_RbqwQ7nVgD6zHAaeEkyO3L9G1fXMZl7Tckg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCHXowB9-dChiqzhw9E5Y9qks9lcv4TpVe6Ag4LN6sbPlSV8oQb88_kwyXQj_DhftumC276Ee1JtSLEISEg1GNmwuyMxsEW_bQlKUzWyPHrBd6VHWI2cF-301WoVubib4dLebsv9IdLYJPeTayTEy0g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDGZLL71KiRhx53LE4EZqPgNbIwCBy2_WfGvbF8JfVr4ZkWQDVpMjZSkM1lkAiXbJgRXJoxN_2bsedMp-lghh7KMnjRV6YYYkM0I4CvswpGUHwvKbIFVJLh0S924XMYi8fAB28gylIL6XEJTThnYPeUAQ=s4800-w800-h600"], "a": ["Weronika Bielawiec", "sunseadream", "huwer1001"]}, {"c": "cheap", "n": "Endzior", "zh": "zł · zapiekanka at the Okrąglak", "must": true, "lat": 50.051784, "lng": 19.944826, "m": "4.2★ · 15–26zł · noon–2am (Sun from 3pm) · queue after midnight", "d": "One of the windows in the round brick building in the middle of Plac Nowy, and the one locals name first. A zapiekanka is a half-baguette baked under mushrooms and cheese; the classic gets a stripe of ketchup and nothing else. Order the sausage one at 9zł rather than the loaded 26zł version. Bar Oko two windows along is a fair rival — some prefer its ingredients.", "g": "https://maps.google.com/?cid=2581131636144408307", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBHTEhM5WicR6SRUap-iAygiAcBvCjo1IkfN_12yd7yBIZ3U6PMM4olDUKxTYd0DC1w912A9uCKauWYQBWsmNQCDCvRkGHT3bjnTmy_wGahZ41ghQRIjwtFXK3zkqPZtDlFXE_ezwHlryQ05g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBxv5ZFlFYVwmaf7LZQFxjI5_LWzq4lcg6VfW_siHmYpIhjbOmF-d0svHoh0F-c-10fZXRGGJdczW2DREqSMQTAe7KgkneVIywPT-_p5hprD-kwnJZeh_Cn8GQLsoZcRMtYAIA92JQmfSVQIKj0KQ6apA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDnoZ4829KzEmsW5DsBrqMF5U5orS4MXAWC1Aq12e5dxLlZ_m9fhGmWrxAHmWenunPwYo9G6YS04O4D6fSJ5huX6HY-qiGAW2sqOXaPmGgp4YTU3JpmdjTOXNu6-WP8C0Wn-v1zmt5xIgF9mn5pWjve=s4800-w800-h600"], "a": ["Heinz S.", "xhildjano haruni", "Keith Gorst"]}, {"c": "cheap", "n": "Sausages from the blue Nysa", "zh": "zł · Kraków's first food truck, 1991", "must": true, "lat": 50.0584563, "lng": 19.9485406, "m": "4.8★ · ~20zł · CASH ONLY · CLOSED SUNDAYS · 7pm–3am", "d": "Two men in white coats grill kiełbasa over beech wood beside a PRL-era van outside the Hala Targowa market, and have done for over thirty years. Sausage, fresh roll, Kraków-made mustard, ketchup if you ask. Bring złoty — they take cash only, though there's an ATM alongside. The queue looks alarming and moves in minutes; they do sell out.", "g": "https://maps.google.com/?cid=5641803166029203978", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBBTc6e_SApJd82lMCJqxvpCd1ShOE3_lHMJYMmAkAHnBoynHshsuQPxR0cSqpnEme-x6b-7lVYMN3JVoJA_ph2NPgdKCjsp7DM73VRuPl98taaWZ3JiJ11Taq69YGN8x9D0y3Q8Kfd5badXV0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCnxWDyPD9wxTdXHOWLQn54r3Sywq8KcL7Q6VZLwNLhRddeF5N1XVDwSpwxrZi6kvsXQusHR5JqkY5yaJLWSpCEjSBS4EyExA0Ik1v1_k0xP5vXHq3qhcUlgqab9p06wwSpkvmIkaAMgMrX2Nuv06zT9w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC8qYpcnDkE5tiXF-T3yQnfsdcLt6-n4fGqfqtzppJp5A1TqahOcz5h5ggyELXfEc5r1wdoU7N4uYt4A_HXI5zoUkikcSrwF-odB0Z24yLBfWGUI3JXiL61DFqXsgk0ferVhIAnJeBfRtA_tsmXjF5_sg=s4800-w800-h600"], "a": ["Jarko Jark n rum", "Răzvan Tucaliuc", "Ashlee de Klerk"]}, {"c": "cheap", "n": "Hummus Amamamusi", "zh": "zł · hummus and breakfast, Kazimierz", "lat": 50.0505164, "lng": 19.9414953, "m": "4.8★ · bowls ~30–40zł · 9am–5pm daily · CLOSES AT 5pm — lunch not dinner", "d": "A small, cheerfully scruffy room doing very good hummus bowls, falafel and the ginger-honey drink people write home about. Almost entirely vegetarian and vegan. It seats about twenty and gets rammed at brunch, so come before noon or after two. One pita comes with the bowl; order a second.", "g": "https://maps.google.com/?cid=16929466260248084210", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCsWTNHh7KFF-Nmwpyzg850xkJ9TPHGZ9nZFYfjgRNafH553srN6Ki4CHvV_tjUseGFFKFli_bgaRvTFgo-u0TjiHW--QKMdmP81Hke2ZRKSLEh-RN6iNF7I7Ljq_38uAQpKzP1txo1gqA7tGE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDAfuiVAzARVaHyttdRpCZQDbcQ4JTaGmMOvQr5TMMN0O8fhLWRRfr9zzfT8wruZcRgo9YtCZn8cn0Bs4GbC9M2Hc11xuI-P5kCmKeJHiDr6YpI_ZipgIo6g17LCVJgDF3kgMSOseZql0cNgHs=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCEjKnUkJ4VkClI_G_G10zo6JpcCHGrxgoiYQd_S_ay6KCvqbgZPytlY_Nwgp4BpGrXfC2ornD2a0c19TDVbCpwVs9j4adphm0E9N1Q8ZIbfkV1M8aMsb3Qzqp1Pug7fO-DRDxxcgti-Fgeo80z3oSF0A=s4800-w800-h600"], "a": ["Hummus Amamamusi", "Hummus Amamamusi", "Bartek610"]}, {"c": "sweet", "n": "Żywe Muzeum Obwarzanka", "zh": "bake the city's protected bread ring", "lat": 50.0666362, "lng": 19.9408286, "m": "4.9★ · ~40zł, ~1hr workshop (price unconfirmed) · BOOK AHEAD · 9am–4pm, weekends to 5pm", "d": "You plait, boil and bake your own obwarzanek and eat it warm, which is the only way it is any good — the ones on the street carts are usually hours old. The guide is genuinely informative on the trade. Sessions run in English and sell out, so book. The carts themselves are all over town at about 5zł: buy from one with a queue, take the poppy seed.", "s": "The obwarzanek krakowski holds an EU protected geographical indication: legally, it can only be made in Kraków and the two districts around it. It first turns up in royal accounts in 1394, and about 170 to 180 carts still sell roughly 150,000 of them across the city every day. It is not a bagel — that is a separate, Jewish, Kraków invention.", "sl": "Legally impossible to make outside Kraków", "g": "https://maps.google.com/?cid=12068415167453664225", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDlVFv2u_LzNmyw90qFFjprK901h6A7ZF8RFBC8OkeZPnHpLK9kTRaMKx4VxXQbTwdJVkZqPNQbU9lKC3tYoUUTdeCx47faTBVY1THznA8wPIN6PN6QzmyOI6p7b5fU_U9tLKHrUcA4O-IAdA=s4800-w800-h580", "https://lh3.googleusercontent.com/place-photos/AG9NLjDt9Y6RuoUmSChP-vh_NR5K6B9ae0Rc0cNiHNKSJtCAqFS5RYwVgeFMELH4k6dc7hgXpWiVSGznPc3-9MgUu9ubBwgwKb1S1nz-GuCjg8LFiE5liz8N3IKinbvuwLUeRztfvILsP9w7utZrUg0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDY9kWAYI9d_kPBnOzi-USsXQSm23V9FKRWJDwXoEBvwJMScF57hvHGwGCd90WAaN4lKJX5qWL_E8Erdn2erq9Ic2zIUffV9H9vKefzr9GB24Q8AktVW1C_VIEehAeTRm6ZEaD_cPHxDLSbeQ=s4800-w800-h600"], "a": ["Żywe Muzeum Obwarzanka", "Diana Kozma", "Andrzej K"]}, {"c": "sweet", "n": "Good Lood", "zh": "ice cream, a Kraków invention", "lat": 50.0486708, "lng": 19.9448972, "m": "4.6★ · ~10–14zł a scoop · 11am–10pm · flavours change daily", "d": "Started in Kraków and now on half the street corners, with a rotating daily board and 80g scoops. The salted caramel is the one people queue for; the milky strawberry is the sleeper. Service can be maddeningly slow when it's busy — reviewers complain about it constantly — so join the queue before you're desperate. This branch faces Plac Wolnica.", "g": "https://maps.google.com/?cid=17089106331270377112", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCt3QGSgEPWp6XYSRq3ax6ANiTJg5XznNpAzAoZKyZVpwZZN8I88eKH1m2gc6DcD948YAlo8HHSiGqlSCVt2OxB1ArduKbwnMqQNWmgU8WxXYEu_wCU8ahyyhUWx7osIR6cdUvFW6v5x6TAsRqjERUE8w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC8T52zPRRQg91TN909nvWyoydQWj027FIvByMs2qEBaITcCBz2m7v19jMDbv72Oi4RtrWVCi3VXjvyshXIvWsEseNcKvEHM9FYF-lpdyPJsq0Ie-OxCXHMuDMYvk96254dpu5FWVaQPAGiKcImoiko9Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD6WQcVc-BAtHgR_R7sGIR4V4dmETqyVVg2Cms06VwpYEZf4iQH7s33msVCdcaWCpbY11HrPISyVNjvInpq_BFe-jKYjsFf-6BqMIG5koZPiGTla_9OIiddv9ymeRJv43UQjzaHNtetIstszr_N1WzS9g=s4800-w800-h600"], "a": ["Good Lood", "Good Lood", "Good Lood"]}, {"c": "market", "n": "Stary Kleparz", "zh": "the 700-year-old food market", "lat": 50.067175, "lng": 19.9409083, "m": "4.6★ · 6am–6pm, Sat to 3pm · CLOSED SUNDAYS · BRING CASH", "d": "Trading on this spot since 1366 and still a working market rather than a tourist one: forest chanterelles and ceps in autumn, smoked oscypek sheep cheese from the Tatras, sour cucumbers by the barrel, cherries in June. Most stalls take cash only. Cheapest good lunch in the city is a wrap or a focaccia from the permanent units at the back.", "g": "https://maps.google.com/?cid=18002608223412985594", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBYQBNGL4TrUAM_euaYB3i_MJrH4n7y7Ult-M6Z8RUSRXaYXHch9_hSXlcRSfb2ht4lr4EVPx2U9G_AQZjW_iE1ZZpgGMbXJdPoAsNZ6mrIOqKx8D-xLKGuHRbNODR7bsGTpNORsvEfgREpHw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD252qnebS5VJCbCXFkVwa-OiZJ01fRX4HmmcOh9jyvfWOEtu1rP70S45NrimJbqj1qOKBvZ5ySsRSVxvqjvag4Qv2_btN1CloDZ6g7e8nG6kEm6l_LcDkDCBTS_3NhTOQ379CH2TqDQy-Cw2FnM-yvkg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB1aJmnkVMy-8QCGcNvnQKytURpTpKw-izw3c4OT-1F8afvP6tzOc4bly6wsOpcE06NzSZzbUO9xp0wiCTvlxgG1vuWkO17hXT4aWu5VhFXSEjg78u8mdTVLvSZK38YFfxKqonTpe5KKwiLQqJNzb2zsQ=s4800-w800-h600"], "a": ["Jens-Chr Strandos", "Aneta Lange", "Ruslan Musayev"]}, {"c": "mid", "n": "MOLÁM", "zh": "zł zł · Thai · Michelin Bib Gourmand", "lat": 50.0648731, "lng": 19.9276611, "m": "4.6★ · 2026 Bib Gourmand · mains ~50–80zł · from 4pm (1pm weekends) · BOOK", "d": "Northeastern Thai cooking, properly sour and properly hot, in a loud room north-west of the Old Town. Order the khao soi gai and the grilled Iberico pork; the wings and crispy pork belly are the openers to share. Sit at the kitchen counter if they offer it. A Thai reviewer's verdict: not identical to Bangkok, but made with real care.", "g": "https://maps.google.com/?cid=14914780693072191645", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBN4jIZ7amBWQbFSVUNdS-5zR-IwAPXtPOVDz85NUUc-SIEqhC1ZJwXaYxIpYQzHzQpqHnloMMF9eVhobEwXaMKblZgdaeHFpS959lia4ptqolbyGoZPVPLn9ajLBbkgaX933xMSFa9FjMd9y2Rx62xyg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAC8vtrpq-1ItyFQrCyD0yM13XJ0rfW2rVI1oFfHYlJ32DEbyzdfDbT3zRX7Ndd4dz_m4C-MYcgC2g4LTnRn1269lIWP70QdKYyd62fIlLzdjYRb5GCYC86mYnKuecqdnEV8_QAifhb4GnLBbloHKAl0w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBOcYtK1CWztVBdIR_PxCK5t3HvK58I0bUDzeDMHkml0Tj-C1uEyA3Xm4M0Gksua3aHoZm8FoVvVff0ts8ZsociHUFifTPugHz69gyumYlcCzaIFN9Rh2Ekk3-ZMkot4Y56gp5WFt6YW6FlMh2ygbI5gQ=s4800-w800-h600"], "a": ["MOLÁM", "MOLÁM", "Wojciech Makulec"]}, {"c": "mid", "n": "Nat Bistro", "zh": "zł zł · natural wine · Michelin Bib Gourmand", "lat": 50.0493017, "lng": 19.9432407, "m": "4.8★ · NEW 2026 Bib Gourmand · CLOSED TUESDAYS · from 5pm · ~20 seats, BOOK", "d": "Twenty seats on Krakowska, easy to walk past, and the highest-rated of Kraków's Bib Gourmands. Small plates built around a natural-wine list: the duck and the Polish sausage with purée are what regulars order. Reviews are consistent on the duck and split on the stracciatella. Walk-ins occasionally get the last table; do not count on it.", "g": "https://maps.google.com/?cid=10025714057570046192", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCbwUHCv0dFrVD3tkd_5vx0KBRW1iHc0f0AN9HTT0mMleSzYaFFiHAgSCmL0KFHvFLH56cHmQvD6_vnriwcVaFSsQaUAJROvPIfrxoD9QuR-omwJsQL65amKCwa7Jg4W2cgKKB1xF5fOP0RLWOGlj71=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCduL9chXCrQf0jAtHfLzuSJ78YvkeiEdr9fTs53BCnInAW-bhcyRrOzMUPeSqKDQFWJZs_MGWd8B7lTRMa7wzTWIxXEEtQ7R7cjwsiJS_-5E80JSBq6t3TQdaV-M6ayhba7Mvg448tuW3IrdmpUpxiig=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAlYrGN__p3uNQjGip_-1qeAFK8NoJnY2fCKjWsF2_veK-1lI2FbiQXaGO2SIRCKfqOwIYuqVEmnQPhJR1MmpQX3PoU317PVx8659FUgXKsHK8OepBpEeZhhA7gp6V9TVtqe8aU8W_DiEcOul2dPXNXvQ=s4800-w800-h600"], "a": ["Nat Bistro", "Nat Bistro", "Julita Dusza"]}, {"c": "mid", "n": "NOAH", "zh": "zł zł · Israeli sharing plates · Bib Gourmand", "lat": 50.0514914, "lng": 19.944291, "m": "4.7★ · 2026 Bib Gourmand · ~60–90zł a plate · from 4pm (1pm Sat–Sun) · BOOK", "d": "Sharing-plate Israeli cooking in a bare-brick room in Kazimierz — feta with honey and roasted almonds, corn chicken with za'atar, very good pita. Ask for a low table when you book: they seat walk-ins at bar-height stools and will move you only if you push. Two or three plates each is enough.", "g": "https://maps.google.com/?cid=6279990201826816109", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDnCapflMpUyvJJsGeKfWsuiwZEohKl-a-ur5ixfbBzKgiGFr7syPX_PY3Qe-RFtTjjewrxlPRV3j-LfACDe0pIBwsc8whF6iIVASFMb6MTin_taXxu2B_sLuDbmd9vEyxmXTfWchM0lBh-ryKwVvO-=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDeTtPB4tG_ub6ip7SchrAERq2eXknDbij-2lMg8NgasSgWkC6DvFbnN1ti-3ZIwn4fKLe7ZUIuevMdMN7tVJIixFDFUU6fuBZKLCe3ZtEdvqV3olybs92PZtyZfKEkmq7wgIW1Gnxe7GRoshdSkmB7FA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCb94GcjhECxV9AZgw4VjS9Bvv8_mhBj7SB2U6to9I4Yc5FoTVkq-6yrNwfhXIqOjAyor4GtcVdYQnEhvWhC9gfUGOxSM8_HBp3mcwEcAknI8_lacaoi6bu-efk2Zkb5nSQe2hDX41uotcvxss=s4800-w800-h600"], "a": ["NOAH", "Malki Adv", "Klaus"]}, {"c": "mid", "n": "Bufet KRK", "zh": "zł zł · the two-star chef's casual room", "lat": 50.051709, "lng": 19.9494259, "m": "4.6★ · NEW 2026 Bib Gourmand · CLOSED MONDAYS · from 4pm · BOOK, bar seats for walk-ins", "d": "Przemysław Klima's second restaurant — same chef as two-starred Bottiglieria 1881, a tenth of the bill. Menu changes constantly; the veal, the tartare and the pork neck recur. Best value fine cooking in the city, with one honest caveat that shows up repeatedly in reviews: several dishes are seasoned hard, and the kitchen is unapologetic about it.", "g": "https://maps.google.com/?cid=861978380086701482", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDeR9qNaI6wjBsuez8EoTeGjknM62WINasyAbkSIIHdiX0Bly18pIwPq2Lj1uG9b-F4mNBRFBmCdxBT74dLCpJCClPYspS-7NieY_9zNrvbOTVl9RfGkiPbhpSdLk2iKq4uBHbfC8ILDV6aMw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBFE6uC53jDGtFSG_e96NWmUWKYUfIxp8-Vs02x7ojae92f4vORbci9OHSUs-EmpNI2Z0eSQ-9k8Li5nP2zfXrOcefVZPYzoUr1nuJIFZ-7-jK57ObcTVjk_2X42lG9rOzjjitmZctd3AnvFns=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCn224TS9EHu7qOZxXvqnTMbR8jz2hCGBy80z6zj5SXy8SWxTnxBuuJdTAK7JITk82zV8bBD-zhWWNhO2hj_tooLTnq_QFkS5mSNJpCWerfs5pom6zbMB3Lelzcrq_YIKgom8OBa4Ss2iyLPrhlzcqH=s4800-w800-h600"], "a": ["Bufet KRK", "Bufet KRK", "Youyi Zhang"]}, {"c": "splurge", "n": "Bottiglieria 1881", "zh": "zł zł zł · Poland's only two-star", "lat": 50.0486174, "lng": 19.9461374, "m": "4.6★ · TWO MICHELIN STARS · tasting menus, allow 3.5–4 hrs · CLOSED SUN–MON · book far ahead", "d": "A cellar in Kazimierz doing reinvented Polish cooking with produce from Stary Kleparz and bread baked on site. Two menus, Introduction and Full Experience. The 4.6 is honest and worth reading: several diners find the bill steeper than two-star meals elsewhere in Europe, and a few find the flavours over-salted. Others call it the most composed dinner they've eaten.", "g": "https://maps.google.com/?cid=8570908113421134699", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDzrgkaS8JW11djl5Q2cvYKZyYOKgJHXBdr54cqe72xgohoLJK-MGJB63pnZFe3Ey6E3nGUIHYW0znUepsEexS0wlOvaq-RGwfpF3edB-Sgi1P_WODdTC9qMlDn_G7Aw7mmXTa6KcRnru81_A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAng3fVNlwb8jkmtYtQhfTaY7p9_yIZcwxlNjS8S0dMDBVQVwjnIpV_nRnGghqEO5Bx4B8apKpcXxhEoKpsioxW2SDv81nnDPmJm1paVdqto482Emwy3CwTPktJscf-zMAgPSKUULp8b1K26g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBJmoGMRPCtYEyiBjISFdjXWLBkPpxUxCV-ewtG287zBZqediXGkLRCTvKnoRZAeqFEAMxfkQose8GKQfhRIb6QSEE1iB8DOZbTv3tpKVJ-DLXrk6r--H3ISQfJudZkiJv-Cq7ukr-Ws_11R1OVGtq5iw=s4800-w800-h600"], "a": ["Szymon Susz", "Bottiglieria 1881", "Yanick Riesen"]}, {"c": "beer", "n": "Multi Qlti Tap Bar", "zh": "25 taps, first floor, Old Town", "lat": 50.0628837, "lng": 19.9343811, "m": "4.6★ · pints ~20–25zł · 30% OFF MON–FRI BEFORE 6pm · from 4pm (2pm weekends)", "d": "Up an unpromising staircase on Szewska, in a building that used to be a strip club. Twenty-five taps weighted to Polish breweries, staff who will talk you through them, and hot dogs and loaded fries if you need ballast. The weekday early-evening discount is the best beer deal in the centre. It gets loud after ten as Szewska fills up.", "g": "https://maps.google.com/?cid=13516019025414723895", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjADxMuuXKKuYg9YMurlUx6Wj7Pm9ddqF5PedG6Yx-xVc_kzF4bl5mqfzbnDK4mrdyrMOVvh1C2CiWmgvYSOFhpd8uVW3JRRGsfbOW-9j5C86ejMPFnaMeFmyFl9FCXZtkbK19zL3qttdE1_SSg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAxmfrhR5YOby5fGfhkSvThHZxe-dCN-6zscP098vjHUba1N9ASDBjZuPE1qFMtlnV6zbFH7xCgrCLPaWtZvargz8aLkvQFmowadSj7pTj1bXnI_sz2Bx4_p0q-kceaV61aoRwltYSFw-1kddgO6BLEFg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD6CsiHJu14IAFZvRuBfATBPz1wge-_Reyb4oKHYsaN698Zsnlid1d-5lar_P_7Vd7uCYzjWtpphMz4a6UHfKpLxGJz5FvK_-uXFVfQ7sMqRcqk5PqJh7ZCSEUaejBsx8ZD6zp8TOScaOYLC3QXlJ6uDg=s4800-w800-h600"], "a": ["Multi Qlti Tap Bar", "Caitlin Broadhurst", "Multi Qlti Tap Bar"]}, {"c": "beer", "n": "Weźże Krafta", "zh": "25 taps and Neapolitan pizza", "lat": 50.0510119, "lng": 19.9498592, "m": "4.6★ · pints ~18–24zł · from 3pm (1pm weekends) · big garden", "d": "The Kazimierz reincarnation of the bar that anchored the old Tytano complex before that whole site was sold to developers. Twenty-five taps and pizza good enough that Italian reviewers get emotional about it. One fair criticism from regulars: the tap list leans heavily to hazy IPAs and pastry sours — if you want Belgian or lager styles, look elsewhere.", "g": "https://maps.google.com/?cid=10254950637360769711", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBNBUojt1OfR4JNMrk0UtL8-D73xIGisWX013N2G9aCcDgbuXjolDzeUXMs8KseWHdhfhZDFCu2J6V3cC9CHCP_PdPe8ic5PfYWlacTLptFV_gkixTZyQGF8ryxOZj_ZFsnzVj9dtpspkydWOA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBD9xull5jjOTkWYSH7iPmh6pPeEIsfdtfxiviAqqYKZetOIaHNeIE63mHZWZkBPqcAbD2klgfs2XPdXgQGfW79F_oC4QZVM-GG-TgwE7vPPTLUlNFc0bqYNHgVbI6NKn_2ut9Dk9HHd2EkR9khL73qKA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCUjf4s8OxfX7y3YMYEnbn8vfqhOQxDEFbf-Uvwkz5H0M9864HYU3djdHS6liOPUX0YRwE4oQJwjkGZUELVSFfoZh23iiRL_20MlMeO5xX-_PfQmhCRLR6HGiwmMnHs4-QNhkKku2YK8zjBnQ=s4800-w800-h600"], "a": ["Weźże Krafta", "ALFenko", "Weźże Krafta"]}, {"c": "beer", "n": "Craftownia", "zh": "ten taps, mostly locals", "lat": 50.0504609, "lng": 19.9493748, "m": "4.7★ · pints ~16–22zł · from 2pm daily · small — tables get reserved", "d": "On Św. Wawrzyńca, a short walk from the Kazimierz bars and largely undiscovered by visitors: ten taps of mostly Polish beer at prices that undercut the centre, and a bartender who will actually discuss them. Space is tight and reserved tables eat most of it on Friday and Saturday, so go early or stand.", "g": "https://maps.google.com/?cid=3529701611410881920", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAokYvB3Mo01e10mGvJZ4vIB4hV7dgyWg43lt5L_KIE4qHue-EM6tDYrn235O_5WI8GwPOeTyzct3QOozM6s2wKGxOGz7wii44lG4fTGZW3UrGudVYwvTKl4JjHl0qMScbe8deidJU_3cQQXpnZQ0rz=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAtu2bcjIxPf89SqUEKYc0_q4uy0Uine8rD-BCg8U7jUPh1hO2Ne6t0O6Q-jI3J7n6C7KYZHG0GY7BwSaF84U8fcCDZlCCv7Ga-AD_RiwGKPJvpPhFrKK0hzabAcm1xUYis86kxrg_0ovSbIxg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBiwttwjUKuxktuxAVzZcl9T-sop9JQLimhQLialaEf7pplF4mJ1i8ANe2oc4OImyphMcaKBNoXi3x8CV-exMfrU7_PN23kgnsKvQQsAmEEKl0NCXaMIsm3dFeU-wLxOIa4CdXidnebg8-b8q7Xbf4pvQ=s4800-w800-h600"], "a": ["Petr Weiss", "Nagy Tamás", "Phil Jones"]}, {"c": "beer", "n": "Eszeweria", "zh": "candlelit junk-shop bar with a garden", "lat": 50.0505691, "lng": 19.9445711, "m": "4.7★ · 10am–2am (3am Fri–Sat) · three taps only · SMOKY GARDEN", "d": "The most atmospheric room in Kazimierz: mismatched armchairs, candles, incense, and a large walled garden at the back with umbrellas for the rain. The beer list is short — three taps — so come for the setting and a decent cocktail rather than the range. Smoking is allowed in the garden and lingers; sit inside if that bothers you. Quiet and lovely on a Sunday afternoon.", "g": "https://maps.google.com/?cid=18443028436625040870", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDREaatg-dtjJA_f0z90pX_cAyTiXl30JuK_kw0SQdDtAOdEAnUGeErCGpgLUFWicYRejT5fdvlqCAQMANeFeLUq9vJkPk3BoSelrtJ5D_w1_Axalik9FwoxG1XgPXftBVFbWzTOKl6WfePc0LMqP9xPg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBwiM2Rima6QHP5kx992bSiInrDBTNjxSZyFu3uFMJDLPzMYeRUX9dgf0F2LvOZx1ffIpa3w7MwsHJsHeBbmh79lXanqftBi6i6DhD-ijnachg5Xd8f6hR7bGy5cSlKLZbuuOVAwLasJaHhExA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDjpQX3srMQDTwzUE0z23P1OjQKh6Bt6pSIdK_SsVYCMtsf-kbL79zuUU0sehM8yoc2w7guthQ9M6ltvfDeWNZytFgMGgJD5FHv4MN-4vF7nO8CVyrEyLLs4ax4SB907IbVgtCUWsDAkh_oThq-Nd4nsQ=s4800-w800-h600"], "a": ["Ogon Bat", "Mark van Jaarsveld", "markos paterakis"]}, {"c": "beer", "n": "Forum Przestrzenie", "zh": "a derelict communist hotel on the river", "lat": 50.0450696, "lng": 19.9361429, "m": "4.6★ · beers ~15–20zł · deckchairs on the riverbank · self-service, buzzer system", "d": "A brutalist 1980s hotel that was left empty for years and reopened as a bar, food hall and terrace facing Wawel across the Vistula. Deckchairs outside in summer, DJs at weekends, good eggs benedict at brunch. Two warnings from regulars: you order at the counter and it is genuinely hard to find a free table, and the river view is only from outside.", "g": "https://maps.google.com/?cid=15855694611809230135", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCQyj3X_KbpaDA4UIbhg-49NUdnIVa4S4-tAWd8U_O4YBgdSyRN8nkIq3LsB_lyL7L0y2z4d6nlSqkgwIQP94xO8JJWB9PSv36ynn-kfOlgYIv4-7jnIE3fDgSGCqgYrDzOhMpDclNbNuJ19x4=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBs3LYNO8cgNSY1g7HIiRnuVHZuHK2uKcMbd4Y_jkPYl5pV7RqfVmLLaI4-AgH6Z5LPUZlbn1RwwJYcDx2kwiWx900ibLdSaMNe69qrlDgeHwbAUSkr5DfiztRgB7eY0T-Q4ZuvdpJprc3gZrM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC4ucLABLhbYwz5sz2XtRUwxfNCjbmHuRj2jgVBYAvebw7FfqaqHRvj3N3op1EdkQYMD90tN0uFuL02xVJZX0klBLXVulgNjh9svx5uWuBQCj7_ZB-bVZNVMXiz-I5gH6lruf6l9CKqZnKk=s4800-w800-h600"], "a": ["Forum Przestrzenie", "Forum Przestrzenie", "Forum Przestrzenie"]}, {"c": "cheap", "n": "Andrus Maczanka po krakowsku", "zh": "zł · the cart-drivers' pork roll", "must": true, "lat": 50.0503875, "lng": 19.9480046, "m": "4.6★ · ~30zł · 11am–10pm (to midnight Fri–Sat) · Skwer Judah, Kazimierz", "d": "The one Kraków speciality most visitors never hear about. Pork neck marinated two days, slow-roasted and stewed with onion until it shreds, piled into a kajzerka roll with the gravy poured over and pickles on the side — the coachmen's lunch, and locally nicknamed the great-grandmother of the hamburger. Order the classic before the bacon or oscypek versions. Messy: take napkins. There is a second branch on Sienna, off the main square, where you can also get a beer.", "s": "Maczanka comes from the Kraków cabbies who worked the Old Town ranks in the 1800s. They needed something that could be eaten one-handed on the box seat, so the gravy went into the roll rather than onto a plate — the name means, roughly, 'the dipped one'. It nearly died out under communism and came back through food trucks in the 2010s.", "sl": "Built to be eaten one-handed on a cab", "g": "https://maps.google.com/?cid=17022980077722876545", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAnmZHxrsxgQ2VimQikE3Yw6CNg9oQP4FA_jdb_zqJuWSUUi6HKpNLV49mMKucF9N2oe9eaxwbt8NA9zKfV2ycRgL2qpi5dGuDbvZeD_XediSZr9gUanmZzMbTac3c3fSsZb4QAm_w-4OgF2w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAVEvhcfZYDsMeL7L2gpTYK8b_rB7guxwjT_Z0UID4Nb8FGr2VleOL9UMOL8zWT6x5tYprHyNyPM2WuPAWYSQXQ5NXU_xvFm-AR1jjZkHd8qZ2LqgaLSGZLRuJ2qiJcCD7V_REMqlzp2Xt5Ik7G5V-XLg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCg7LUuMUDz7rGCkFg-51I_JayHUoFu4QQNqQxmpRQisoemkzfv430DVFa2XtXABScDKS9y60cdoaHD0enkbTDnHlzjE2QDk-rojbYn59sC2otX0_4IaU_6iwQZx8IPkGfEvJq0R2vhbK9Pe_Ezj3l-=s4800-w800-h600"], "a": ["Andrus Maczanka Po Krakowsku", "Mookda", "Patryk Kopeć"]}, {"c": "coffee", "n": "Karma Coffee Roastery", "zh": "the roaster, in a Kazimierz courtyard", "lat": 50.049519, "lng": 19.9457297, "m": "4.6★ · flat white ~16zł · 9am–7pm (8pm Fri–Sun) · HARD TO FIND — go through the gate", "d": "Kraków's specialty scene started around Karma, open since 2009, and this is the Kazimierz branch where the roasting actually happens — you can watch the drum working. There is no real sign: look for the archway on Św. Wawrzyńca and the people sitting in the yard behind it. Batch brew and the courtyard are the point; reviewers are lukewarm on the cakes. The other branch on Krupnicza does proper breakfasts.", "g": "https://maps.google.com/?cid=12584832322098028558", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC4ZUXKH0Wbn-vyUlbimm1Io6f61Ihiurc5JPERDP3EF8k10CnNNBfvZJwO0Gnnrli4bQtRJyoV8CHUhJH79fcgTTJzxu3UePm6HI4bQm0VtWHu5UX3oGM7U7q9BPw5Zy4aNgZ7p4_Uvg_U=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCfD1EZ7m-Q1GKU5Z4t8to3z6cFOrC5wo-VZsaGsKpxTvt-glmR7Rdbf6YdoSw-hRkiR4bR6qHeBc9LA-eKAiVu5h2w0hUCds2IjCTLe6DusmBE1WhgsD6dhs2hxcLbw8gwMhj_Y3gFna-soA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCMIicczYjA1ZU44dsC_ydXYHoSA-kpOMx1zIRpjc_vNCZb3WV99M6raEKRarq67uOWLspW2s_wCdfTIQQNi4dZ8nL-Tpt-AL-82Jinz-rKbtebSbQY1eoLe4s-PPg6fvQGAmc-G0wN09dbl6kiUSxAJA=s4800-w800-h600"], "a": ["Artur Nowak", "Szymon", "T"]}, {"c": "stay", "n": "Stay: Kazimierz", "zh": "best food and bars, 20–30% cheaper than the Rynek", "lat": 50.051, "lng": 19.944, "nophoto": "district, not a business", "m": "15 min walk to Rynek Główny · trams 3, 9, 19, 24", "d": "The former Jewish quarter, and where most of this map's eating and drinking sits. Comparable mid-range rooms run roughly 20–30% below the Old Town. Noise is concentrated around Plac Nowy and Estery — a room one street back on Bożego Ciała or Meiselsa gets you the location without the 3am zapiekanka queue under your window."}, {"c": "stay", "n": "Stay: Podgórze", "zh": "quietest and cheapest of the three", "lat": 50.0455, "lng": 19.953, "nophoto": "district, not a business", "m": "20–25 min walk to Rynek Główny · trams along Limanowskiego", "d": "Across the Bernatek footbridge from Kazimierz: residential, calm in the evenings, and the best value of the three areas. Schindler's Factory, MOCAK, the ghetto sites and Krakus Mound are all on your doorstep. Nothing unsafe about it, but it is plainer than the tourist quarters and quiet after about ten."}, {"c": "stay", "n": "Stay: Kleparz", "zh": "central and calm, by the station", "lat": 50.067, "lng": 19.9425, "nophoto": "district, not a business", "m": "10 min walk to Rynek Główny · Kraków Główny station and airport train", "d": "Directly north of the Old Town, residential rather than touristy, with Stary Kleparz market at its heart and the main station — and the airport train — a few minutes away. The pick if you're day-tripping to Auschwitz, Wieliczka or Zakopane. Avoid booking within two blocks of Rynek Główny in summer unless you sleep through anything."}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+(pl.must?' must':'')+'" style="background:'
+         +CATS[pl.c].color+'">'+glyph(pl.c)+(pl.must?'<i class="star-badge"></i>':'')+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true,
+    zIndexOffset: pl.must?1000:0});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galPrev.style.visibility = pics.length>1?'':'hidden';
+  galNext.style.visibility = pics.length>1?'':'hidden';
+  galPrev.disabled=true; galNext.disabled=pics.length<2;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+  const multi=imgs.length>1;
+  galPrev.style.visibility = multi?'':'hidden';
+  galNext.style.visibility = multi?'':'hidden';
+  galPrev.disabled = i<=0;
+  galNext.disabled = i>=imgs.length-1;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+/* arrows, for mice and keyboards; touch users just swipe */
+const galPrev=document.getElementById('galPrev'), galNext=document.getElementById('galNext');
+function galScroll(dir){
+  const w=galTrack.clientWidth||1;
+  const i=Math.round(galTrack.scrollLeft/w)+dir;
+  const n=galTrack.querySelectorAll('img').length;
+  galTrack.scrollTo({left: Math.max(0,Math.min(n-1,i))*w, behavior:'smooth'});
+}
+galPrev.onclick=e=>{e.stopPropagation();galScroll(-1);};
+galNext.onclick=e=>{e.stopPropagation();galScroll(1);};
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng+"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  panToPlace(pl);
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+/* Wide screens show the card as a left-hand panel, so the gesture axis and the
+   map centring both have to change. Keep this threshold in sync with the CSS. */
+const SIDE_MIN_WIDTH = 720;
+function sideMode(){ return window.innerWidth >= SIDE_MIN_WIDTH; }
+
+function panToPlace(pl){
+  const ll = L.latLng(pl.wlat, pl.wlng);
+  if(!sideMode()){ map.panTo(ll,{animate:true}); return; }
+  // shift the centre left by half the panel so the pin sits in the visible half
+  const panelW = (document.querySelector('.sheet')||{}).offsetWidth || 390;
+  const pt = map.project(ll, map.getZoom()).subtract([panelW/2, 0]);
+  map.panTo(map.unproject(pt, map.getZoom()), {animate:true});
+}
+
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the card down to dismiss ----
+   Touch: drag anywhere in the card, but only when it is scrolled to the top, so
+   reading a long card still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    // In side mode the dismiss axis IS the gallery axis, so the gallery wins
+    // any gesture that starts on a photo.
+    if(sideMode() && e.target.closest && e.target.closest('.gal')) return;
+    // Vertical scroll only conflicts with the bottom sheet.
+    if(!sideMode() && sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'go':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  const side=sideMode();
+  // side panel slides out to the LEFT; bottom sheet slides DOWN
+  const along = side ? -dx : dy;      // movement toward dismissal
+  const across = side ? dy : dx;      // movement that belongs to the gallery
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(along)>Math.abs(across) ? 'go' : 'other';
+    if(drag.axis==='other'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(along<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=along;
+  sheet.classList.add('dragging');
+  sheet.style.transform = side ? 'translateX(-'+along+'px)' : 'translateY('+along+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();   // distance OR flick
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='go' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  const ab=document.getElementById('about');
+  if(ab && ab.classList.contains('open')) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- city overview ---------- */
+const about=document.getElementById('about'), aboutBtn=document.getElementById('aboutBtn');
+function esc(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function rich(x){ // allow **bold** only
+  return esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+}
+function renderAbout(){
+  if(!CITY || !Object.keys(CITY).length){ aboutBtn.style.display='none'; return; }
+  document.getElementById('abTitle').textContent = CITY.name||'';
+  document.getElementById('abTagline').textContent = CITY.tagline||'';
+
+  const st=document.getElementById('abStats');
+  st.innerHTML=(CITY.stats||[]).map(s=>
+    '<div class="stat"><div class="k">'+esc(s[0])+'</div><div class="v">'+esc(s[1])+'</div></div>'
+  ).join('');
+  st.style.display=(CITY.stats||[]).length?'grid':'none';
+
+  document.getElementById('abSections').innerHTML=(CITY.sections||[]).map(s=>
+    '<h3>'+esc(s[0])+'</h3>'+String(s[1]).split('\n\n').map(par=>'<p>'+rich(par)+'</p>').join('')
+  ).join('');
+
+  const musts=CITY.musts||[];
+  document.getElementById('abMusts').innerHTML = musts.length
+    ? '<h3>Must see, do &amp; try</h3><ul class="musts">'
+      + musts.map(m=>'<li>'+rich(m)+'</li>').join('') + '</ul>'
+    : '';
+
+  const near=CITY.nearby||[];
+  document.getElementById('abNearby').innerHTML = near.length
+    ? '<h3>Nearby</h3><ul class="nearby">'
+      + near.map(n=>'<li>'+rich(n)+'</li>').join('') + '</ul>'
+    : '';
+
+  document.getElementById('abFoot').textContent = CITY.foot||'';
+}
+renderAbout();
+function toggleAbout(open){
+  about.classList.toggle('open',open);
+  about.setAttribute('aria-hidden',open?'false':'true');
+  aboutBtn.classList.toggle('active',open);
+  if(open) about.scrollTop=0;
+}
+aboutBtn.onclick=()=>toggleAbout(!about.classList.contains('open'));
+document.getElementById('aboutClose').onclick=()=>toggleAbout(false);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') toggleAbout(false); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+let wasSide=sideMode();
+window.addEventListener('resize',()=>{
+  const now=sideMode();
+  if(now!==wasSide){ wasSide=now; if(selected) panToPlace(selected); }
+});
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
