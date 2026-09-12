@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!-- city-guide-maps template v7 capabilities: swipe-dismiss,drag-handlers,click-away,escape-key,gallery,side-panel,must-see,overview,filters,fullscreen,geolocation -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Trieste, the Carso & the border - two weeks</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{position:relative;width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .pin.must{border-color:#F2C14E;border-width:3px;
+    box-shadow:0 0 0 1.5px rgba(120,80,0,.55),0 2px 7px rgba(0,0,0,.45)}
+  .star-badge{position:absolute;top:-5px;right:-5px;width:12px;height:12px;
+    background:#F2C14E;border-radius:50%;border:1.5px solid #fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+    width:30px;height:30px;border:none;border-radius:50%;cursor:pointer;
+    background:rgba(0,0,0,.42);color:#fff;display:none;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);transition:background .15s ease}
+  .gal-nav:hover{background:rgba(0,0,0,.65)}
+  .gal-nav:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .gal-nav svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .gal-nav.prev{left:8px} .gal-nav.next{right:8px}
+  .gal-nav[disabled]{opacity:.3;cursor:default}
+  /* only for real pointers — touch users swipe */
+  @media (hover:hover) and (pointer:fine){
+    .gal:hover .gal-nav, .gal-nav:focus-visible{display:flex}
+  }
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  /* when there is no photo the grabber would sit on the text */
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---- city overview sheet ---- */
+  .about{position:absolute;inset:0;z-index:1400;background:var(--paper);
+    overflow-y:auto;transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.32,.72,.35,1);
+    -webkit-overflow-scrolling:touch}
+  .about.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.about{transition:none}}
+  .about-inner{max-width:640px;margin:0 auto;padding:18px 20px calc(40px + env(safe-area-inset-bottom))}
+  .about h2{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:3px}
+  .about .tagline{font-size:14.5px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+  .about-close{position:sticky;top:0;float:right;width:34px;height:34px;border:none;
+    border-radius:50%;background:#eef1f5;color:#5b6472;font-size:16px;cursor:pointer;
+    line-height:1;z-index:2;margin-left:10px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;
+    margin-bottom:20px}
+  .stat{background:#f6f4ef;border-radius:11px;padding:9px 11px}
+  .stat .k{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#8b8577;margin-bottom:2px}
+  .stat .v{font-size:14px;font-weight:700;line-height:1.25}
+  .about h3{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:20px 0 7px}
+  .about p{font-size:14.5px;line-height:1.6;color:#374050;margin-bottom:9px}
+  .musts{list-style:none;margin:2px 0 4px}
+  .musts li{position:relative;padding:7px 0 7px 27px;font-size:14.5px;line-height:1.5;
+    border-bottom:1px solid #f0ece4}
+  .musts li:last-child{border-bottom:none}
+  .musts li::before{content:"";position:absolute;left:5px;top:14px;width:9px;height:9px;
+    border-radius:50%;background:#F2C14E;box-shadow:0 0 0 2px rgba(242,193,78,.28)}
+  .musts b{font-weight:750}
+  .nearby li{padding:7px 0 7px 27px;font-size:14px;line-height:1.5;list-style:none;
+    position:relative;color:#374050}
+  .nearby li::before{content:"";position:absolute;left:6px;top:15px;width:7px;height:7px;
+    border-radius:50%;background:#9E9D24}
+  .about .foot{font-size:11.5px;color:#95a0ae;margin-top:22px;line-height:1.5;
+    border-top:1px solid var(--line);padding-top:13px}
+  /* ---- wide / landscape: the card becomes a left-hand panel ----
+     A full-width bottom sheet letterboxes photos badly once the window is wide. */
+  @media (min-width:720px){
+    .sheet{left:0;right:auto;top:0;bottom:0;width:390px;max-height:none;height:100%;
+      border-radius:0 20px 20px 0;box-shadow:8px 0 30px rgba(16,24,40,.22);
+      transform:translateX(-105%)}
+    .sheet.open{transform:translateX(0)}
+    .gal, .gal-track img{border-radius:0 20px 0 0}
+    .gal-track img{height:auto;aspect-ratio:3/2}
+    .grabber{top:0;bottom:0;left:auto;right:0;margin-left:0;width:24px;height:100%;
+      flex-direction:column}
+    .grabber::after{width:4px;height:38px}
+    .sheet:has(.gal.none) .sheet-body{padding-top:16px}
+    .sheet-body{padding-right:26px}
+    /* keep the filter panel clear of the card */
+    .panel{left:auto;right:70px}
+    .about-inner{padding-left:26px}
+  }
+  @media (min-width:720px) and (max-height:520px){
+    /* phone held sideways: shorter, so trim the photo further */
+    .gal-track img{aspect-ratio:2/1}
+  }
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Trieste, the Carso & the border - two weeks</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="aboutBtn" title="About this city" aria-label="About this city">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Pin shapes: circles are sights, squares are food, diamonds are drink. Gold ring = do not miss. Colour bands food by price, so you can switch off the expensive pins. CHECK BEFORE YOU GO: the Opicina tram leaves from Piazza Dalmazia, not Piazza Oberdan, until the Oberdan works finish (~mid-2027). Kleine Berlin opens the last Friday of the month only, by email, cash only. The Faro della Vittoria is April-4 November, mostly Fri-Sun. Grotta Gigante is shut on non-holiday Mondays and guided only. Museums: Revoltella and Museo Joyce shut Tuesdays. Many restaurants shut Sunday or Monday. Osmize open a few days at a time - check osmize.com. Place data and photos from Google Maps, credited per card; ratings were current in September 2026.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <button class="gal-nav prev" id="galPrev" aria-label="Previous photo">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="gal-nav next" id="galNext" aria-label="Next photo">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="about" id="about" role="dialog" aria-label="About this city" aria-hidden="true">
+  <div class="about-inner">
+    <button class="about-close" id="aboutClose" aria-label="Close">✕</button>
+    <h2 id="abTitle"></h2>
+    <p class="tagline" id="abTagline"></p>
+    <div class="stats" id="abStats"></div>
+    <div id="abSections"></div>
+    <div id="abMusts"></div>
+    <div id="abNearby"></div>
+    <p class="foot" id="abFoot"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"heritage": {"label": "Heritage & landmarks", "color": "#5D4037", "icon": "landmark"}, "museum": {"label": "Museums & memory", "color": "#1565C0", "icon": "palette"}, "church": {"label": "Churches & temples", "color": "#6A1B9A", "icon": "church"}, "view": {"label": "Viewpoints", "color": "#00695C", "icon": "camera"}, "sea": {"label": "Swimming & seafront", "color": "#0288D1", "icon": "waves-ladder"}, "karst": {"label": "Karst, caves & walks", "color": "#558B2F", "icon": "mountain"}, "daytrip": {"label": "Day trips", "color": "#795548", "icon": "signpost"}, "cheap": {"label": "Buffet & cheap (EUR)", "color": "#00ACC1", "icon": "utensils", "shape": "food"}, "mid": {"label": "Mid-range (EUR EUR)", "color": "#F9A825", "icon": "utensils", "shape": "food"}, "splurge": {"label": "Splurge (EUR x3)", "color": "#C2185B", "icon": "utensils-crossed", "shape": "food"}, "sweet": {"label": "Pastry & gelato", "color": "#8D6E63", "icon": "croissant", "shape": "food"}, "coffee": {"label": "Historic cafes", "color": "#4E342E", "icon": "coffee", "shape": "food"}, "drink": {"label": "Bars & wine bars", "color": "#37474F", "icon": "wine", "shape": "drink"}, "winery": {"label": "Carso wineries", "color": "#7B1FA2", "icon": "amphora", "shape": "drink"}, "stay": {"label": "Where to stay", "color": "#455A64", "icon": "bed"}};
+const ICONS = {"amphora": "<path d=\"M10 2v5.632c0 .424-.272.795-.653.982A6 6 0 0 0 6 14c.006 4 3 7 5 8\"/> <path d=\"M10 5H8a2 2 0 0 0 0 4h.68\"/> <path d=\"M14 2v5.632c0 .424.272.795.652.982A6 6 0 0 1 18 14c0 4-3 7-5 8\"/> <path d=\"M14 5h2a2 2 0 0 1 0 4h-.68\"/> <path d=\"M18 22H6\"/> <path d=\"M9 2h6\"/>", "bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "camera": "<path d=\"M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z\"/> <circle cx=\"12\" cy=\"13\" r=\"3\"/>", "church": "<path d=\"M10 9h4\"/> <path d=\"M12 7v5\"/> <path d=\"M14 21v-3a2 2 0 0 0-4 0v3\"/> <path d=\"m18 9 3.52 2.147a1 1 0 0 1 .48.854V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6.999a1 1 0 0 1 .48-.854L6 9\"/> <path d=\"M6 21V7a1 1 0 0 1 .376-.782l5-3.999a1 1 0 0 1 1.249.001l5 4A1 1 0 0 1 18 7v14\"/>", "coffee": "<path d=\"M10 2v2\"/> <path d=\"M14 2v2\"/> <path d=\"M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1\"/> <path d=\"M6 2v2\"/>", "croissant": "<path d=\"M10.2 18H4.774a1.5 1.5 0 0 1-1.352-.97 11 11 0 0 1 .132-6.487\"/> <path d=\"M18 10.2V4.774a1.5 1.5 0 0 0-.97-1.352 11 11 0 0 0-6.486.132\"/> <path d=\"M18 5a4 3 0 0 1 4 3 2 2 0 0 1-2 2 10 10 0 0 0-5.139 1.42\"/> <path d=\"M5 18a3 4 0 0 0 3 4 2 2 0 0 0 2-2 10 10 0 0 1 1.42-5.14\"/> <path d=\"M8.709 2.554a10 10 0 0 0-6.155 6.155 1.5 1.5 0 0 0 .676 1.626l9.807 5.42a2 2 0 0 0 2.718-2.718l-5.42-9.807a1.5 1.5 0 0 0-1.626-.676\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "mountain": "<path d=\"m8 3 4 8 5-5 5 15H2L8 3z\"/>", "palette": "<path d=\"M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z\"/> <circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>", "signpost": "<path d=\"M12 13v8\"/> <path d=\"M12 3v3\"/> <path d=\"M2.354 10.354a1.207 1.207 0 0 1 0-1.708l2.06-2.06A2 2 0 0 1 5.828 6h12.344a2 2 0 0 1 1.414.586l2.06 2.06a1.207 1.207 0 0 1 0 1.708l-2.06 2.06a2 2 0 0 1-1.414.586H5.828a2 2 0 0 1-1.414-.586z\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "utensils-crossed": "<path d=\"m16 2-2.3 2.3a3 3 0 0 0 0 4.2l1.8 1.8a3 3 0 0 0 4.2 0L22 8\"/> <path d=\"M15 15 3.3 3.3a4.2 4.2 0 0 0 0 6l7.3 7.3c.7.7 2 .7 2.8 0L15 15Zm0 0 7 7\"/> <path d=\"m2.1 21.8 6.4-6.3\"/> <path d=\"m19 5-7 7\"/>", "waves-ladder": "<path d=\"M19 5a2 2 0 0 0-2 2v11\"/> <path d=\"M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1\"/> <path d=\"M7 13h10\"/> <path d=\"M7 9h10\"/> <path d=\"M9 5a2 2 0 0 0-2 2v11\"/>", "wine": "<path d=\"M8 22h8\"/> <path d=\"M7 10h10\"/> <path d=\"M12 15v7\"/> <path d=\"M12 15a5 5 0 0 0 5-5c0-2-.5-4-2-8H9c-1.5 4-2 6-2 8a5 5 0 0 0 5 5Z\"/>"};
+const CITY  = {"name": "Trieste", "tagline": "An Austrian port that ended up in Italy, wedged between the karst and the sea, with Slovene villages behind it and a coffee dialect of its own.", "stats": [["Population", "~200,000"], ["Language", "Italian, Triestino dialect, Slovene in the villages"], ["Habsburg rule", "1382-1918"], ["Free port declared", "1719, by Charles VI"], ["Returned to Italy", "26 October 1954"], ["Venice", "2h by train"], ["Ljubljana", "~2.5h by bus"], ["Slovenian border", "8 km east"], ["Coffee drunk", "~10 kg per person a year, twice the Italian average"], ["Budget/day", "~EUR60 thrifty, ~EUR140 comfortable"], ["Best months", "May-June, September-October"], ["The bora", "NE wind, gusts over 100 km/h, mostly winter"]], "sections": [["History in five minutes", "Trieste is a Habsburg invention. A small Roman then Venetian-threatened town put itself under Austrian protection in 1382, and stayed there for 536 years. The decision that made the city was Charles VI's in 1719: he declared it a free port, and Maria Theresa then drained the salt pans, laid out the grid of the Borgo Teresiano, dug the Canal Grande and granted freedom of worship to anyone who would come and trade.\n\nThey came - Greeks, Serbs, Jews, Armenians, Germans, Slovenes - which is why a mid-sized Italian city has an Orthodox cathedral at the end of its canal and one of Europe's largest synagogues round the corner. By 1900 this was the empire's only major seaport, home of Lloyd Austriaco, and rich.\n\nThen it lost its hinterland. Annexed to Italy in 1918, the port was suddenly an Italian city facing an Austria that no longer needed it. Fascism suppressed the Slovene language; the SS ran the Adriatic Littoral from here and built the only camp with a crematorium on Italian soil. After 1945 the city spent nine years as a disputed Free Territory under Allied administration and only came back to Italy in 1954, with the border closed and the hinterland on the other side of it. The melancholy visitors notice is real and it has a cause."], ["Culture and society", "A border city that reads as Central European: coffee houses instead of bars, strudel next to the seafood, surnames ending in -ic and -ich alongside Italian ones. The bilingual signs start a few kilometres inland and the villages up on the plateau are Slovene-speaking.\n\nIt is a city of writers - Joyce for ten years, Svevo, Saba, Rilke up the coast at Duino - and of science, with a physics centre, a synchrotron and a research population that keeps the bars near the university busy. The population has been shrinking and ageing for decades, which is part of why the place feels calm. Sailing is the civic religion: the Barcolana regatta in October is the largest in the world by number of boats."], ["Economy, then and now", "The old free port made its money moving Central Europe's goods to the Mediterranean, and much of it - the Porto Vecchio - now stands empty and is being slowly redeveloped, which is why you can walk through 19th-century warehouses in the middle of a working city. Coffee is the surviving speciality: Illy and Hausbrandt are from here, roughly a tenth of Italy's coffee still lands at these docks, and the port has quietly become one of the busiest in the Adriatic again, largely on freight moving to and from Austria and Hungary."], ["Iconic food and drink", "Not Italian food. **Jota** is a sauerkraut, bean and potato soup; **gnochi de pan** are bread dumplings served under goulash, and **gnochi de susini** are plum dumplings eaten as a dessert. The **buffet** is the institution: a bar-counter eatery serving pork boiled in a copper caldaia, cut to order, with **kren** (horseradish) and mustard. Fish is the other half of the kitchen - **sardoni**, the local anchovies, breaded or marinated in savor.\n\nPastry is Viennese by descent: **presnitz** (a pastry horseshoe of nuts, raisins and rum), **putizza** (the same filling rolled in soft dough), **pinza** at Easter, and almond **fave**. To drink, **Terrano** and **Vitovska** from the Carso, the latter now taken seriously well beyond the region.\n\nAnd the coffee vocabulary, which is not optional: a **nero** is an espresso, a **capo** is a macchiato, a **capo in b** is a macchiato in a small glass and the thing to order, a **goccia** has just a drop of foam, and a **caffelatte** is what everyone else calls a cappuccino."], ["Unique to Trieste", "The **osmize**: Carso farmhouses licensed to sell their own wine and cured meat for a few days at a time under a 1784 edict, signposted with a branch at the roadside and listed only at osmize.com. The **Pedocin**, the last bathing establishment in Europe with a wall down the middle separating men from women. The **bora**, a northeast wind that has ropes strung along some streets to hold onto. And the habit of calling a swim 'going to the bagno' rather than to the sea."]], "musts": ["**Piazza Unita d'Italia** at dusk, then out along **Molo Audace** - FREE", "**Castello di Miramare** and its free park - EUR17 for the castle, park free", "**Risiera di San Sabba**, the Nazi camp memorial - FREE", "**Tram de Opcina** up to the karst, then the Napoleonica cliff path - EUR1.50", "**Grotta Gigante**, the largest show-cave chamber in the world - EUR15", "**Sentiero Rilke** from Sistiana to Duino castle - FREE, castle EUR10", "**Buffet da Pepi** for boiled pork, kren and a glass of Terrano - ~EUR20", "A **capo in b** sitting down at **Antico Caffe San Marco** - ~EUR3"], "nearby": ["**Muggia - 30 min by ferry.** The last Venetian town in Italy, and the boat gives you the gulf on the way.", "**Duino and Sistiana - 45 min by bus 44.** Cliff path, castle, and a swim in the bay.", "**Aquileia and Grado - ~40 min by car.** Rome's fourth city, with the largest early-Christian mosaic floor anywhere, then lagoon churches and lunch.", "**Skocjan Caves and Lipica - ~45 min into Slovenia.** Underground canyon in the morning, Lipizzaners in the afternoon. Take a passport.", "**Piran - 1h15 by bus.** Venetian marble town on the Slovenian coast.", "**Redipuglia - 40 min.** The vast Italian WWI memorial to 100,000 dead, on the Isonzo front, if the Risiera has not exhausted you.", "**Venice - 2h by train.** Hourly regional services, and cheaper than going from Venice."], "foot": "Prices and hours checked September 2026 and indicative - re-check seasonal sites (the Faro, the tram, the osmize) before setting out. Place data, ratings and photographs from Google Maps; photographers credited on each card. Research sources include Wikivoyage, GPSmyCity, Gambero Rosso, the Michelin Guide, TriestePrima, Trieste Trasporti and Italian-language food blogs."};
+const PLACES = [{"c": "heritage", "n": "Piazza Unita d'Italia", "zh": "FREE - the city's front room", "must": true, "lat": 45.6500779, "lng": 13.7677618, "g": "https://maps.google.com/?cid=493976732731572632", "m": "4.8* - FREE - 24h - seagulls will take food off your fork", "d": "Europe's largest square open to the sea, and the one place that explains Trieste in a glance: Habsburg government palaces on three sides, the Adriatic on the fourth, no church anywhere. Stand in the middle and turn a full circle. Come back after dark when the paving is lit blue.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCqjERmp0RHOt5977F3t61MifJkxpaIZIgYI27Bma_BLiZa3RJeeqbeHIMkbwXXlH-XipRXc-14VoSfh8Cx_pxOBqiSo2nIxgNArklPj7mh8WozuBxCefwCD67YifiwaHLyyeGBxsohX00XIA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCjijKK7ubmqowLjOC-yRLuYbMfZrNkTxcia6XLTI9ymO9Scw-Hk5zoZxfBIauAjNHi1W3KEr4Zuze0QQaabEeVorXbsdu9z9LMVoxB_qARffD_8pfcKXkPEkop7hStq-ChCIG-OA_MHjYYkg=s4800-w800-h600"], "a": ["DjaCos62", "Aleksandar Milinkov"]}, {"c": "heritage", "n": "Molo Audace", "zh": "FREE - 246m walk into the sea", "lat": 45.6525841, "lng": 13.7654877, "g": "https://maps.google.com/?cid=2478769112983722319", "m": "4.7* - FREE - 24h - go for sunset, it is the local ritual", "d": "A stone pier straight out from Piazza Unita, and the best twenty minutes in the city at dusk. Walk to the compass rose at the far end and look back at the waterfront. Nothing to buy, nothing to queue for.", "s": "The pier is built on a shipwreck. The San Carlo sank here in 1740 and instead of removing it the port filled it in and built out from the hull, so the mole carried the ship's name for 178 years. It was renamed in 1918 after the Audace, the first Italian destroyer to tie up here when the city changed hands.", "sl": "It is built on top of a sunken ship", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB7ZclaPoOgjrnKIBSRb1xbRNVBJsmNUuF-a4_FKGPY8QzGlaYs3-GVp3HeeD8OWAQikirjl9Mdtt9Ded8uFHDoYlxkW6pSjAwm40PQ7OvKdTBTRWi2DsHwGSPxspS5K_XNSzuRFnLd1pCOeA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDMZa96u2ZfCVW10r_XiNNnR8dlCfATKLDhkG_ApJ7RhZg0yy5F9CfrCf3vYGA1LG6WXaymG1xdFp2DN14MGu886YTD9y88r25NDB9JSYVKaSaZvjbP9tOd0coRGnWipcfTT-uQ1lHMzr9H3w=s4800-w800-h600"], "a": ["Daniele Palazzolo", "Davide Di Natale"]}, {"c": "church", "n": "Cattedrale di San Giusto", "zh": "two churches fused into one", "lat": 45.6465442, "lng": 13.7724511, "g": "https://maps.google.com/?cid=4779817116602535215", "m": "4.6* - FREE entry - 8am-6.30pm (Sun from 9am) - tower ~EUR2", "d": "Two separate early churches knocked together in the 14th century, which is why the facade is lopsided and the nave has five aisles. Bring EUR1 coins: a machine lights the 13th-century apse mosaics, and they are the reason to come. Tower ticket is sold in the gift shop.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAk_oNcCKTAOp6bAFsngOEv0oeTI_C-lISxjupHMVLwYKRlgay19vfXzbITTu8l463N1IKIO-GjNf_LJ2y1wqge5JElvNwHjmMNqXDoyA37v59FoaKcJQRSnj9eQi4guTQfdOPeUnJou3ASwLDyrdkL-w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAjgpcRCPOU1QzFvITJCf3IxM3WM8vwXgcPdV4VrDQkuvtFcGIQIe9mZD-QJRNxcPc3yb7H3dBs--CuN-zMTbWn88ykkNZRGcvwcGHEzQMpWuZKXIb-mts5Vs6G9Vvt5QElwma1fq3ndq8n9Lw=s4800-w800-h600"], "a": ["Michal Svec", "Marcus Kordt"]}, {"c": "heritage", "n": "Castello di San Giusto", "zh": "ramparts over the whole gulf", "lat": 45.6474588, "lng": 13.7728657, "g": "https://maps.google.com/?cid=15527998840835285167", "m": "4.5* - ~EUR7 (EUR5 reduced) - 10am-7pm daily", "d": "Venetian-era fort above the cathedral. Reviewers are split and they are both right: the armoury and the Lapidario mosaics are good, the rest is thin, and the real ticket is the walk round the ramparts with the city and the Carso laid out below. There is a lift up from the Teatro Romano car park.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCzXd_2_TTpE6qHmQGlGkuvZPgdYY43nxRSCbYmEAZTV3UFP1trpzo5wcdWwXZN1RUnmEm03qOhyOC_f45qJOFsmkliH3AOaW9ILYml13GJvlcbks34afx1XsmzhW7o3whyDG7SEemVBPq2M40=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD4r4g37AKd7wDZkcblAI7KW29z77mzqfzWLVryP0aEiWHditWpIgE_RQxpY1fcDfm_nCCOWpHTEBF33wvBGqYpYoGfxl_iBtAp87eQYtB0sjNi_HHgi00hgvJuhoKZQMZ269QMggpLa6YX1Q=s4800-w800-h600"], "a": ["Gianluca Tomasi", "Lucio Satto"]}, {"c": "heritage", "n": "Teatro Romano", "zh": "FREE - 1st century, seen from the street", "lat": 45.6491765, "lng": 13.7717252, "g": "https://maps.google.com/?cid=10489483337641666051", "m": "4.3* - FREE - visible 24h - you cannot go inside", "d": "A Roman theatre for 6,000 people, buried and forgotten until the 1930s, now sitting in a hole between apartment blocks. You view it over the railing, which is all it needs; locals only get inside for the school shows each summer. Two minutes on the way up to the hill.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDuTji8SYzl1-qe-DKqp_E6isAcOeT2g_V42yvzaWvbT0WfO-sdzyg7QPrDs-Lw2CKlzlrvVk7v4guJFBtR7uaqDSA6EfGqaxeJV1AR6tEWfHI0ZuP9P3MG2C2TPbYN3sdOI_D5_-rTjAPCSv8=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC9peVTI9eGig_xJfJ0_m4uyKtfGgIDy0L5QzgzTPcKQw0Glww6ESPN5VzMlfI3eo6N6cRK2r0InvaupAMasXF-0Q8kYpBuMSk0NsV4SjDyXHSAe333F-f_82cOheyf-dj_BkWIzxYqgCc_1A=s4800-w800-h600"], "a": ["michael bardeggia", "Laila"]}, {"c": "heritage", "n": "Arco di Riccardo", "zh": "FREE - a Roman gate in a courtyard", "lat": 45.6478079, "lng": 13.7688886, "g": "https://maps.google.com/?cid=5531343432948132750", "m": "4.4* - FREE - 24h - easy to walk straight past", "d": "A 1st-century BC arch from Augustus's walls, wedged into later houses on a small square in Cittavecchia. It has nothing to do with Richard the Lionheart despite the name. Five minutes, then take a table at one of the bars that surround it, which is the point of the place.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCrxA3zy8_5o4wJhoY-CiC7Z8VSC28ar1JSlp-eWVFnKEt2rZTcifyoDhpiu41x45svtI0c8z7Yo32WAXk1SDXTaDa9XgsN5vS8iGlliqnSv3-HFmQ8wndYZ9txu4n9ZdPxVMWexGhcqqnWBg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDtdmqx7Q45GB-_6VWMdHnoGNZJ5GbJ-T3kSHCR8y3v9tOhFlTmJtJ9AgizkLaF-HfwS1ePO6xQz58UbBgm1XNz4cWiqwRRg9SlHTf-cGZyCnWXShE1Rxoa7UnxFp8CvvuJ-8qYf7STDFkXqA=s4800-w800-h600"], "a": ["Alejandra Ruiz", "A. Sh"]}, {"c": "heritage", "n": "Canal Grande", "zh": "the Borgo Teresiano's spine", "must": false, "lat": 45.6523298, "lng": 13.7716004, "g": "https://maps.google.com/?cid=4260612662271509000", "m": "4.7* - FREE - 24h - liveliest 6-9pm", "d": "Dug 1754-56 so cargo boats could unload in the middle of town, now a rectangle of water with a Neoclassical church at one end and the Serbian Orthodox domes at the other. Sit on the Ponterosso steps at aperitivo hour. The Joyce statue on the bridge is the city's most photographed object.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBH3Uy65x4q5IFqsTMpddyt9DzInihJAEgFxyJCdjg5eoosiqcIQE4entpAyNp-tH1zLVmw9_Hnw0aquGifmUbJnQDK8j_Kpw9SY7YqrpPN9Mlmbrtav8TUioHbSzC_k9zpUWlXNfEBOU-9rA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAY_KEriAQlQ2oyMe64_dPMaCFKXOIPZS9hdn-rbV7lNQBGqfHlz5_INVB3MCkruSdtoHSW3fDnFWp-nQnTquV16pFUZDXSXZ1ILeEz9W2BW7veXaS8JrKK_ppwf5fWSL0kfVSEeOZndHnFsjScYVry8g=s4800-w800-h600"], "a": ["Luca Ambrosino", "Rosa Castrogiovanni"]}, {"c": "church", "n": "Chiesa di San Spiridione", "zh": "Serbian Orthodox, five blue domes", "lat": 45.6514817, "lng": 13.7733333, "g": "https://maps.google.com/?cid=8997998254874067788", "m": "4.7* - FREE - CLOSED MONDAYS - 8.30am-12.30pm, 5-8pm", "d": "Neo-Byzantine, finished in the 1860s by a Serbian community that got the right to worship openly when Maria Theresa opened the free port. Silver icons, heavy incense, no tourist infrastructure at all. Cover shoulders and keep quiet; this is a working parish, not a monument.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAVS1agZvjktIlO_0ShVe1d_C5-83WxMymIstcZO1rihQ1Jfu_xOcGxnBvx7zh3nTqR46x3UwyUEbeK_P-KMtDELpecBspSwLndHw-GGbIH9WH7F_OMLrlYijwPJ2V6vg5AMMPSA-mKBityUw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCukeaGZ7R7KLQR3HinQnXOd_A5SuXH3AB9lpcDCKXJ5AlZJOPjUiA4dgBuFOq6CI2ADiItQppBI91lt4ez2rS4S_cGOIC9CFv41k18RypZ0ss163IgDYWS-TxKXc1Tmv63xw81YEljMlWLDhNUlnMn-w=s4800-w800-h600"], "a": ["Zbych", "Petra Popovics"]}, {"c": "church", "n": "Tempio Israelitico", "zh": "one of Europe's largest synagogues", "lat": 45.6531978, "lng": 13.7799662, "g": "https://maps.google.com/?cid=12403029512204459259", "m": "4.4* - ~EUR8 guided only - CLOSED FRI & SAT - short daily slots, book ahead", "d": "Built 1912 for what was then one of the biggest Jewish communities in the empire, and the acoustics are extraordinary. Entry is by guided visit at fixed times only, so check the day before rather than turning up. The tour is a seated talk in Italian and English; expect history, not liturgy.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAics-W1uNta627I0muUhBlyNE9OrkL6dJptp_7Ap86byPF9Q54yQDPKPuWrTtZfYK4DbUmqmZ-OSHmSfi30mlFLisnjfTrCCrhhEHt5rg6IdajJANUWkdnounwPmntoX4d4o114TRe1M5UhQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjALzy8UaNqCc1LWloHu-GoHXpVA2I0VahK8Be0hsI6blXBRKX-c_HleGNn4QkyOKiJ4MRp20dNwTSCvUZX3nCfac02yWZMJ1JEzGZb6__DCcMIbkp7vm6mf1QHQAk4AF0fcVP3c7zlymrZW=s4800-w800-h600"], "a": ["Matteo Frivoli", "Hector Kohn"]}, {"c": "museum", "n": "Museo Revoltella", "zh": "a merchant's palace plus modern art", "lat": 45.6470134, "lng": 13.763308, "g": "https://maps.google.com/?cid=6033181746723987255", "m": "4.6* - ~EUR8 - CLOSED TUESDAYS - 10am-7pm", "d": "Baron Revoltella made his money financing the Suez Canal and left the city his house, his collection and the cash to keep buying. Start in the untouched 1850s apartments, work up through Italian painting, finish on the roof terrace for the best free-standing view of the port. Allow two hours.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPDkoNiHeLVP9zaiL0Lu2nE6uDFjG60NAqIlrzFiSK6iZULK5K3BvtAJyvKTe13G6f4yVaoBiY-aqEcOyrD91OHTl6tpTIG7MSmoy4P31Vk2nQ9lGuAnoRWwoLYtG6O4jJvudQEMQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNB_SE3rzqbBOEMobN5jP05gO4Ht7AnnU7k9xKATAh6JBiGGWct-61YM7XQAI51vvn1IhVBcuEyvAYyJY8AtQCs5DbPQOhDT3y9t5iQDUjsjWb5SeVnWGTA8L55Fh5-Mk5F6nyh8A=s4800-w800-h600"], "a": ["Markus Enzinger", "Andrea Addante"]}, {"c": "museum", "n": "Museo Joyce e Svevo", "zh": "one room, honestly", "lat": 45.6467892, "lng": 13.7648243, "g": "https://maps.google.com/?cid=8349203828512315199", "m": "4.1* - FREE - CLOSED TUESDAYS - 10am-7pm - it is a single room", "d": "Joyce spent a decade here, taught English to Italo Svevo and started Ulysses in this city. The 4.1 is fair: this is one room of panels and letters inside the LETS literature museum, not a house museum. Go if Joyce matters to you, skip it if you came for interiors, and read the panels on Svevo either way.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjANmhtgIXfpAiwIt0yC1HHds9lyF0-XdKC-N1_Z7tP7e_jpZgwrWGte-NPCpixqCAvbkT30T63vl_b4bo2e4zCGconXyyIhjuW5J5TKvIdTTaYNZZ3Z8tm6nXysJFtYFgtbppZvJDuX4-z30Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCfOM93-CUK02oHFFyvlzUR5RAxbJy4wU4G3PvW39OSOgxLXMTYwyi_NqKkyYi4mEFxQSkJrD9cKWwhIxof6J6qg5qsEN1CzfAwSGV1VKQyuVG3qqCjfdwKbRpZysCfJoWHY-OrcD-opi7BIA=s4800-w800-h600"], "a": ["Museo Joyce", "Aleksandar Dordevski"]}, {"c": "museum", "n": "Risiera di San Sabba", "zh": "the only Nazi camp in Italy with a crematorium", "must": true, "lat": 45.6209031, "lng": 13.7891963, "g": "https://maps.google.com/?cid=18099312591004035821", "m": "4.6* - FREE - daily 9am-7pm (9am-5pm Oct-Mar) - audioguide EUR3.50", "d": "A rice-husking plant from 1898 that the SS turned into a detention camp in 1943; between 3,000 and 5,000 people were killed here and the crematorium was dynamited by the retreating garrison in April 1945. The steel plates in the yard mark where the oven and chimney stood. Go early, allow 90 minutes, and do not plan anything cheerful afterwards.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCbIQZJIkpbaceS3KyT88wy1GegLWIpEETQNLoHm-u4KdrKcDAK99wkdaF7P_r0hLnnVHZc0aYgdraHw5Mv2MSPrbIb-tlCTM0WfYVw4fBKojhteco0P382gcAmwm9yuhZpvZ3YrdsdQJJgKSU=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAOJeqPiAY8vzxB8bzRJw0qjYJ08mWHW0nOJXdelQbdVccbr9QW3vxwC3OIcfeS5_DskuhPPqC_n2V3ty9qeASpY0gegR0JY5kwm13fjui9i9tRT4Km5gLOfhMEk6Zqe9zadYNV2KTh4KZZce8dxQXmeg=s4800-w800-h600"], "a": ["Vicente Frare", "Enzo Gentile"]}, {"c": "museum", "n": "Kleine Berlin", "zh": "WWII tunnels under the university quarter", "lat": 45.6554785, "lng": 13.7779803, "g": "https://maps.google.com/?cid=445693231004319895", "m": "4.7* - EUR5, CASH ONLY - LAST FRIDAY OF THE MONTH ONLY, book by email - 2 hours, 12C", "d": "Four linked air-raid tunnels, one dug by the city for civilians and one by the German command that ran the Adriatic Littoral from Trieste. Run by volunteers, which is why it opens one evening a month at 17.00, 18.30 and 20.00 and why you must email kleineberlin@cat.ts.it first. No card machine. Wear a jacket and proper shoes.", "s": "At one point the guide stops under a shaft in the roof. A spiral staircase once ran up it from the villa of Odilo Globocnik, the SS general in charge of the region, straight down into the shelter and on towards the law courts where he worked, so he never had to step outside. Nature is taking the tunnel back: there are stalactites forming over the concrete.", "sl": "The general had a private staircase into it", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBzrRzd4hIP1yxT4EE6HAVMWQ9ne2X5roEVj4ZE7zvfJdYew8XFeCZ4pAl5e25AdmA3GXmrx9eNBknLUQYMUjd-35fFVo80GxGQ5_AtAUgdVMhoENm0p9PQoepJ608FvoRSInfOiTCiRLxlEdA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCorhLf40RE7Zv-ZAzYcjLaB729c4uzDHvYFo8qv2w6fPuBxza6Ltqot45CWHsqrGZ7QLDjr5f3LHT_jJoHVhiBb_v3GTFY9GuyTVuT4npdjtQzVFJYQ9JJ4t00hpZwXqaG0SCKAlRpGiuZ=s4800-w800-h600"], "a": ["paolo zgn", "Andrea Starz"]}, {"c": "heritage", "n": "Tram de Opcina", "zh": "tram plus funicular, running again", "must": true, "lat": 45.655055, "lng": 13.7750815, "g": "https://maps.google.com/?cid=11098756170682707810", "m": "4.2* - EUR1.50 - DEPARTS PIAZZA DALMAZIA, NOT PIAZZA OBERDAN - ~9am-8pm", "d": "A 1902 tram that gets shoved up the steepest stretch by a cable funicular, climbing from the city to the Karst plateau in 20 minutes. Ride up, walk the Napoleonica, come down on foot or by bus 2. Tap a card on board or buy at a tabacchi; one ticket per card only.", "s": "It spent nine years out of service after a 2016 collision, came back in 2024, broke again when a hot afternoon expanded the funicular rail and threw the haulage cable off its rollers, and restarted for good in the summer of 2026. Locals will tell you it is running; check anyway, and note the city terminus stays at Piazza Dalmazia until the Oberdan works finish around mid-2027.", "sl": "Nine years out of service, and counting", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBUn5ycAS-4ftowCdawQ48-pJfzOSbRa4ya4CuyxJ81kSLX-a4z5TfchOTadJ_ROD-HSC3h7Kpz1sS6bLeYJhqT6PDriZuScjIwpImExgEjqOucHRpBAd6iYRYDmM_TNv2UbX-RiCaSVcixLJiu3RuhCQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB5jYIvUqQ9Yc5mxwj7OtAnhS7k5u-0ltTATXVxu3Dqs2eciAMWLjBn7wp2jny-zuP8g1_97s3obu0U2j0IY7CKy74_eVxFuhKq1POtvYBDHWSf3Mq-tUZhpfNc94U2wWPQtgIuD9oAmBqtltdBukFMsw=s4800-w800-h600"], "a": ["Dejan Isakovic", "Sigi Reich"]}, {"c": "view", "n": "Faro della Vittoria", "zh": "FREE - 70m lighthouse and war memorial", "lat": 45.6756647, "lng": 13.7569378, "g": "https://maps.google.com/?cid=933250792661652337", "m": "4.6* - FREE - OPEN APRIL-4 NOV ONLY, mostly Fri-Sun - 15 people at a time", "d": "A working lighthouse built as a memorial to the Italian naval dead, with a 360-degree balcony over the gulf and a lift for the climb. Hours are short and weekend-weighted, groups go up 15 at a time, and it shuts entirely in bad weather - so check the day's opening before taking bus 42 or 44 up here.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAPbxrOc7c-MvwcTUum92llGhTEKoDioi3VynXIb3qxp6GtG5Mu4fIZNVmufJZAEaH0rb9DChtHYVHCaVn2PGfqoVMANujX5Nal64ZzydRdKySqJ2gRziJClqtvoPaW8uLItW2xdRAB7ohh8sc=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjASm3xlPfYkcWjb_MDN59Mq4jS-eajaOY4HphoSe1q6YY3o-qEYrHOnh4DNGGC79McpOVh6CocJ9TD5uK7EnKSqtHTO9thN38nIfVuzcUeolFsMIhgreEcC5AYLYq2cjC9gOHt44ftG3DwbDQ=s4800-w800-h600"], "a": ["Oleh Lytvynenko", "Igor Bielcik"]}, {"c": "view", "n": "Obelisco and Strada Napoleonica", "zh": "FREE - level cliff path with the whole gulf below", "lat": 45.6799169, "lng": 13.7808739, "g": "https://maps.google.com/?cid=17301306786936811591", "m": "FREE - 24h - the tram's upper stop is right here", "d": "An 1830 obelisk at the top of the tram line, and the start of the Strada Vicentina: a flat, shaded 4km balcony path along the cliff edge with Trieste, Miramare and Slovenia spread out beneath. Almost no climbing, doable in trainers, and the single best-value hour in the city. Rock-climbers use the walls beside the path.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAhUuoLxXNFxgRkDzbn95PS-9vsn_Mjhug9_6vwxUp7CqdNX10mETcR16raulvHk9R8NdEYw083jXwR3pz5lxz-yL5-4pP7G5nbp3dpHWEi8VhZ1tYksKDAJNZ3wtObOMGt30gOuIpIXtMubA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCvo9C_QFsXhMkpNYwI0o9VKU_Wbs4NXVQvxt7njDJKhG3QbE45SOn0QVTfWIKDGxttdjERKpWVx8KFaOCLiBpYm7LD7_nvcJgTJrMPoo1ckoTqIpx7xaUNkhEihRbtgMmQ3NwrysFx4aCb4g=s4800-w800-h600"], "a": ["Fulvio Mazzoli", "Stacu 1"]}, {"c": "sea", "n": "Bagno La Lanterna (el Pedocin)", "zh": "EUR1.20 - the wall", "lat": 45.6482705, "lng": 13.7547716, "g": "https://maps.google.com/?cid=16990544054825617610", "m": "4.2* - EUR1.20 - 7.30am-7.30pm - MEN AND WOMEN ARE SEPARATED", "d": "Open since 1903 and the only bathing place in Europe still divided by a wall: women and children under 12 one side, men the other, meeting only in the water past the end of it. Free plastic chairs, pebbles, jellyfish some weeks, and fifteen minutes' walk from Piazza Unita. Read the next panel before you go in.", "s": "The wall is 74 metres long and the triestini are immovable about it - a consultation on removing it went nowhere. Couples who wander into the wrong half get told off by regulars, sometimes loudly, and it made the national papers in 2026 when two visitors were shouted at and left. Split up at the two entrances, meet in the sea, and treat the ticking-off as part of the admission price.", "sl": "Tourists get shouted at here, reliably", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNWozPHTj4t4PbScAnxJG4vYoIcNochy5VCWbDlik-6OnlLYYzq-sKsd57lSuc-fj5BKptO6gHSuADntIgCHjEwXOELDahhiIKeYV-utQeCeSMswsBGV_JwLO2-YECWjJLlQ9E=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNsFzYuAk3FyiYjPVxjHdyjcLWVqtKTmrOpYSQ6aDGA57nkpCaZ36B_LEURqDyWK1NcuK8IjFESNlvlfJY8sqofcFQl1bsOg2aUN4XzbelEaE-JcdqnwvsSspNHAP3y1Ycgb2ER=s4800-w800-h600"], "a": ["Ivana Zetta", "Milena Zupan"]}, {"c": "sea", "n": "Barcola and the Topolini", "zh": "FREE - the city's swimming habit", "lat": 45.6964248, "lng": 13.7330758, "g": "https://maps.google.com/?cid=11348030704003025965", "m": "4.7* - FREE - 24h - concrete and pine needles, no sand", "d": "A two-kilometre pine-shaded seafront where the whole city swims from May to October, off concrete terraces and the little round platforms known as topolini. No sand, deep water straight off the edge, water shoes help. Bring a folding chair like everyone else, or take bus 6 and accept a towel on concrete.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCAX1w21XADFuLDVt25WkImGmU3X5lTp_eWyIhTpnNy1uiCtvVLRszYzk0c1m4Xr4N0XcVg7HNkWq7_3_9Ymw6v7Zw6k3vtY6VOoXptKaY9z_jA-nL-N7a-ujrgRp8VCVekMyTjuFwAY04V6Ho5T3TkPQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDYuS5sCHZ8X5rmG1XlIWtOMmHw25wKf4n4Jfp8-ao9tEPaxd53MCAClxVq1A-3Zfufmavu5XCUFK-99LDEWh_l69RKNnuvgyqiOWalMJRq52aCTv7iCQIT3FM5dtsN6qM4otbLGtY4x1r2=s4800-w800-h600"], "a": ["Iza Czuchra", "Sandra Nieuwland"]}, {"c": "heritage", "n": "Castello di Miramare", "zh": "EUR17 - Maximilian's white folly", "must": true, "lat": 45.7025267, "lng": 13.7124754, "g": "https://maps.google.com/?cid=6181852107812349808", "m": "4.8* - EUR17 with exhibitions - 9am-6.30pm daily - PARK FREE - FREE 1st Sunday of month", "d": "Built 1856-60 for Archduke Maximilian on a rock over the sea, with the original furniture still in place and a 22-hectare botanical park that costs nothing to walk. Parking is a genuine problem with works on site: take bus 6, the train to Miramare, or the Delfino Verde boat from the Molo Bersaglieri instead.", "s": "Maximilian left here to be Emperor of Mexico and was shot by firing squad in 1867, aged 34; his wife Carlotta lost her mind and outlived him by sixty years. The legend that anyone who sleeps in the castle dies violently abroad picked up Duke Amedeo of Aosta and a German general, and by 1945 an Allied colonel called Bowman believed it firmly enough to pitch a tent in the garden rather than use a bedroom.", "sl": "Nobody has slept here since 1954", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBS3ClHwE29miT3qhjuGRpxHiVelMWKZCM69CYYnPRusicv8C_YqkhliLSOwBKfgQTO-sGjq4Gs9DoOkHD2OrPXNL0pFybKHP3FdeIU9kGutphJIgVKzyfOLmfkZNXuYSywq17ipxpA6bfcuQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBQB-J7aBAu2L_1KeC_npuMnQfxgfKU9l8RHtQYkQjmwUPgSNREUrkOQYWD03Rom2EeMhwj_n_QdtSt6XAXMhYkeim39VONVllaTw4yet-x-X-HWmozxowy9d3dCiE7eaZDrqqU_yA3XeiEOs9XN6tvxw=s4800-w800-h600"], "a": ["Noe E", "Martin Riebenbauer"]}, {"c": "heritage", "n": "Magazzino 26, Porto Vecchio", "zh": "FREE - the abandoned Habsburg port", "lat": 45.6652934, "lng": 13.7623684, "g": "https://maps.google.com/?cid=11981810913581415597", "m": "4.6* - FREE - CLOSED MON & TUE - 10am-6pm - long walk from the centre", "d": "One vast 1890s warehouse reopened inside the old free port, holding the maritime collection and the Magazzino 18 display of furniture left behind by the Istrian exodus, which is the part that stays with people. The walk in along the empty quays is half the experience. Combine with the lighthouse above it.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmM897K1KjEHcgbmdN3IRCWn5UWxxnzdO1xaSkZoNwA5QctkDLLC5BYISCHp2O9Qo1rRElQFsPbnxinn4IjMA9LRnqIceghZGDvf6cWoYTjvtYu26RLRiknx6LwhtitlNqJNXPOslbRyTu6z=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNJIFUGUWnKRIZQtYZfmUar9TS1Z-yvzr7g5fzysJgQBzXAq6pP10LUgOlZn7ilpX7jaIuz9kOiiDOV5h243J8a78qKamVP1OpoKLjQkENOtA85eFZM9BIA-H9zi6CLoqHHAErXiRFD3Iq7=s4800-w800-h600"], "a": ["Magazzino 26", "Gufetto Urbex"]}, {"c": "church", "n": "Santuario di Monte Grisa", "zh": "a concrete triangle above the sea", "lat": 45.6932713, "lng": 13.7495898, "g": "https://maps.google.com/?cid=12040829230354820651", "m": "4.5* - FREE - 7.30am-7.30pm daily - free car park, bus 42/44", "d": "A 1966 Marian sanctuary in raw concrete, built as a stack of triangles that reads from the waterfront as a white wedge on the hillside. People either love it or think it a monstrosity. Either way the terrace is one of the great views of the gulf, and a forest path links it to the Napoleonica in about 30 minutes.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDt3o4mCg-ATm_lZDJ0cgm9TeoChcwxj7YMBL4fi1Yd2aRwetMHR1A6Czn2Air7G7n67zkAHElahjt2FHw9rhY8cGox-twg6UYQgMufGa9F74H23lfMXsCW_vArDmQ03JYUek4WUVHbE1XIdg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCcf4xdVybeLJ333VuTPUPP4lbFjosddAiAevT-7qdTLAJmZZpHEe8b9aFzgIkk2abja4pwL4pZ5RRgC_6-qyM5TRJiIKU--KaGHK6aZ11-Udu9FwxIFVKkZEWm1fgphLlIEYk1e2apIKT_kQ=s4800-w800-h600"], "a": ["Jacopo Ragusa", "Dmitrii Dorozhkoff"]}, {"c": "karst", "n": "Grotta Gigante", "zh": "EUR15 - the world's biggest show cave chamber", "must": true, "lat": 45.7096311, "lng": 13.764503, "g": "https://maps.google.com/?cid=9007165856115225203", "m": "4.8* - EUR15 - CLOSED NON-HOLIDAY MONDAYS - guided only on the hour, 10/11/12/2/3/4 - 11C", "d": "A single chamber 98m high that would swallow St Peter's, reached by 500 steps down and 500 back up. Guided visits only, on the hour, in Italian and English - turn up 15 minutes early or ring ahead. Bring a jacket whatever the weather outside; it is 11C all year. Bus 42 from Piazza Oberdan, about 35 minutes.", "s": "Two wires hang the full height of the cave carrying the longest geodetic pendulums in the world, installed to measure how much the earth's crust here bends and tilts. They have picked up earthquakes on the other side of the planet. The guide will show you the readings, which is the moment the cave stops being scenery and becomes an instrument.", "sl": "It is also a working seismic instrument", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDdd8FTe2VjpJSQMobhTR3MV_qztEmQHGmSVVNlT2x3RtAXFeNOkLddcxGicXuCAY_QDFFJbgRn9RQeNroKRCAt2H0oVHXng3Po1cTaGeV786F_XdgrKWtEAQhTnmlOr-jdD3MTQxJ3G3vDAA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDIIPtSfqPMUsQNTPcuaCFwxZzZ6DIRHy7nZYbpVDHWnmLzGhus7IsWz4XNMfes3OcWhZw0nU9Vxz0t2wy_F2Dbn_yMhsouycCGtDBI8jTlOsGE2uZ8OWv6dTrC0hPSnUh2UeAFjhod6F22pqOx2fKrMA=s4800-w800-h600"], "a": ["Grotta Gigante", "Mario Zuljani"]}, {"c": "karst", "n": "Sentiero Rilke", "zh": "FREE - 1.7km along the cliff tops", "must": true, "lat": 45.7720792, "lng": 13.6145708, "g": "https://maps.google.com/?cid=4236828111310480422", "m": "4.7* - FREE - open always - NO WATER, NO TOILETS on the path", "d": "An easy, almost level path from Sistiana to Duino along the top of the limestone cliffs, through the Falesie reserve with WWI gun positions cut into the rock. Bus 44 from the bus station, about 45 minutes. Carry water. Half a day with the castle and a swim at Sistiana at the end.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB4Fqc_ZqE_lCV8uKLi8fkz4E2sxPkapCmRKh0Bvy12T-IkHLcvRnj0OaWYEwFFfGPBzDe8pymawIaavl0sw0NrY_UHaM2FljL3ZaSp9SmoDGI_BcM7ap7JHmwLzC12sdt0D9S6_vN-d5jRCZlqh6gd=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBA9JVFZQN9KBHzsRFTBTK5I8UDVayHu0a4OF1Qx1GhYMJMl3UZ2z0HzKacY1KmhMQzeK92Y6C3Hs5swCg3De4v0yLgMZ3W7-C96FL-pX1Tam-rjjjg3ZwBeZenItGvScDPsB7ZN2ZZ_zWzTg=s4800-w800-h600"], "a": ["Gernot Prem", "Christian Moretti"]}, {"c": "heritage", "n": "Castello di Duino", "zh": "EUR10 - where the Duino Elegies were written", "lat": 45.772055, "lng": 13.603984, "g": "https://maps.google.com/?cid=9918747734998397462", "m": "4.6* - EUR10 (EUR7.50 students/over-65) - 9.30am-5.30pm - CHECK TUESDAY CLOSURES", "d": "Still the Thurn und Taxis family home, on a cliff at the end of the Rilke path: period rooms you tour without a guide, a WWII bunker turned small museum, and a park straight down to the sea. Climb the tower. Rilke began the Elegies here in 1912 after, he said, hearing the first line in the wind.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBOw-mpUiQodce4kgDU_rEUSEi5kvOkXF1AsBblEbacVgXu031-VV0ldZBXbDREtyaM8yavsqTaW6SGMsAbGfXsu5_wVEQTCM7ex6StlL2dF_XjqOWKjk7BgEc-NSjFmYFORnS25Hj4hJey_w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCI4Jza0qHlK42LyGHEDIpzzWP9Yd-CvyhSrx2Rk70NMBYdVelTSM8km85CCak0mrqGSBbAmq9WF65UoNhFi8IJKBwUY1eJLYOD8LbekHMnjviIH75wLeWRXrVPuINU6UQUtSUht5SZXq7AaA=s4800-w800-h600"], "a": ["Adrien", "Q Xan"]}, {"c": "karst", "n": "Riserva della Val Rosandra", "zh": "FREE - waterfall, gorge and goats", "lat": 45.6197002, "lng": 13.8681894, "g": "https://maps.google.com/?cid=5316515124404770077", "m": "4.7* - FREE - 3-5 hours for the full loop - bus 41 to Bagnoli", "d": "The one proper gorge near the city, with a waterfall, wild goats, rock-climbing walls and pools cold enough to swim in during August. Trails are only partly marked and the far side is genuinely steep, so take the valley floor route unless you know what you are doing. Reachable by bus, which is rare for karst walks.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAi_6pqXGD9Cdz-0rPEWRUJHRrT-jhxirtx4esC3J8yUOOo-DCrObfU4m5pjSvRs2yEXzSobkwcOKdHc1dJPzfvulIWNWtQ2m7iOHQJos33Q_X0AbdeTW58TBnDC9s9o9aMrBXOfctZ9FIQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBHLOX3Hiwe3eStY5hu-SxsVwUhcRf7FQ_9mUHcvXs2wpQmQKk0mKl6xPf_0RCX_ARIMbywau-kaoDdcLhQOWl1RFiw7qeri8x413Aelg2Dy9AHAoBaN0mkk96gjDQ5zL0Uibd2cVjuhyDrmro=s4800-w800-h600"], "a": ["silvia doc", "Felix Moronta Barrios"]}, {"c": "daytrip", "n": "Santuario di Monrupino", "zh": "a fortified church on a karst crag", "lat": 45.718821, "lng": 13.806172, "g": "https://maps.google.com/?cid=16582475439427281784", "m": "4.7* - FREE - 4-7pm daily, Sun mornings - hours are short and local", "d": "A 16th-century church inside a ring of defensive walls on a rock above the plateau, in a Slovene-speaking village where the road signs are bilingual and the bora has stripped the hillside bare. Ten minutes on foot up from the car park; come for the landscape and the bell tower panorama into Slovenia.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCETRm_qsXTbU7Vtkiy1CFEYCD4v5m034mPUDB5G89jRFK38DJD_d9fEGnGhcRlQKf0phuiA0DBIK_zCkKrc2cusQx3z5Ufi84GmSBmeqYpWre6MrHxhp25zUrMgE-yDl6HxtZCJwi7knMz04snaNjedA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBXN4DCIAa2NPkP041hSDBOBVr2d_rQC_l0ueDqyipELp-7i4D1cxguLgLGemhMy-y_d82zNXl9YrxUQuDsYH-g_TlEHrXCvk_SRTF7IERBY-lA1WaVRZF4NEZKIQXhClcNlcuucNwrGKwY6GU=s4800-w800-h600"], "a": ["Ronald Pavletic", "Danilo Bisello"]}, {"c": "daytrip", "n": "Muggia", "zh": "the last Venetian town in Italy", "lat": 45.6041848, "lng": 13.7674345, "g": "https://maps.google.com/?cid=18312753646040672422", "m": "4.5* - FREE to wander - ferry or bus 20 - carnival is the last week before Lent", "d": "Italy's most easterly seaside town and the only one on this coast that still looks Venetian: a small arcaded piazza, a lion of St Mark, a marina. Go by the Trieste Lines ferry rather than the bus - you get the gulf and the city skyline from the water for a few euros, and lunch by the harbour at the other end.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBtrtjtJ8hpGoMuyVe7PKRR56vtJINztSwiEUiOsY5n7fW0MXG90MdedBBj6UzJiWdXe4sPIMaAkC2rut59QxJGk4EKUU2GD1y8nZ51gBp_cmuh9dsRo6esIirZNZ76iNbpjYCsrE7Y8TVQCM8Em8woIA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCMjSCDKMDlWFTd94eRzq6f4EGSdO5qG7V55ZYucEnmk5kmG5VufRtCHT0clQIy_TLiANiAaqoRnf4SWJoLIH0ebuSRLaGnmOY2AL3sd7SBnjCW10z2IK4hg55t942CLhtu2enZa26AC75D9S6fJw6F=s4800-w800-h600"], "a": ["Ric Le", "Daniele Mazzon"]}, {"c": "daytrip", "n": "Basilica di Aquileia", "zh": "UNESCO - the largest early-Christian mosaic floor", "lat": 45.7697035, "lng": 13.3709941, "g": "https://maps.google.com/?cid=8611884840420906964", "m": "4.8* - basilica FREE, crypts ~EUR5-9 - 10am-7pm (Sun from noon) - 40 min by car", "d": "A 4th-century mosaic floor the size of a tennis court and a half, walked over for centuries then rediscovered under medieval paving: fish, birds, the Good Shepherd, a Jonah cycle. Pay for the Cripta degli Scavi and the frescoed crypt. Train to Cervignano-Aquileia-Grado then bus, or drive and park free.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBgprBvVl3svNxbDSMIvfqkNfWewVUUFV19p-Ke1hWMMDPNHwNgoNY2WpcMkSQTyJz0fwyDFeAkOGlByM8GnRs1cF3GFXsxVRxW8Ce2q3eQoVS4YMUnJvKpjMu08qke6FMODn31UX7_BubSxEg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD9bavApAry2E6MSBq-S28VFlp1sFXW7GATe1KyNfEhmZphN16Y3R-qqs3ponFJvPVs9l-KBoDaVnl82fXCactuPdSfAb06OlIaLuZOQxUk5fL4ppTvC40GRVdF_0euSKNfnUoFsG9KDWY3N0jZqN4KAw=s4800-w800-h600"], "a": ["Jernej Pisk", "Jozsef Koroknai"]}, {"c": "daytrip", "n": "Grado", "zh": "lagoon island with a 6th-century basilica", "lat": 45.6764389, "lng": 13.385144, "g": "https://maps.google.com/?cid=13708609741863419542", "m": "4.7* - Sant'Eufemia FREE - 7.30am-6.30pm - the beaches are almost all private", "d": "A fishing island turned Habsburg spa town, with three 6th-century churches in the old centre and mosaic floors nearly as good as Aquileia's without the crowds. Be warned that the shoreline is mostly concessions you pay to enter; the pine-wood reserve end is free. Boats connect it to Aquileia across the lagoon.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCqdRvyiqldrDtXpgwGSWcvp0KsLcuUVcNvYK3JQRIiHFeYzOAkNqzXnFoqmsOW4yKpp_FDyt8U17a-m_7mbJ2ornWJCxeKCYNMaW85ALaoma5wEc9fEYypqHdvfnY8nBgqiljxFETiYi4bonk_Wbe7=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCAkGr6o6r5jsMPHKd9Dz3ExdyLwSfI0tqIL76gTY8h4CQ4dls-4D9D8FUf8neQOroyy5k5JyzE3y61fkAObXHnV8niJj79vPXuOqz_PQ0B-mfr1_lOLefo-HfR1Nq0qBRWLf0150EN4lOk7SY=s4800-w800-h600"], "a": ["Martin Schmucker", "Eduard Gruber"]}, {"c": "daytrip", "n": "Piran", "zh": "Slovenia, 1h15 by bus", "lat": 45.5285639, "lng": 13.5683639, "g": "https://maps.google.com/?cid=15046481922394152115", "m": "4.7* - FREE to wander - direct buses from Trieste bus station - take a passport", "d": "A Venetian peninsula town of marble squares and narrow lanes, with the best view on the upper Adriatic from the campanile of St George. Walk the walls first, eat fish on the harbour after. Park in the garage outside the old town if driving; the centre is closed to cars and the fines are real.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDynN2hFtMt2dQYhLXdPZ5Oo43UapCqY0HBLv2yAGSZ8_GovoNnqbyGi80_4NTekrnriYe-TfJ9yKid3u_6K4A9LFeO6MZfjAYZsMF1Jd2ogkmEyNHEoNuCDHzkE2DrM5v2lDCHI0FWHOXNpIk=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBFJ4byqpzxEdk8zux8W_cmLxIBONl_PnpWOQxw2IdAgqb0rC0bCCgnrgz8TH3e3JLVsu_Qw9JBFc35TwXfuD1kpRyOQsm79yQI38qXGsJinRMH5MruGqC3gxDHqyPIfCdvZ4663unCNEEh=s4800-w800-h600"], "a": ["Dejan Prelog", "Peter Gajarszky-Toth"]}, {"c": "karst", "n": "Skocjanske jame (Skocjan Caves)", "zh": "UNESCO - the largest underground canyon", "lat": 45.663089, "lng": 13.9892129, "g": "https://maps.google.com/?cid=15611690651589705717", "m": "4.8* - ~EUR24 - guided, timed entry, BOOK ONLINE - no photography on the guided section", "d": "Different from the Grotta Gigante and worth doing as well: a river canyon underground, crossed on a bridge 45m above the water, entered by a little train. Arrive 30 minutes before your slot. Take the longest walk-out route at the end - it is effectively a second, unguided tour through the collapsed doline.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCO08M37_XBkxlztrQ6M0HvSDFNOpi-myf67AUAnVuTVsDut-pKdrKEVmA_2fFEvVsihTi8GmmtujUXdR1BaVzuzVO8NqYy8wngFAi4s7hg-s4bZrqAT6Gd3MAFDCT5DODXcp41qmk498Mr2Q=s4800-w768-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAwrmx6_JCf7OBejZfC3FHLMFvarzqv5PNruNSw87YF7Vfc9ry42BMxoGVEinhNwCD5MwNv5kxemaLLf_GnV3blnXRFX1xH9xYjt-_kyElf8R6QCCa4PFv72CR1AJYL7A7HLlWsMJvW2psVOqgtZK9A6A=s4800-w800-h600"], "a": ["Miran Brantusa", "Florence Glibert"]}, {"c": "daytrip", "n": "Kobilarna Lipica", "zh": "where Lipizzaners come from", "lat": 45.6678128, "lng": 13.8811153, "g": "https://maps.google.com/?cid=10345303260136885217", "m": "4.4* - ~EUR20, show ~EUR3 extra - 9am-6pm - TIME IT FOR A SHOW OR SKIP IT", "d": "The stud farm founded in 1580 that gave the Vienna Riding School its horses, with 350-odd greys, a museum and stables you walk through. Reviews split hard on value and the honest answer is in the timing: check the performance and training schedule before booking, because without one there is not much to do but look at fields.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPmTjfyrXQ94bebHU1RXuW_I3DtBnDQAgT8ZCx172NGBxBblb5utRF5hy_vXCDlz5KpR0rU8fWxhwOZGAcmtsODKlct8yQwxzIGnJ7O3tNjGlsYnHMddgVFE5vkD8unrQPxx7B8MKEbJ0Ps=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMTlGYo17prptvoVrOnTOmbr0DCv0C1pFE6wAJ3eSThOLtnxR6IyUPsGUbSaf8A-0bR5N65E7gtOPKJKcRkJTm-1_JZW82osAYQC7gqw9_8yck8eykQkr1TaI5LBj7IyTwK7370-w=s4800-w800-h600"], "a": ["Kobilarna Lipica", "Alfred Kolner"]}, {"c": "cheap", "n": "Buffet da Pepi", "zh": "EUR EUR - boiled pork since 1897", "must": true, "lat": 45.650838, "lng": 13.7703428, "g": "https://maps.google.com/?cid=10873709329167502705", "m": "4.3* - ~EUR15-25 - 8.30am-10pm, Sun 10am-4pm - expect to share a table", "d": "The oldest of the triestino buffets and the fastest way to understand that this city's food is Austrian, not Italian. Order the caldaia: pork boiled in the copper, cut at the counter, with kren (horseradish), mustard and sauerkraut, and a glass of Terrano. Porcina is the cut to ask for. Stand at the bar if the terrace is full.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB_z8WsioCOUCwGMh20ZhhVEdXw81glhaIoIpjZIQu2vKg1ITE_ZLFtNv7kSM0QpFK1IU5Npy3awbJr-YLolKYZWa7g1hH6mCFJWVjQyTK3e_ZXnHVqxNpaY1fg4mFqIjN8I3_z7d0d5ObPMxo=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAFZARlZSBdyUimOudT2a3H_Iv-96bmylApNx8wfQXmQpd24bSu24RpEgvVxeB5i3s8ExGvbsGwn4wB93W5n_44JV4ZW3nheayEqrL6Bg59nO4kX34TNrl-Xy6rYEZfBUmNlIJgl04n9FFI6oQ=s4800-w800-h600"], "a": ["Filippo Volpe", "Davide Mognaschi"]}, {"c": "cheap", "n": "Buffet da Siora Rosa", "zh": "EUR EUR - 1921, in a quiet square", "lat": 45.6468074, "lng": 13.7643463, "g": "https://maps.google.com/?cid=5416579055848830851", "m": "4.4* - ~EUR15-25 - CLOSED MONDAYS - 10am-10pm - book for dinner", "d": "A buffet with a proper dining room behind the bar, and the local go-to for jota (sauerkraut, bean and potato soup) and hot ham cut to order. Sit at the counter if you are alone; the bar side is where the conversation is. Aubergine and the meatballs get named as often as the pork.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA-M8jwU0n0W12GmSVvMJJA4yFArxPTl8QAPrQF6Dwjs1bGQLPjDVJVfNVpPbN8KV6vn9e4KREtLc2BP2E00868lN8EUV0U-2MhZ-nn85YjE09MqfMWAaTmdYBqT2VgO42-o7a5gv2PdilpvqE2lMiD=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCxnrcdgel0WMRhOYg4QHcFZd_s6BZw3wgV4Wvv4Ux9Khrs4s0sNEfSfaEt_nX6FpbePWFlLPJLPSnbdjO7_Cl2kLsLX8uPqSXLVRvJVj2Ma7rM8z4kmTtCP-ClM-g8f-UWIB5fElbm8M-bmfSugFxuog=s4800-w800-h600"], "a": ["Siora Rosa", "HUANG Shao-C"]}, {"c": "cheap", "n": "Vecio Buffet Marascutti", "zh": "EUR EUR - gnocchi with goulash", "lat": 45.6517984, "lng": 13.7774321, "g": "https://maps.google.com/?cid=8779141190508794043", "m": "4.5* - jota ~EUR7, gnocchi with goulash ~EUR11 - CLOSED TUE & WED - the owner is brusque", "d": "A century-old room doing the mitteleuropean end of the menu properly: bread gnocchi under goulash, jota, salted tongue with kren, lubianska (breaded veal) when it has not run out. The service reads as rude in reviews and is mostly just curt - greet him in Italian and ask before assuming English. Portions are huge.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAGN4riHv_WRRGiCMJp0IvsUEkNx3hOEpoN_7Nk4pn9ZaYlcRjGVWibbXrbpxG1F4sUEl1_4MsnXt7pg7rnKm6tFSXeO_3IEIxlZOF4lAZPhfsvWAa53y7vt3c-WOqgWTrsvi6eFn51zS-0Wi02IXnVeQ=s4800-w800-h450", "https://lh3.googleusercontent.com/place-photos/AG9NLjCWCSXs9GNy39MNY34ExQoV0LFc9dAV6_LW3gYjgb9Xcm4eynUvaq9aPkZvFzssuIdr61Bsh86gBRlG2jFVFsJdY59Rbkk9nzRX2HNMXDfgRVgpy6fp5dJrOlB-mcnS3-ufENF_GdahWP-55acYSyVuPw=s4800-w800-h600"], "a": ["Vecio Buffet Marascutti", "Elisa Marelli"]}, {"c": "mid", "n": "Antica Trattoria Suban", "zh": "EUR EUR EUR - on the hill since 1865", "lat": 45.6533571, "lng": 13.808193, "g": "https://maps.google.com/?cid=14784816827569724235", "m": "4.7* - ~EUR40 - CLOSED TUESDAYS - dinner from 7pm, lunch Sat-Sun only - BOOK", "d": "Five generations up in Sant'Giovanni, with a terrace over the valley and a grill that is the reason to come. The house claim is that nobody makes jota like they do, and the pesto-and-parmesan pancake starter is the signature. Not everyone is bowled over - a few find it merely good - but the room and the welcome are the real thing.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCpDQSqtO7vttvR6YnV4IgWs_C4SaReOI3IjJ4Uy1TiVNx3_60-EdMDkcXoCidohtHp6SgOOvbJdnx4QlvyXBH_q1t22rcmKHAJDEsBmKYikEtHe1EBrerPpcxr_3etfWY5M_tySlZoqyc5N5_fNOh1Ow=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA34d_YiO-KVmQiWgxOBp-h0ocLmoroSANFb445pepfEMhv1VVsODMBbgTwnMAfqU5_I8iMLLeMdqJe8deJNXtkpiBh5TiF0IkWXf2nWtyGRQWvuc_mqbhtAfL4ZO1orGg1sKeQXVZIV5PcAxo=s4800-w798-h545"], "a": ["Kat B", "Trattoria Suban"]}, {"c": "mid", "n": "Trattoria Nerodiseppia", "zh": "EUR EUR EUR - Gambero Rosso Tre Gamberi", "lat": 45.6472867, "lng": 13.7630652, "g": "https://maps.google.com/?cid=2897414309947711064", "m": "4.6* - ~EUR45-55 - CLOSED SUN & MON - lunch 12.30, dinner 7.30 - BOOK AHEAD", "d": "Rated among Italy's best trattorias for the day's catch, run by Valentina and Giulio Cusma since 2003. Sardoni (the local anchovies) breaded with radicchio and beans are the dish people come back for, and the Vitovska list is the deepest in the city. Small, popular, and a handful of reviewers find it dear for the portions.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBreKuumy54HRPTbClOSrb2P4bYPoXsCxUWR0jAd0xe_AbC5w2magTyoQN29NoknKZ4uun6wfC6mbK90pNIqV4Tzn0YYVX1BllkHJ4Ky_1e3phG-p2_sS_7XWYzomI9pnR9bsStm607W4O7KQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCmri6RGHli3E83lb4lE4w6pCJ9qPjgEbOOKcKLpK7sIN8xvAWGUOc2XSPy_4FD1JA74e7QA7MAZeHthc-D9VX3giEbCzBJpaMlhKsxH9HZYuXWxMDpKFwiI1MRZQseqhQ7wsGywaaI0Zom09xbAgaefw=s4800-w800-h600"], "a": ["Antonio Vargas", "Eat Sleep Breathe Fishing"]}, {"c": "mid", "n": "Osteria de Scarpon", "zh": "EUR EUR - checked tablecloths, big plates", "lat": 45.6506397, "lng": 13.7802192, "g": "https://maps.google.com/?cid=1554108537024499639", "m": "4.4* - under EUR30 - CLOSED MONDAYS - 12-2pm, 7-10pm - Italian-only menu", "d": "The seafood trattoria triestini send you to when you say you do not want to spend much: spaghetti allo scoglio, gratin scallops, salt cod, in a room full of locals rather than visitors. Abundant to a fault. Some dishes come out over-salted; order the simplest things on the list and you will not be sorry.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBB0ZqigMNqZNigfSBZPnt56nf4I4w01_C_KO3bN01AKIRh7klH-XA7UNdnw0IcVQUyHATsBvZhuBSSk1sfcvTifQvz5lgoTctBvJvfR6olORVNjtq-HoeLGq2sWTQlIoR07CHeu23YT57sNfca3DnmOA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDfpNsFphQx78hIeP7m9_wrInu5OpJHb6iwAYV16Paa3okCI_5WuU9qm6uE-ZRrLr7RHAdN2Pg0LAJ4xz92gHoAz4s9YnRgQp3zQke9szofhUh0HhvXsqOAmWp8FkB6TtgVdpesxW284p_2wQ=s4800-w800-h600"], "a": ["Antonella Rizzato", "Osteria de Scarpon"]}, {"c": "mid", "n": "Chimera di Bacco", "zh": "EUR EUR EUR - fish and a serious cellar", "lat": 45.6497517, "lng": 13.7698161, "g": "https://maps.google.com/?cid=16119381226407626372", "m": "4.4* - tasting menu ~EUR60 - CLOSED SUNDAYS - 12-2.30pm, 7-11pm", "d": "Down an alley off Piazza Unita, a young kitchen doing creative things with the day's fish and an international wine list far bigger than the room deserves. The tasting menu is the good-value way in. Portions are fine-dining sized, which one or two regulars have taken badly - go knowing that.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAfjL7Jfc1VJInO6Vg0Sw5W0Hm94VT2k0yi4gTNDCFnTgV6PTJSTwL52JrCBgZkkSZZTzzCD0ama1fbrFN4HhNvAKA2YCMk9PKqHDIWIA41QNn9nCnIwz6pAv9UNu7SOVmyenXAciu7KKebdg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAV5BBRJRux2WMlebcBOq5k9QmghG5_fYCCkjj8nhshu-A0MXzyUFRu_-1pmqiMHF97tZIUA0J11EHb_Xrx1BN6gDymgtRbMZwNUoVf36RNYPKnjfUpkC7ZHIFcP65A2Zd6_2aaD2J3sbrsTmnBNpLcuw=s4800-w800-h600"], "a": ["Chimera di Bacco", "Lucia Franz"]}, {"c": "mid", "n": "Lokanda Devetak 1870", "zh": "EUR EUR - Bib Gourmand, Michelin Green Star", "lat": 45.8845586, "lng": 13.5603791, "g": "https://maps.google.com/?cid=12397047520260136770", "m": "4.7* - 6-course tasting ~EUR60 - CLOSED MON & TUE - 40 min drive - BOOK", "d": "A family inn on the Carso border since 1870, cooking the Slovene-Friulian kitchen that this frontier actually eats, with a wine list of small local growers priced kindly. Separate gluten-free menu and they will adapt the tasting. Worth the drive out through the Isonzo battlefields; there are rooms if you overdo the wine.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCH5_U6K2ZRxYH8Bw0mXHsHqQ6K9cllmR6HODu8HvY_rtnzjZRY-aqKolB8XavwUyk3vLg5jJjaOkZq96nuZyotNM5Pz7yEjxLvAgfqrl9MEpKFpDJXH3wGHcokYjAbep4DrtZ_jRBwWOy-le4=s4800-w680-h419", "https://lh3.googleusercontent.com/place-photos/AG9NLjD6ErqRYIfp1-6QqaBrAQmZegvu3zQxxXmeC_Ot5dsAyeYD_zUu1kpoJD3W6A1R73RXWETsCZhzHNHfQZxAtrIazr_0qXqYcSExfuTOIarwh9iuDDGpWPTJrM1l8ecsbvHYnqpbtxIQEZVj7mY7PUwIcg=s4800-w800-h600"], "a": ["Lokanda Devetak 1870", "Marcello Mattia"]}, {"c": "splurge", "n": "Harry's Piccolo", "zh": "two Michelin stars", "lat": 45.6511779, "lng": 13.7698612, "g": "https://maps.google.com/?cid=10172616505608731977", "m": "4.9* - tasting menus ~EUR170-230 - CLOSED SUN & MON - one dinner sitting, 7.30pm - BOOK WEEKS AHEAD", "d": "Matteo Metullio and Davide De Pra hold two stars in the Grand Hotel Duchi d'Aosta, and the consensus among people who eat at this level is that the stars are deserved. Take the full tasting rather than the short menu - the people who chose the short one say so themselves. Ask for the counter seats by the open kitchen.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBjx6susXwazPvMHn6VVELoRe8P2XxvbDezeUveHCzWRVm3vPVNbRJYTPScAIwPfp0qsFiHUFcB966CipVI6Ejqq6A2705cIs3JaJHBp5uAuWq1C3_WjCDbcn9sJoysyLZcUhtkRleGedomk1x5HqgbgQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDtrjnVt-vAYJFLf3yPycfVVtMcq_kkyEXG_R0JGHbgKrLvpel34SyctgKvbjo-rhtAbuWRiMitSuQIialZX9RlILwuFH5gl5GTuUQMb0twFDRzV0t6KL4B8oRI9yZs0GfLMa_QpbenqBN9hKSkafL8MA=s4800-w800-h600"], "a": ["Bastien Verginella", "Harry's Piccolo"]}, {"c": "sweet", "n": "Pasticceria Caffe Pirona", "zh": "EUR - presnitz since 1900", "lat": 45.6477757, "lng": 13.7789083, "g": "https://maps.google.com/?cid=16346039440902915042", "m": "4.5* - presnitz ~EUR4 a slice - 7.30am-8pm, Mon & Sun to 1.30pm - NO SEATING", "d": "Art nouveau mirrors, frosted glass and no tables, because there never were any. Order the presnitz - a horseshoe of thin pastry packed with walnuts, raisins, rum, pine nuts and spice - warmed by the slice, and eat it standing with a nero. The pistachio croissant has its own following.", "s": "Joyce lived across the street from 1910 to 1912, came in constantly and was so fond of the presnitz that the shop still trades on it. He is said to have drafted the opening of Ulysses in here, which, given that Pirona has never had a chair, means he must have written it standing at the counter.", "sl": "Ulysses was begun standing at this counter", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCgPwAkZhO3Y5wK9GwBdJNNPmp4ZaNEXW2acs6FEW-_TanaD3owo75wGhLRanBxZkr40nyPLqPQATS26g2R5CYbySfN9XqEDCKPgSXAsnRHrkOCZavxDxhgjIbqPQHrqU7QSNUZSE_QLv9eLIqPUhmZwg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAaVxL7wOZfRvm7eUiHh6tX7VrYa4rWO-T7vR-SSCIO4xTyD0-mfT6d1IpoLjj-48BAc1JhGyoj7R2UOuQqRVDBsIENwvQQkmDOZSXUfYxqoejpwEt5BQiWnVIdkxoPFTzklPRDLFZb9WBeCVq4BvAxHg=s4800-w800-h600"], "a": ["Marina Social Web", "HUANG Shao-C"]}, {"c": "sweet", "n": "Pasticceria La Bomboniera", "zh": "EUR - 1836, Austro-Hungarian to the core", "lat": 45.6519234, "lng": 13.7745779, "g": "https://maps.google.com/?cid=7987113395443832300", "m": "4.5* - cakes ~EUR3-5 - open daily 8am-8pm - tiny, wood-panelled", "d": "The city's Vienna in one shop: putizza, pinza, Rigojanci, Dobos, Sacher, Jewish marzipan and the almond fave. Order a coffee and they bring a shot of hot chocolate to drink first. The Carsolina - mascarpone with lemon - is what regulars reach for. Buy a presnitz here too and compare with Pirona's.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDbmB4XyMK7tJuSt7TnyQX_nIzMLSFUWPwOVDVHFnWvGhm0JBqhmIUKdyJG8JHskjNe2Rj3WUvKz5_khN-07kBDRq86KNa26e_bGKUoZN8d6pMMTitNVHVmtRhoqn9a3e39Lr8ZfQFp8Lin=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAmgNXmHttndVaeW6mbYdk-lVXb2zQX4Sbfl7YOlEzg6GrJwMhjMcJXFZCULFfoM-gpX0OLEOPsKAguaxh7uSbQxO1pqJBq5G6Vzr3aobgKrkNuB1H6rdIxDeIAqVmw-fKy7W5MRCSEl1c8myIKg-cd=s4800-w800-h600"], "a": ["Pasticceria La Bomboniera", "Angelika Steinacher"]}, {"c": "sweet", "n": "Gelateria Zampolli", "zh": "EUR - 30-50 flavours, queues at 10pm", "lat": 45.6556299, "lng": 13.7743717, "g": "https://maps.google.com/?cid=9177160265489701318", "m": "4.7* - ~EUR3 - CLOSED WEDNESDAYS - 9am-midnight", "d": "The city's gelato, near the station, with real fruit in the sorbets and a queue out of the door on summer evenings rather than at lunchtime. No orderly line: go to the counter. Go for the fruit flavours and the rum. There are seats inside if you want to sit down with it.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCDd6EeX4VgFcpuvANTLv_cULExvKxzJFjdStAGIMUQ8pWmUOyvlfaB3oMelT3Wfd5kPQ9-gn8Fak0s1mseEPnmKm0z4sWvbGoLB99843oF4VtdywLLYXfKGkR-9VuePcbjMGUPoRnY5Hz9Fg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCiIgE76GjUQtlVRrY0fA40r5Sb-CSOyUXmLha-qYKcMRYiaMIzvSbJb6wpFtN_0mPFu684iPAANaWAovynEMblnY37HSnbsfvWSAMR1dGOwaDBuxPbit_3HxC53Z6tFINK8el2QmJzfX8CQDsBCv8O8g=s4800-w800-h600"], "a": ["Gelateria Zampolli", "Edoardo Tornielli"]}, {"c": "coffee", "n": "Antico Caffe San Marco", "zh": "1914 - the literary one", "must": true, "lat": 45.6528228, "lng": 13.7803202, "g": "https://maps.google.com/?cid=14245771517362209309", "m": "4.5* - nero ~EUR3 at a table - 8.30am-10.30pm, Sun to 3pm - skip the EUR15 breakfast", "d": "Wrecked by the Austrians in 1915 for being a nest of irredentists, rebuilt, and still half bookshop: Svevo and Saba worked here and people still do. Sit at a marble table, order a capo in b, and take your time - that is what you are paying the extra euro for. The 'Trieste breakfast' at around EUR15 is not worth it.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCRKMnCXSOeBRkT-Tc5bh2VfV6L8n94ox4sWsf1bZs2U1uZMp-_6NsOq2bgGXyT06xKt7xJac_9lyDfbdzZ7NhvPV90232em1-7GJ4-o0Hc1cC4XthPsl0usQ-5gyMPVLw0WxKWBD_7LDGpRclw00q5QA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA4lbsesny5hd8k0MXBjkQRVvrZ6QAiySmE5grrHzvoML2-jtrFFj0OuxTqlNyEl7WnyWq6kmUwzL4FntIV8QAd5iwr-s9W0-rv5mRYiTn18UXhx0YJT9i2f15a2BBeo1jnJChXT5DRZOWirMqb_OjJug=s4800-w800-h600"], "a": ["Antico Caffe San Marco", "Gentiana Na"]}, {"c": "coffee", "n": "Caffe Tommaseo", "zh": "1830 - the oldest still working", "lat": 45.6511987, "lng": 13.7692806, "g": "https://maps.google.com/?cid=757610685344502458", "m": "4.5* - nero at the bar ~EUR1.30 - open daily 9am-midnight - restaurant too", "d": "The city's first proper coffee house, with the original mirrors shipped from Belgium and a 7.30am crowd of retired port workers and professors. Drink it standing at the bar like they do - the sit-down prices and the service are the two things reviewers grumble about. The Peratoner is mostly Nutella and cream; you are warned.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDMsONSQOIAjyFpZyIYK2QYvJzbZeEwq7p-toXuytgGSgR8XnEOVXHVEsIjI2mzZQmSsKNlVoFVRFrd4rfrj7T1aA0Dh6jtlhxwnQSwnfm7MaxrU8FLk7qrQpcHMDiruYxqO8fm8-hwO-up7w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAm0MUa2rAZ3fnirTNvB5GT0IfCCCJeLtRARLwTlwI5fMcYg1m4rTu74_Mh2eMZpBzavXYeKxfhc-9h3XyN8oZ_xjZW4HnPw1MUAMjPQJDm1RqW-SO5bpy9FS7Y2HqUDb_6i4Bwxw0xWURIvulrbkImBA=s4800-w800-h600"], "a": ["Antico Ristorante Tommaseo", "Nadia Del Papa"]}, {"c": "coffee", "n": "Caffe degli Specchi", "zh": "1839 - a seat on the big square", "lat": 45.650136, "lng": 13.768512, "g": "https://maps.google.com/?cid=8953930687058347632", "m": "4.3* - spritz ~EUR6 - open daily 8am-midnight - you are paying for the piazza", "d": "You are buying the view of Piazza Unita, and at these prices that is fine - it is still cheaper than the equivalent across the Slovenian border. Come for aperitivo rather than a meal: they keep a spritz list mapped by region. Sit inside in a heatwave, and watch the pigeons if you are eating outside.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBJTPPtgo6KLJEnsUNt7BoI7YkPZXoU8OPMp_5Yx5XSH7xdqTlG3VWigizXo7wpXPRGlK8XKzaccNI-nRmoehgFbZupUeSvsKTweiftZ4f63HuXBNaSGztHha-znPULOnX_q_aVLxT9vkYxkg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBUDBeVIbxYpJpW9o3SbtJlJBbkgCtBszCq7d36b7u_iSRyo2QtXCRJtXfRkbz1nkqo2YCdNxgCcXQQoLixe1sjtiHWW7Zmu1ucazCou3XM-7WWX6od3VixI5cmyEXae1bTW_wRoZ4SdTkNEDVm6UrMaA=s4800-w800-h600"], "a": ["Caffe degli Specchi", "Sofia Vellani"]}, {"c": "drink", "n": "Antico Caffe Torinese", "zh": "1919 - cocktails in a ship's fittings", "lat": 45.6503981, "lng": 13.7713518, "g": "https://maps.google.com/?cid=5754398016697676587", "m": "4.5* - cocktails ~EUR8-10 - CLOSED SUNDAYS - 8am-2am - NO TOILET", "d": "The frontage was ruined in the sixties but the interior is untouched: carved wood by the cabinetmakers who fitted out the Lloyd liners, glass cabinets of spirits, six tables. Coffee by day, a serious cocktail bar by night. There is genuinely no lavatory, so plan the large beer accordingly.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMaRIbETAPZlHut-I6LJb4_G96a9bsq5Rir-7q59BCWqWpX80vG7D2Et4ep-Ei1WkPfq2RIsAPEKeBRWUlSuIOzrLfj8-rPrRUBYzvkbjzASiPzOHRxOsQrG-bhabCTofflEM2V=s4800-w799-h429", "https://lh3.googleusercontent.com/grass-cs/ACvplmNeI1NVNMhZoLBlERmAkzUertOrU6pSfbyTGqwMvq3W4MefBj3cvQ_HlI76qF8isb8ntNDxpMhFh2udC0OGcAZPmnXs-E7Rl8pPmWY-j8UqubVG5pAbH-TcXGuW-9f0N229-ixShB9d_wvq=s4800-w800-h600"], "a": ["Antico Caffe Torinese", "Pasquale Intini"]}, {"c": "drink", "n": "Enoteca Bischoff", "zh": "the city's oldest wine shop", "lat": 45.6509568, "lng": 13.7722368, "g": "https://maps.google.com/?cid=18161870025301049830", "m": "4.7* - CLOSED SUNDAYS - 9.30am-1pm, 4-7.30pm - a shop, not a bar", "d": "Over 2,000 labels in a beautiful old room off Via Mazzini, and the best place to have the Carso explained to you before you buy: ask for Vitovska and for a Terrano that has been handled well. Staff know their growers. They wrap and ship. Closed over lunch, like everything useful in this city.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDTZfL_yX42wMRs4Vb6HJFQ5Ha5-VgzwIz_aDojyaVHXsh_mla8FK4fU3EfbBo7pOGEp_h_FfYUJ9v9K7IhIG25tMg9lHYGWCY6Jb4XH1eguUF3yPE56dGbmqNK-H71sF7qrymexmezWnJYgw4=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDB4sX8Qe9iAHS5179wsin4q2IfSpyQoqWfa9PqEOdLixfsrv-mKBR4hDQUKPOirYAnEiDzpZOGdmvU5WpRjVFLyA48d8-p_T-nSXsJLMKeOC5dMZr1D4Itm9jTlQVr0DXtc2mbZ94jHjEMEQ=s4800-w800-h600"], "a": ["Enoteca Bischoff", "Niki oliver"]}, {"c": "drink", "n": "Gran Malabar", "zh": "wine by the glass, standing up", "lat": 45.6508581, "lng": 13.7767763, "g": "https://maps.google.com/?cid=4416585624911933105", "m": "4.4* - glasses ~EUR3-5 - 6.30am-9pm, Sun to 1pm - almost no indoor seating", "d": "A tiny bar on Piazza San Giovanni with a serving hatch onto the pavement and a list of regional whites far better than the size of the place suggests. You order at the window, take a table outside, and they bring bread, cheese and prosciutto with it. This is where locals stop on the way home.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCZM126ECGsU1mWVjVIBKCoWUfrW0BFV7ZeNEyTVBSdDHA6Jwdee3XmgNmVQ1kmT2okd5Z3DROQ2VBN1TFCirDTf1fR6DDFFL3WZNuvdvhXFrUvh2PKWlUFptSvkOOdXZKhC7vX-G4W-CUW9g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAWHPL4au5WnH3KQZtoTUf5ni8dQ6eebSjGpkvnNQrPsHuqRCFumMxn8koa9dcWDEtUmUR1d9P1FlEHAoDcjccz8BOjPHivkKQrTLi-ZzCcJslKq5saYSY0R1h8ZoP09Rpr6MHsYfAjytsBFV1ENnmxSw=s4800-w800-h600"], "a": ["Herbert Ledolter", "Martin Schmucker"]}, {"c": "drink", "n": "Birrificio Cavana", "zh": "craft beer in the old town", "lat": 45.6486194, "lng": 13.7664903, "g": "https://maps.google.com/?cid=5994486512457221413", "m": "4.5* - pints ~EUR5 - CLOSED SUNDAYS - 5pm-1am only", "d": "Small brewpub in Cittavecchia doing its own Vienna lager and IPA, with free prosciutto baguettes put out on the bar and seventies rock on the stereo. Evenings only. Do not confuse it with the place next door. Good stop before or after dinner in the Cavana lanes.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDRFrZSTerZCayRy_0Rzc48CgwZG9hLclRg4WmclZO-qPI_2ZMYpE62k7XafTPLbi1hjg-TaXP1_CNmloTpdOAoBXOzygS-1vsGxjjaIaY7ncBPKXMGll-aaXybCozbApxWRBpfid9kssHEGg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBWnxB_GFykuXj3tdyv7sKRKDi_duXVekLQLd5Od0xKGmsVOZ8A2v5Gd_jdoPAVu1binjW-Sw4UFkS_QmwrqXIHrIyHcBVmqYEXev58b8OnLF3OnR0jwSeYjUVRIqGsFiztXkLkF6q_GCY4-AMi3dF40w=s4800-w800-h600"], "a": ["Birrificio Cavana", "Alaric Cottin"]}, {"c": "winery", "n": "Zidarich", "zh": "Vitovska, cellar cut into the rock", "lat": 45.7619151, "lng": 13.6947987, "g": "https://maps.google.com/?cid=18357653521299629768", "m": "4.6* - tasting by appointment - Mon-Fri 9am-3pm, CLOSED WEEKENDS - phone first", "d": "Benjamin Zidarich broke up limestone and mixed it with soil from the dolinas to plant these vines, and the cellar is quarried straight out of the rock four floors down - worth the visit on its own. Taste the Vitovska, the Prulke blend and the Ruje. Book: this is a working farm, not a tasting room.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCeIYUD6VwhCS1LFHyLC-V_ZVzZwHKM2niKjid1gswjpzAd950KfEYzTdkNH1ySHJukTE3K0uiyaO5l0x3LVz6RS0Erj0BGcR3uTJ5FiAslG-1kHfPjNMafSYFWbRRunnTHUVp63MK3DfkWsA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAizI364Z0x5mO_mG8H-XpaQXSLsAFfs6g1ad7-3-LkFU-mwmjzCyuIm2ZiUC6jCnipVoFbgk4qTMaU4Q68-l2h0QqytzA0EaA8nrvOHu9T4XFcpKmRCp52-6Fv9TBCcMdYd902PPhJ83GQQw=s4800-w800-h600"], "a": ["Azienda Agricola Zidarich", "Alejandro MM"]}, {"c": "winery", "n": "Skerk", "zh": "Vitovska, Malvasia and cave-aged cheese", "lat": 45.7613585, "lng": 13.6941594, "g": "https://maps.google.com/?cid=2869310070756646638", "m": "4.6* - tasting by appointment - Mon-Fri 8am-2pm, CLOSED WEEKENDS - no restaurant", "d": "Sandi Skerk's vineyard at Prepotto, macerating whites in a stone cellar and curing ham from pigs raised in a dolina. Ask for the Jamar cheese, aged in a cave and served with honey, and the Ograde blend. One reviewer found it unwelcoming, which is what happens if you arrive expecting a bar - email ahead.", "s": "The Skerks have opened as an osmiza since 1960, and the rules go back to a 1784 edict of Maria Theresa letting Carso farmers sell their own wine tax-free for eight days a year - osem is Slovene for eight. The signal is still a leafy branch and a red arrow nailed up at the crossroads. There is no menu and no table service; check osmize.com for who is open this week, because it changes constantly.", "sl": "An eight-day licence from 1784, still running", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDqvXaqRx5Y0kqgLO4dPyYXC6znlQ6aprHp7UUj3gIQnHDYl6wOAUYYDYACX_BSLFTRIEPgDKi28I8fquPwXZT4i3X_CEreGEmXVFoyGa1TYB1aR_OgFRzJ1VJf59YMgPKDlDp-HZSFzRJd6A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDocXdkndGD8MHbPci2Wjf-Spt71SjsqBWnQ3tcjR2UI3NwUJ2QWkY_iRYiRO1MKMGIyXf-5MrH3VUSkDw8fS6hCC8K1mBMy-7x4qSKjT3suZ2cFvg97hB8oUm4sz_Rp7KWIsa3sQmrkxKYksi3Mfrprg=s4800-w800-h600"], "a": ["Lisa G.", "Toshio Kobatake"]}, {"c": "stay", "n": "Borgo Teresiano", "zh": "best first-time base", "nophoto": "district, not a business", "lat": 45.653, "lng": 13.774, "m": "grid streets between the station and Piazza Unita - quietest of the central options", "d": "The 18th-century grid around the Canal Grande: five to ten minutes' walk to everything, five to the station for day trips, wide pavements, and the aperitivo scene on your doorstep without the late-night noise. Best balance of price and position, and impossible to get lost in."}, {"c": "stay", "n": "Cittavecchia and Cavana", "zh": "medieval lanes, loudest at night", "nophoto": "district, not a business", "lat": 45.6482, "lng": 13.7675, "m": "the old town under the castle - bars until late, some streets pedestrian-only", "d": "Narrow lanes between Piazza Unita and the hill, now the bar and restaurant quarter. Choose it if you want to walk home from dinner in two minutes and do not mind voices under the window until one in the morning. Ask for a courtyard room. Poor for cars."}, {"c": "stay", "n": "Barcola", "zh": "for a two-week stay in summer", "nophoto": "district, not a business", "lat": 45.69, "lng": 13.742, "m": "seafront strip toward Miramare - bus 6 or 36 into town, about 15 minutes", "d": "The right call for a fortnight in warm weather: swim before breakfast, pine shade, quieter evenings, and Miramare walkable along the water. You trade the ten-minute walk to the piazza for a bus ride. Avoid the immediate blocks around Piazza della Liberta by the station, which are the least pleasant part of the centre after dark."}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+(pl.must?' must':'')+'" style="background:'
+         +CATS[pl.c].color+'">'+glyph(pl.c)+(pl.must?'<i class="star-badge"></i>':'')+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true,
+    zIndexOffset: pl.must?1000:0});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galPrev.style.visibility = pics.length>1?'':'hidden';
+  galNext.style.visibility = pics.length>1?'':'hidden';
+  galPrev.disabled=true; galNext.disabled=pics.length<2;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+  const multi=imgs.length>1;
+  galPrev.style.visibility = multi?'':'hidden';
+  galNext.style.visibility = multi?'':'hidden';
+  galPrev.disabled = i<=0;
+  galNext.disabled = i>=imgs.length-1;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+/* arrows, for mice and keyboards; touch users just swipe */
+const galPrev=document.getElementById('galPrev'), galNext=document.getElementById('galNext');
+function galScroll(dir){
+  const w=galTrack.clientWidth||1;
+  const i=Math.round(galTrack.scrollLeft/w)+dir;
+  const n=galTrack.querySelectorAll('img').length;
+  galTrack.scrollTo({left: Math.max(0,Math.min(n-1,i))*w, behavior:'smooth'});
+}
+galPrev.onclick=e=>{e.stopPropagation();galScroll(-1);};
+galNext.onclick=e=>{e.stopPropagation();galScroll(1);};
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng+"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  panToPlace(pl);
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+/* Wide screens show the card as a left-hand panel, so the gesture axis and the
+   map centring both have to change. Keep this threshold in sync with the CSS. */
+const SIDE_MIN_WIDTH = 720;
+function sideMode(){ return window.innerWidth >= SIDE_MIN_WIDTH; }
+
+function panToPlace(pl){
+  const ll = L.latLng(pl.wlat, pl.wlng);
+  if(!sideMode()){ map.panTo(ll,{animate:true}); return; }
+  // shift the centre left by half the panel so the pin sits in the visible half
+  const panelW = (document.querySelector('.sheet')||{}).offsetWidth || 390;
+  const pt = map.project(ll, map.getZoom()).subtract([panelW/2, 0]);
+  map.panTo(map.unproject(pt, map.getZoom()), {animate:true});
+}
+
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the card down to dismiss ----
+   Touch: drag anywhere in the card, but only when it is scrolled to the top, so
+   reading a long card still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    // In side mode the dismiss axis IS the gallery axis, so the gallery wins
+    // any gesture that starts on a photo.
+    if(sideMode() && e.target.closest && e.target.closest('.gal')) return;
+    // Vertical scroll only conflicts with the bottom sheet.
+    if(!sideMode() && sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'go':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  const side=sideMode();
+  // side panel slides out to the LEFT; bottom sheet slides DOWN
+  const along = side ? -dx : dy;      // movement toward dismissal
+  const across = side ? dy : dx;      // movement that belongs to the gallery
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(along)>Math.abs(across) ? 'go' : 'other';
+    if(drag.axis==='other'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(along<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=along;
+  sheet.classList.add('dragging');
+  sheet.style.transform = side ? 'translateX(-'+along+'px)' : 'translateY('+along+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();   // distance OR flick
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='go' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  const ab=document.getElementById('about');
+  if(ab && ab.classList.contains('open')) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- city overview ---------- */
+const about=document.getElementById('about'), aboutBtn=document.getElementById('aboutBtn');
+function esc(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function rich(x){ // allow **bold** only
+  return esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+}
+function renderAbout(){
+  if(!CITY || !Object.keys(CITY).length){ aboutBtn.style.display='none'; return; }
+  document.getElementById('abTitle').textContent = CITY.name||'';
+  document.getElementById('abTagline').textContent = CITY.tagline||'';
+
+  const st=document.getElementById('abStats');
+  st.innerHTML=(CITY.stats||[]).map(s=>
+    '<div class="stat"><div class="k">'+esc(s[0])+'</div><div class="v">'+esc(s[1])+'</div></div>'
+  ).join('');
+  st.style.display=(CITY.stats||[]).length?'grid':'none';
+
+  document.getElementById('abSections').innerHTML=(CITY.sections||[]).map(s=>
+    '<h3>'+esc(s[0])+'</h3>'+String(s[1]).split('\n\n').map(par=>'<p>'+rich(par)+'</p>').join('')
+  ).join('');
+
+  const musts=CITY.musts||[];
+  document.getElementById('abMusts').innerHTML = musts.length
+    ? '<h3>Must see, do &amp; try</h3><ul class="musts">'
+      + musts.map(m=>'<li>'+rich(m)+'</li>').join('') + '</ul>'
+    : '';
+
+  const near=CITY.nearby||[];
+  document.getElementById('abNearby').innerHTML = near.length
+    ? '<h3>Nearby</h3><ul class="nearby">'
+      + near.map(n=>'<li>'+rich(n)+'</li>').join('') + '</ul>'
+    : '';
+
+  document.getElementById('abFoot').textContent = CITY.foot||'';
+}
+renderAbout();
+function toggleAbout(open){
+  about.classList.toggle('open',open);
+  about.setAttribute('aria-hidden',open?'false':'true');
+  aboutBtn.classList.toggle('active',open);
+  if(open) about.scrollTop=0;
+}
+aboutBtn.onclick=()=>toggleAbout(!about.classList.contains('open'));
+document.getElementById('aboutClose').onclick=()=>toggleAbout(false);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') toggleAbout(false); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+let wasSide=sideMode();
+window.addEventListener('resize',()=>{
+  const now=sideMode();
+  if(now!==wasSide){ wasSide=now; if(selected) panToPlace(selected); }
+});
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
