@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!-- city-guide-maps template v7 capabilities: swipe-dismiss,drag-handlers,click-away,escape-key,gallery,side-panel,must-see,overview,filters,fullscreen,geolocation -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Ljubljana — 2 Weeks of Sights, Food & Drink</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{position:relative;width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .pin.must{border-color:#F2C14E;border-width:3px;
+    box-shadow:0 0 0 1.5px rgba(120,80,0,.55),0 2px 7px rgba(0,0,0,.45)}
+  .star-badge{position:absolute;top:-5px;right:-5px;width:12px;height:12px;
+    background:#F2C14E;border-radius:50%;border:1.5px solid #fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+    width:30px;height:30px;border:none;border-radius:50%;cursor:pointer;
+    background:rgba(0,0,0,.42);color:#fff;display:none;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);transition:background .15s ease}
+  .gal-nav:hover{background:rgba(0,0,0,.65)}
+  .gal-nav:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .gal-nav svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .gal-nav.prev{left:8px} .gal-nav.next{right:8px}
+  .gal-nav[disabled]{opacity:.3;cursor:default}
+  /* only for real pointers — touch users swipe */
+  @media (hover:hover) and (pointer:fine){
+    .gal:hover .gal-nav, .gal-nav:focus-visible{display:flex}
+  }
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  /* when there is no photo the grabber would sit on the text */
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---- city overview sheet ---- */
+  .about{position:absolute;inset:0;z-index:1400;background:var(--paper);
+    overflow-y:auto;transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.32,.72,.35,1);
+    -webkit-overflow-scrolling:touch}
+  .about.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.about{transition:none}}
+  .about-inner{max-width:640px;margin:0 auto;padding:18px 20px calc(40px + env(safe-area-inset-bottom))}
+  .about h2{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:3px}
+  .about .tagline{font-size:14.5px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+  .about-close{position:sticky;top:0;float:right;width:34px;height:34px;border:none;
+    border-radius:50%;background:#eef1f5;color:#5b6472;font-size:16px;cursor:pointer;
+    line-height:1;z-index:2;margin-left:10px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;
+    margin-bottom:20px}
+  .stat{background:#f6f4ef;border-radius:11px;padding:9px 11px}
+  .stat .k{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#8b8577;margin-bottom:2px}
+  .stat .v{font-size:14px;font-weight:700;line-height:1.25}
+  .about h3{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:20px 0 7px}
+  .about p{font-size:14.5px;line-height:1.6;color:#374050;margin-bottom:9px}
+  .musts{list-style:none;margin:2px 0 4px}
+  .musts li{position:relative;padding:7px 0 7px 27px;font-size:14.5px;line-height:1.5;
+    border-bottom:1px solid #f0ece4}
+  .musts li:last-child{border-bottom:none}
+  .musts li::before{content:"";position:absolute;left:5px;top:14px;width:9px;height:9px;
+    border-radius:50%;background:#F2C14E;box-shadow:0 0 0 2px rgba(242,193,78,.28)}
+  .musts b{font-weight:750}
+  .nearby li{padding:7px 0 7px 27px;font-size:14px;line-height:1.5;list-style:none;
+    position:relative;color:#374050}
+  .nearby li::before{content:"";position:absolute;left:6px;top:15px;width:7px;height:7px;
+    border-radius:50%;background:#9E9D24}
+  .about .foot{font-size:11.5px;color:#95a0ae;margin-top:22px;line-height:1.5;
+    border-top:1px solid var(--line);padding-top:13px}
+  /* ---- wide / landscape: the card becomes a left-hand panel ----
+     A full-width bottom sheet letterboxes photos badly once the window is wide. */
+  @media (min-width:720px){
+    .sheet{left:0;right:auto;top:0;bottom:0;width:390px;max-height:none;height:100%;
+      border-radius:0 20px 20px 0;box-shadow:8px 0 30px rgba(16,24,40,.22);
+      transform:translateX(-105%)}
+    .sheet.open{transform:translateX(0)}
+    .gal, .gal-track img{border-radius:0 20px 0 0}
+    .gal-track img{height:auto;aspect-ratio:3/2}
+    .grabber{top:0;bottom:0;left:auto;right:0;margin-left:0;width:24px;height:100%;
+      flex-direction:column}
+    .grabber::after{width:4px;height:38px}
+    .sheet:has(.gal.none) .sheet-body{padding-top:16px}
+    .sheet-body{padding-right:26px}
+    /* keep the filter panel clear of the card */
+    .panel{left:auto;right:70px}
+    .about-inner{padding-left:26px}
+  }
+  @media (min-width:720px) and (max-height:520px){
+    /* phone held sideways: shorter, so trim the photo further */
+    .gal-track img{aspect-ratio:2/1}
+  }
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Ljubljana — 2 Weeks of Sights, Food & Drink</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="aboutBtn" title="About this city" aria-label="About this city">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Pin shapes: circles are sights, squares are food, diamonds are drink. Gold ring = must-see. Central Market is closed Sundays; Odprta Kuhna food market runs Fridays only, March–October. Researched September 2026.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <button class="gal-nav prev" id="galPrev" aria-label="Previous photo">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="gal-nav next" id="galNext" aria-label="Next photo">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="about" id="about" role="dialog" aria-label="About this city" aria-hidden="true">
+  <div class="about-inner">
+    <button class="about-close" id="aboutClose" aria-label="Close">✕</button>
+    <h2 id="abTitle"></h2>
+    <p class="tagline" id="abTagline"></p>
+    <div class="stats" id="abStats"></div>
+    <div id="abSections"></div>
+    <div id="abMusts"></div>
+    <div id="abNearby"></div>
+    <p class="foot" id="abFoot"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"heritage": {"label": "Heritage & landmarks", "color": "#5D4037", "icon": "landmark"}, "castle": {"label": "Castle", "color": "#8D6E63", "icon": "castle"}, "church": {"label": "Churches", "color": "#6A1B9A", "icon": "church"}, "museum": {"label": "Museums & galleries", "color": "#1565C0", "icon": "palette"}, "history": {"label": "History museum", "color": "#455A64", "icon": "shield"}, "park": {"label": "Parks", "color": "#2E7D32", "icon": "trees"}, "cemetery": {"label": "Cemetery", "color": "#607D8B", "icon": "cross"}, "culture": {"label": "Alternative & nightlife", "color": "#C2185B", "icon": "disc-3"}, "viewpoint": {"label": "Viewpoints", "color": "#F9A825", "icon": "camera"}, "market": {"label": "Market", "color": "#EF6C00", "icon": "shopping-basket"}, "wine": {"label": "Wine bars", "color": "#7B1FA2", "icon": "wine", "shape": "drink"}, "beer": {"label": "Beer & breweries", "color": "#4E342E", "icon": "beer", "shape": "drink"}, "cafe": {"label": "Cafés", "color": "#00838F", "icon": "coffee", "shape": "drink"}, "cheap": {"label": "Cheap eats (€)", "color": "#00ACC1", "icon": "utensils", "shape": "food"}, "mid": {"label": "Mid-range (€€)", "color": "#FB8C00", "icon": "utensils", "shape": "food"}, "splurge": {"label": "Splurge (€€€)", "color": "#C62828", "icon": "utensils-crossed", "shape": "food"}, "sweet": {"label": "Cakes & pastry", "color": "#8E24AA", "icon": "cake-slice", "shape": "food"}, "streetfood": {"label": "Street food & markets", "color": "#FFA000", "icon": "shopping-basket", "shape": "food"}, "stay": {"label": "Where to stay", "color": "#37474F", "icon": "bed"}};
+const ICONS = {"bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "beer": "<path d=\"M17 11h1a3 3 0 0 1 0 6h-1\"/> <path d=\"M9 12v6\"/> <path d=\"M13 12v6\"/> <path d=\"M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 0 1 0-5c.78 0 1.57.5 2.5.5S9.44 2 11 2s2 1.5 3 1.5 1.72-.5 2.5-.5a2.5 2.5 0 0 1 0 5c-.78 0-1.5-.5-2.5-.5Z\"/> <path d=\"M5 8v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8\"/>", "cake-slice": "<path d=\"M16 13H3\"/> <path d=\"M16 17H3\"/> <path d=\"m7.2 7.9-3.388 2.5A2 2 0 0 0 3 12.01V20a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-8.654c0-2-2.44-6.026-6.44-8.026a1 1 0 0 0-1.082.057L10.4 5.6\"/> <circle cx=\"9\" cy=\"7\" r=\"2\"/>", "camera": "<path d=\"M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z\"/> <circle cx=\"12\" cy=\"13\" r=\"3\"/>", "castle": "<path d=\"M10 5V3\"/> <path d=\"M14 5V3\"/> <path d=\"M15 21v-3a3 3 0 0 0-6 0v3\"/> <path d=\"M18 3v8\"/> <path d=\"M18 5H6\"/> <path d=\"M22 11H2\"/> <path d=\"M22 9v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9\"/> <path d=\"M6 3v8\"/>", "church": "<path d=\"M10 9h4\"/> <path d=\"M12 7v5\"/> <path d=\"M14 21v-3a2 2 0 0 0-4 0v3\"/> <path d=\"m18 9 3.52 2.147a1 1 0 0 1 .48.854V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6.999a1 1 0 0 1 .48-.854L6 9\"/> <path d=\"M6 21V7a1 1 0 0 1 .376-.782l5-3.999a1 1 0 0 1 1.249.001l5 4A1 1 0 0 1 18 7v14\"/>", "coffee": "<path d=\"M10 2v2\"/> <path d=\"M14 2v2\"/> <path d=\"M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1\"/> <path d=\"M6 2v2\"/>", "cross": "<path d=\"M4 9a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h4a1 1 0 0 1 1 1v4a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-4a1 1 0 0 1 1-1h4a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-4a1 1 0 0 1-1-1V4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4a1 1 0 0 1-1 1z\"/>", "disc-3": "<circle cx=\"12\" cy=\"12\" r=\"10\"/> <path d=\"M6 12c0-1.7.7-3.2 1.8-4.2\"/> <circle cx=\"12\" cy=\"12\" r=\"2\"/> <path d=\"M18 12c0 1.7-.7 3.2-1.8 4.2\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "palette": "<path d=\"M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z\"/> <circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>", "shield": "<path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/>", "shopping-basket": "<path d=\"m15 11-1 9\"/> <path d=\"m19 11-4-7\"/> <path d=\"M2 11h20\"/> <path d=\"m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6l1.7-7.4\"/> <path d=\"M4.5 15.5h15\"/> <path d=\"m5 11 4-7\"/> <path d=\"m9 11 1 9\"/>", "trees": "<path d=\"M10 10v.2A3 3 0 0 1 8.9 16H5a3 3 0 0 1-1-5.8V10a3 3 0 0 1 6 0Z\"/> <path d=\"M7 16v6\"/> <path d=\"M13 19v3\"/> <path d=\"M12 19h8.3a1 1 0 0 0 .7-1.7L18 14h.3a1 1 0 0 0 .7-1.7L16 9h.2a1 1 0 0 0 .8-1.7L13 3l-1.4 1.5\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "utensils-crossed": "<path d=\"m16 2-2.3 2.3a3 3 0 0 0 0 4.2l1.8 1.8a3 3 0 0 0 4.2 0L22 8\"/> <path d=\"M15 15 3.3 3.3a4.2 4.2 0 0 0 0 6l7.3 7.3c.7.7 2 .7 2.8 0L15 15Zm0 0 7 7\"/> <path d=\"m2.1 21.8 6.4-6.3\"/> <path d=\"m19 5-7 7\"/>", "wine": "<path d=\"M8 22h8\"/> <path d=\"M7 10h10\"/> <path d=\"M12 15v7\"/> <path d=\"M12 15a5 5 0 0 0 5-5c0-2-.5-4-2-8H9c-1.5 4-2 6-2 8a5 5 0 0 0 5 5Z\"/>"};
+const CITY  = {"name": "Ljubljana", "tagline": "Slovenia's small, walkable capital — a river bent around a castle hill, with green space pressing in from both sides.", "stats": [["Population", "~300,000 (city)"], ["Founded", "Roman Emona, c. 14 AD"], ["Airport", "Jože Pučnik, ~30 min by bus"], ["Bled", "~1 hr by bus or train"], ["Language", "Slovenian (English widely spoken under ~30)"], ["Currency", "Euro"], ["Best months", "May–June, September"], ["Budget/day", "~€45 thrifty, ~€110 comfortable"]], "sections": [["History in five minutes", "Roman Emona sat on this spot from around 14 AD; the medieval and Habsburg town grew on the river's east bank, under the castle hill. A 1511 earthquake forced rebuilding in stone and Renaissance style; a second earthquake in 1895 prompted a wave of Vienna Secession architecture that still defines much of the centre. Ljubljana spent most of the 20th century as a regional capital inside Austria-Hungary, then Yugoslavia — it has only been a national capital since 1991, which is part of why the city feels unusually modest and lived-in rather than monumental."], ["Culture and society", "The University of Ljubljana has around 64,000 students, and it shows: the centre empties out in July and August and fills back up from October. Jože Plečnik, who trained under Otto Wagner in Vienna, redesigned huge parts of the city between the world wars — the market arcades, the National and University Library, the cemetery gates at Žale — and his fingerprints are everywhere once you start noticing them."], ["Economy, then and now", "Ljubljana industrialised early under Austria-Hungary around textiles, brewing and rail; today the economy runs on services, IT and a fast-growing freelancer and remote-work scene drawn by the low cost of living relative to Western Europe. The old Rog bicycle factory near the river now houses restaurants and studios rather than production lines — TaBar is one of them."], ["Iconic food & drink", "Kranjska klobasa (Carniolan sausage) carries EU-protected status; štruklji, the rolled dumpling, dates to at least 1589; potica, the walnut-spiral cake, has upward of 80 traditional fillings. Burek — Balkan, not originally Slovenian, but thoroughly adopted — is the 2am food of choice, and the city's own invention, pizza burek, exists nowhere else."], ["Unique to Ljubljana", "Metelkova: a squatted military barracks turned permanent alternative-art city, still standing three decades on. A dragon on the coat of arms with two competing origin stories, one Greek myth and one Christian saint, neither of which the city has bothered to settle. And a genuinely free skyscraper view at Nebotičnik in a city with almost no other tall buildings to compete with it."]], "musts": ["**Triple Bridge & Prešeren Square** — the city's centre of gravity, FREE", "**Dragon Bridge** — the city symbol, FREE", "**Ljubljana Castle** — climb or ride up, courtyard free, tower/museum ~€19", "**Cathedral of St Nicholas** — Quaglio ceiling, small fee", "**Central Market** — Plečnik's arcades, best on a Saturday morning", "**Metelkova mesto** — squatted barracks turned art city, FREE", "**Tivoli Park** — the city's green lung, FREE", "**Nebotičnik** — free rooftop view from a 1933 skyscraper"], "nearby": ["**Lake Bled — ~1 hr by bus or train.** The postcard lake with the island church; go early or late to dodge the day-trip crowds.", "**Postojna Cave & Predjama Castle — ~1 hr by car or tour bus.** A vast karst cave system and a castle built into a cliff face, both usually done as a combined day trip.", "**Piran & the coast — ~1.5–2 hrs.** Venetian-style old town on the Adriatic; the furthest of these day trips but the one with the sea.", "**Škocjan Caves — ~1 hr.** A UNESCO World Heritage cave system, less visited and more dramatic underground than Postojna.", "**Kamnik — ~45 min.** A small, perfectly preserved medieval town at the foot of the Kamnik Alps."], "foot": "Prices indicative for 2026 — check current rates before booking anything time-sensitive. Sources: Wikivoyage, Visit Ljubljana, Michelin Guide Slovenia, and the local-language and English-language sources cited during research."};
+const PLACES = [{"c": "heritage", "n": "Triple Bridge & Prešeren Square", "zh": "Tromostovje · the city's living room", "lat": 46.0511337, "lng": 14.5062289, "must": true, "m": "4.7★ · Open 24h · liveliest at sunset", "d": "Three bridges fanning into one crossing — the two outer spans added by Jože Plečnik in the 1930s around a much older central one. It empties straight onto Prešeren Square, where every walking tour in the city starts and every local passes through most days. Come back after dark, when the pink Franciscan Church is lit and the crowds thin.", "g": "https://maps.google.com/?cid=16034126412133101608", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCImVvbimPNh_KOCK_UaNsYcl6SPeEn0wgFmoLr4c5w-VBFiOSc3yF0X7KeG6YtbfAx6-nealYx0qu3vdRDLV8N_inr3JRJ42g-LDdItZdZjqNGFyHjaUbQOCBYHdwc5Ce48EHEuCKOOeUKX3INJCWflQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCJ_QTgNQAUl3a83fmXT02R_Ji2-67S0c30Gq4vSvBpV3w6pZay6sD8q4K-_MzLn3d_aLztKTZhBS3bB8G8wePOiJEBvydPWPZQfPDl8bB_ZlWZBoy5XuAqRuRK5ApjIOC1gD2W9f0JPIwGDQ=s4800-w800-h600"], "a": ["Slavko Kolar", "Dejan Ogrizek"]}, {"c": "heritage", "n": "Dragon Bridge", "zh": "Zmajski most · the city symbol", "lat": 46.0520086, "lng": 14.5103099, "must": true, "m": "4.6★ · Open 24h · a real road — mind the traffic", "d": "Four bronze dragons guard a 1901 Art Nouveau bridge, one of the first reinforced-concrete spans in Europe. Two minutes from the Triple Bridge, past the Central Market. Unlike most of the old town this carries live traffic, so don't step backward into the road chasing a photo.", "g": "https://maps.google.com/?cid=17388055336770712394", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCBWsXtw_z2PF3YyVPfcjZjeYJxQuY5WYEUuMJUxStzSB3jzm7eYqGiiZfvjC3twWCBFs1EYMCNggGA9tKihcmPMVwxll0Nqcx_8IeYgguj5qYhQoPa0QT6zs8DC1a7DkC97mm4gWW0yCOwiJM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAH2iGMl7JmJYNqmKHzAHK1q6OORKFJlqZGIajzeg5omP3dF5LiPNjPuiSkis0t1gTOstJKXYYWN2iENWOqt1lMhnIi1u0Y-x9PADTuQt6TK67BluFwOA_9elFoNK2e8aeiylhA7uBrA-Os=s4800-w800-h600"], "a": ["Ling", "Vedran Blažeković"], "s": "Local legend has Ljubljana founded by Jason and the Argonauts, who killed a marsh dragon here on their way home with the Golden Fleece. One telling holds that the bridge's dragons twitch their tails whenever a virgin crosses — nobody, reportedly, has ever seen it happen.", "sl": "The dragons twitch when a virgin crosses"}, {"c": "castle", "n": "Ljubljana Castle", "zh": "Ljubljanski grad · funicular or 15-min walk", "lat": 46.0488852, "lng": 14.5083738, "must": true, "m": "4.4★ · 9am–8pm daily · funicular ~€6 return", "d": "A hilltop fort rebuilt many times since the 11th century, its full renovation finished in 2024. The courtyard, chapel and ramparts are free; the tower, exhibits and 4D history film are ticketed. Walk up through the wooded switchbacks instead of queueing for the funicular — a steeper but far nicer 12–15 minutes.", "g": "https://maps.google.com/?cid=16602470594682204792", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD-r1V6B64g2o0CPHDw7sQm5Ebz9iV_j5oJQPAr-zYyT9orIEHvimcQTyGUd9WZyVXUUWcqx5ksIGA5yQxND51XHyRLg0QPHjD_s9bsi2KISFZzmxSoLJ79Jr7qT1ThxVFdVeBhKkL2Ygpq0A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAWtbSmsqnkJbxApLZkCmZOsFfQ188fBjWmf0fXShoj35IJQbjfCtI1xn0vhT2PoHuI4mEUchUqTptUu1VNrsXl1pgVFgqwrDzEWWbcmSjmSnvY1CbQ3aw8-JAyF6TWlRsNqQWSzsEjLY3Mwi4=s4800-w800-h600"], "a": ["Marko Alpner", "Ljubljanski grad"]}, {"c": "church", "n": "Cathedral of St Nicholas", "zh": "Ljubljana Cathedral · look up at the dome", "lat": 46.0508166, "lng": 14.5081447, "must": true, "m": "4.5★ · 11am–6pm, hours vary Tue/Sun · small entry fee", "d": "A green-domed baroque church behind Mestni trg, with a Giulio Quaglio ceiling fresco and bronze doors cast for a 1996 papal visit — one narrates Slovenian history, the other the diocese's own. The dome and side chapels reward slowing down more than the modest entrance suggests.", "g": "https://maps.google.com/?cid=8035290169483371330", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA-pSJP65tHSTXqgkLKNgucbddGKQ99jKkshgfctJ_3J5qB21ketpmXTN8SZCWzSSkwlSvX4o2D4EPgvnm-ec5b0r4ef0eEBdLjPqx5oKb45gHFxPkjgnXLHRGl413DqBxOW7e33OdodfT9D1rx9tAg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA5DUP-tbNRAPRQMy7cK5VmsNuIUqdfIcd1dzX5xUHpXcF_k5gSQFcXgEJL7ioZyimKZYQQMXGkqar9X7jyoXTPPP1VcpeRHnQ7VHIK5bqrjC2YKKqoY3v59aOKmkgJ_oxejeyJpLd2Hv0PxaY=s4800-w800-h600"], "a": ["D. Lavi-Efrat", "Indraneel Bardhan"]}, {"c": "heritage", "n": "Town Hall & Robba Fountain", "zh": "Mestna hiša · free courtyard", "lat": 46.0498893, "lng": 14.506939, "m": "4.5★ · courtyard 7am–9pm · free to enter", "d": "Renaissance-Baroque seat of the mayor since the 15th century, with a quiet arcaded courtyard and a small exhibition just inside the door. The three-river-gods fountain out front is a copy; the acid-rain-damaged original moved into the National Gallery in 2008.", "g": "https://maps.google.com/?cid=11031778927623578151", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBk2KaqG6OxARLj7bFXNnVYSHwCs5LFpxAJFemMs6vkUyM3-HZh3fFq9kSjNVj1qmKL8AXKc0pWNNKMLzcBOZaFemNJB9fYE4-B2cfTrlTQnUcleCg1cInQs8522z2tnAC8AqPpFKBZNek-=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAplRdouGQh4CI59otoF-2E65HFujaUQa_gnOkh9oeeXB0hT0FO52ys7nD5-VCc8No1MPmpteDZR_yEsMZDjMibYcocXBZ3PXnwcX9qNTT5RL2793aoT4GFIoD0OD9yHmB3RizN4nlWDFlotw=s4800-w800-h600"], "a": ["igor nemec", "K Elf"]}, {"c": "market", "n": "Central Market", "zh": "Tržnica · Plečnik's riverside arcades", "lat": 46.05114, "lng": 14.5094908, "must": true, "m": "4.5★ · 7am–8pm, CLOSED SUN · busiest Sat morning", "d": "Plečnik designed the covered colonnade along the river in the 1930s, and it's still the produce, cheese and fish market for the whole city. Come for the stalls; stay for Friday's Odprta Kuhna food market on the square behind it, March through October.", "g": "https://maps.google.com/?cid=8099769116432013185", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAiAbtsgg8iogrxzQBdjZM0I3ASZbw4dIONuVsHkxIU-YldzdoKVmRQMb5BA07OUaddHV9TSc909KhYiNriSqDShyx1lK5x0CCzNld4Y6QM6N-k6v_aLcTkGSJsHtzQHAknQ__c_PPycxsLTg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA743BE5ZHPz9OEhbL5xcq2tpeaTvv83jphH-_hgwy8RBilGMOKOY5x89O-qebWQ18ucgi3HGWLUS-SwPO8Na-DsWcqtDiVpB1rha-vGiT4ee23Y5imdrUum-CKLVVHz0z913RpgelL3VExKNk=s4800-w800-h600"], "a": ["Adriano Falcão", "Zora Slivnik"]}, {"c": "culture", "n": "Metelkova mesto", "zh": "squatted barracks turned art city", "lat": 46.0563776, "lng": 14.5168227, "must": true, "m": "4.2★ · always open, clubs from 10pm · daytime is quiet and safe", "d": "A former Austro-Hungarian and Yugoslav army barracks, occupied by artists and squatters in 1993 and never retaken. By day it's murals and sculpture five minutes from the train station; by night six-odd small clubs each run their own program, mostly free to wander between.", "g": "https://maps.google.com/?cid=7978286189683248901", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDDXkSeap0BLVaNecS523VwxG3Q6fs02hYw7qeflJ0_jl4p1_ypN55s1T19ETh4tucIruOl_bSAlprc6dqhywKdiDfEEQPM7MACO1bqc8-faHoCEO_LiGcrSViRd0ZBEy-Ea7PNtikoP6Gs=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDUgI84oy2mFTRikkcboKqCeM5Oo7zB5rY_7JaiBxTSjyygO8wLBcM20fzGJgbbqcoTOq1m8XuEWPTrZeUWy8D71th94fyLldDghjE1qm76CTH5j0B53aobdbc3rg7zuvaLcsFOePLDuHkGW64=s4800-w800-h600"], "a": ["Aleš Bedene", "Mario Foschia"], "s": "Squatters moved into the barracks the week the Yugoslav army finished vacating it in 1993, ahead of a planned demolition. Three decades and several eviction attempts later, the city has effectively given up: Metelkova now sits on Ljubljana's own cultural map, squatted status and all.", "sl": "The squat the city gave up trying to evict"}, {"c": "park", "n": "Tivoli Park", "zh": "the city's green lung", "lat": 46.0537537, "lng": 14.494917, "must": true, "m": "4.7★ · Open 24h · free", "d": "A large landscaped park minutes west of the centre, laid out in the 1810s and later reworked by Plečnik. Paths climb through woods to Rožnik hill; inside the park sit the National Gallery, the contemporary history museum, and the Jakopič promenade. Sundays it fills with the whole city.", "g": "https://maps.google.com/?cid=1081136715368919408", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAnQJcq6t-zgy2ifjeol7SIQCofY_XX0pmWVGxULr_8IrcgvEu_7UZgggYb3OEMHtKQyU9bRGRsnuQSY0BvlaS1miH3hD0oVsLkzq8O7lypC3d4076LpSiO9YgpJ3ADauFfvhf5XpJUgxqryg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBU_1QsT5_xQhhosVWqGSJr3Us3DwAeSVaFVGBfjp88SFx0tO-pnED00Aa-LgcD1PyYKGEbI17efy0vnYps9OQ0mes1_9nGyyRuKGLi5cuCMOLaDHlgvdlhS4kmYFTVQv3guIvWAjAMocPZFGo=s4800-w800-h600"], "a": ["Bertrand Le Quellec", "Drazen Jurkin"]}, {"c": "viewpoint", "n": "Nebotičnik", "zh": "1933 skyscraper · free rooftop view", "lat": 46.0532605, "lng": 14.5036479, "must": true, "m": "4.3★ · 9am–midnight, later Thu–Sat · FREE to go up", "d": "Europe's tallest residential building when it opened in 1933, with a period spiral staircase and elevator intact. The 12th-floor terrace and café are free to enter — order a drink if you sit down, but the panorama itself costs nothing. Go for sunset and expect a short wait for a table.", "g": "https://maps.google.com/?cid=12775051447308129540", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDZYwoNd2T_EZvE7EQ_MMJJGP3a04Qe0ZjIN-mn2UBy0SUW2QPuFEBRR301Bxs9VEoG1N6oAcyJNjjF3P-PnY5n-iWdBbGEsvxF5mAWr55YyNNsraVPnx-YE7Ob6sT-qixJ_lTK77fpamx3QyA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCKYR6Ebg1fIy2VPWc_In9pRsuGUTJDzRrAUBrzqirpEPn1AlT2rq3_RyxAxPbkBQnJhtDovhiti8BayN2A40TZMz4YqnYWVuBx805bv2lSh1k_Bf5YHpE_coaLlIqL1oiZk5bSSsX8Ba8AdQ=s4800-w800-h600"], "a": ["Nebotičnik - Skyscraper", "Nebotičnik Ljubljana"], "s": "The café closed for the better part of a decade before reopening in 2010, and locals still measure the years by how long the view was unavailable. A classic Slovenian pop song about a date 'on top of the skyscraper' is older than most of the building's current staff.", "sl": "Shuttered for a decade, then reopened to a pop song"}, {"c": "museum", "n": "National Gallery of Slovenia", "zh": "Narodna galerija · Slovenian Impressionists", "lat": 46.0540535, "lng": 14.5002687, "m": "4.6★ · 10am–6pm, Thu to 8pm, CLOSED MON · ~€14, free 1st Sun/month", "d": "The national collection of Slovenian art from the Middle Ages through the early 20th century, in a renovated 1896 building next to Tivoli. Ivana Kobilca's 'Woman Drinking Coffee' — the so-called Slovenian Mona Lisa — is the one painting worth beelining for if short on time.", "g": "https://maps.google.com/?cid=7388386096105084233", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCYdzSe09jXIya4D2SbFXPKbSiAxraUZM7ilQc0EcS9-z0O8G9IVgrFVpiATFP_p94wJKqx29B06WGoATOE_QyZKKFQrddjsIX5MwOHpTdcVlEuYc7DnxXjFXH-7AJ3OBAGBvGmrTsyjig2-w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAX-cY35ZBlVxC_P4fAZOLl0WOXZHAAKWa5je-ST_VsCnJJMgAqUMO0n2SCC3l1y_laH8Yd2F2EfepBovnEOdHrIBc4wu9vmq9o58ndFBPxUFWRnz0mvXOZ251LXyypF8Bg90gxkP2tf1uS-g=s4800-w800-h600"], "a": ["Narodna galerija", "Mark Hrbrs"]}, {"c": "history", "n": "National Museum of Contemporary History", "zh": "in Tivoli park · 20th-century Slovenia", "lat": 46.0591667, "lng": 14.4952778, "m": "4.6★ · 10am–6pm, CLOSED MON · ~€6, free audio guide by QR", "d": "A walk through Slovenia's 20th century inside a Tivoli Park mansion, from Austro-Hungarian rule through both world wars, Tito's Yugoslavia and the 1991 independence war — including a walk-through WWI trench. Dense and text-heavy; budget more than a quick 30-minute pass.", "g": "https://maps.google.com/?cid=5075393254058134544", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDjlC7JkV2UNa5LOpk-c0ylsy78xDBPpDDm_krKskhiDCX_DsEE0Zq-ZA14hw08WJNKzoFaYfQFuS3-rY635PMB_1CdfXNvtouvT6vO2z9dQh8m22RUxCQJUT3MbeXsJAB1xdXFuzik9NJuvA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDSaB6y5L7qms7mKFBDHewitMqkL-GBGXZgcR5r1FHxnfzzBs7PNd8fND0qCn7McqN6zaoGiJrur_AY4bCXP8yIf2XKet-GDZUJB3ZT8p3gG8iM8aVte7WrQRGgvXyN6yT-eUUQKVHvj0_A2w=s4800-w800-h600"], "a": ["Muzej novejše zgodovine Slovenije", "Alfred Kölner"]}, {"c": "museum", "n": "Cukrarna", "zh": "former sugar refinery, now contemporary art", "lat": 46.0499757, "lng": 14.5196118, "m": "4.6★ · 10am–7pm, CLOSED MON · check current exhibition", "d": "Once the Austro-Hungarian empire's largest sugar refinery, and Ljubljana's biggest building for most of the 19th century — the sheer size is why it survived to become a contemporary art space in 2021. The riverside café at the entrance does good coffee and cake between gallery visits.", "g": "https://maps.google.com/?cid=9981818945816086154", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCIHO_67TNphx-Co4RIfpJI3O2LXksNi3IDVGKkLha9FUY62cizKq0aiO6eToiYW_wOtcwJjD-E5UliU-sCmfsnP0lP-r4uMHTIR96jCHQCCcs9DWNTJGQSU8pQlmUCrNgMChJVNm5SDvqi=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCdlUzZ6QdmZKZc6CCypFwINTnCNK3XVk0nk8YP0CgMj6WfsOpjCIS2SjOfjahWlQUoa7lQUm1tB2zHQ-6Hn75S7oD-2N_fC69q_n47JuY8A-qr_ghx7j-HkuQIp7nnl9fIyC_dGJpXTYDG=s4800-w800-h600"], "a": ["Cukrarna Gallery", "Olexiy Zozulya"]}, {"c": "museum", "n": "Plečnik House", "zh": "the architect's home, left as he died it", "lat": 46.0424548, "lng": 14.5023746, "m": "4.8★ · 10am–6pm, CLOSED MON · guided tour only, book ahead", "d": "Architect Jože Plečnik lived here from 1921 until his death in 1957, and the round extension he added is preserved with his furniture, sketches and models intact. Only accessible on a 45-minute guided tour in small groups — book a few days ahead, especially in summer.", "g": "https://maps.google.com/?cid=6646637710579428917", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDcTRAloe5e_K0GfSxdhHctcTUSzgWgaR2Yhqoy4nJQrMvT2yl-d8i5xJut5fM26KlCifwzfvbiZ0U8_B6vASVkqDKBnA0h78VlJm-GN4auyotfb6jM4KJYaDCqnn_-RNmOxLkhHr-vzeEJ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCz_6qHQ34CPraJ2sYRRn-glPvc1ok2KPFh9xirfhUS04VN0arbbDDYiMm2L1tWxg-9hsgPYgK0NGu48iG81LvuwzpCU0_9Mua7sB-Uh_ZnkTGAdfEHA-JJLGubmHNN8FMJi_B2t-0IBPyuRwWUciTD3A=s4800-w800-h535"], "a": ["J J", "dario sironi"]}, {"c": "cemetery", "n": "Žale", "zh": "Plečnik's monumental cemetery gates", "lat": 46.0675014, "lng": 14.5284094, "m": "4.2★ · 7am–8pm, CLOSED SUN · free, ~25 min bus from centre", "d": "Ljubljana's central cemetery, redesigned by Plečnik from 1938 with twelve chapels — one per city parish — arranged around a Greco-Roman colonnaded entrance gate. Quiet and largely tourist-free; worth the detour for committed Plečnik fans, easy to skip on a short visit.", "g": "https://maps.google.com/?cid=3355316052200682482", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCDP-u6glHXYsX70XIW4S3Kn1-7eb8c93dSRuxBZZlsgEqcQVguIP3Q3IXH3Y-kHYUycVabP9HElDEsVcbd3L3-sLGtaR99D_-JyK64eZz7zDvxuD5URbXlmonvbKqsQq0wBWSSQGySpcenpKA=s4800-w800-h590", "https://lh3.googleusercontent.com/place-photos/AG9NLjCXsDm6oeTHqPjyOjkcRKd0b_RTkqIAZSGHpPGOcvHS-6hfML7fqy3FuVxtGMAkCsJmo5FPYtRau6BDNRNpXypG9Syp9pjhviFXcUmLp7ns8kYjp4IcYFQNt4jkDrwE81544CiggIneuPoF9GU_V65z=s4800-w800-h600"], "a": ["ŽALE javno podjetje", "dusan sevic"]}, {"c": "wine", "n": "Vinoteka Movia", "zh": "a working winery's own bar", "lat": 46.0497416, "lng": 14.5068931, "m": "4.6★ · noon–midnight, CLOSED SUN · glasses from ~€6", "d": "Run by the Kristančič family off their own Brda vineyard — eighth generation, biodynamic — with a charcuterie board and a candlelit room barely bigger than the bar. Staff steer you through orange and skin-contact wines. Ask for a taste before committing — 'samples' bill at full price.", "g": "https://maps.google.com/?cid=5693999921486822863", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBplZoevqWt3wBUkFPnGtwr80ORenUata_eIGfmx2pyWU5a42-4ZZV9dFG5LStAgXh8hbIJpAluEunkeQUvNe454rxiqi3yh0z7gqHFk3QS8d0pEi94WWzDLKhp3uAigC1hlROmej3blyE4QUv3PiAb=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDT4QwzwZcH-gegNRtyznzsAsXYYk6eln2qIlUhYrVRxJLzqadtxJa21kBiOjLl0lK7ixyHTDTHfgmyNqyHWbMcAPSna57zSwOZUjtf944nO_p-5LD7KJEBd4ajKNgAlzUxw2FRNaG4NW_RAupiqO7uyw=s4800-w800-h600"], "a": ["Vinoteka Movia", "Gerban Oliveira"]}, {"c": "wine", "n": "Dvorni Bar", "zh": "riverside wine bar, potato wedges", "lat": 46.0490566, "lng": 14.5048886, "m": "4.5★ · 10am–12:30am, later Thu–Sat · tapas ~€5–9", "d": "A relaxed riverside wine bar between the park and the water, better for a long unhurried afternoon than a quick glass. The by-the-glass list runs mostly Slovenian, and the potato wedges get mentioned almost as often as the wine.", "g": "https://maps.google.com/?cid=7915038192261124112", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA6sgjYHso5vHRFG9TNVTE8pO7uAwLcr7gIo4QnCWgV_mA_9NIvrnMcHFEtKHjZHHnYXHqStLORof7JlxPj6oYVEc3nfQKpmGXgD_Wi6r_ftCKipCaq7JLMD9cGar1Js3BUo2j0s7Z15YKARw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCGD1gVHYL46jBIb-ORGm0nI2kH5gK8yHueN8KPjUz5pmqd9VNreereD4UCcMJwsRe2LlhI8vB0yvTKEqiJOc8JzFdECcqw3vZnDCLhJNu8hrtExPEI7MictK9TrEgHs7FQKxQ2RDFImrCfFqbhU7Kk=s4800-w800-h600"], "a": ["Polonca Centa", "S L"]}, {"c": "beer", "n": "Sir William's Pub", "zh": "120+ beers, Art Nouveau block", "lat": 46.054362, "lng": 14.5073936, "m": "4.6★ · 8am–1am, from 5pm weekends · pay at the end", "d": "Over 120 beers between taps and bottles, in a wood-panelled room near the station that reads more like a study than a sports bar. Coffee-house calm by day, properly busy by night, with staff who'll talk you through the list.", "g": "https://maps.google.com/?cid=7814017779411620890", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAdwKa5a0WN07lCgq8UoI-RcjLzvG4XOLdaIdqOZY7rhj3oyasC03yjTH38gZHcV-rv4gKdr8qqGSyV9hCNJotK5ZFbvFrdK5ZOXlP8Jud9Vf5xQboeDzc_evm8twzw2MHiwPMgEAImmYmJOA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDFOryffVpmwt1YYtA9k4H8-hBoh4Mq6P3mpE_TyE98dGtvCCUh1AMYghAuVFStNLhtF_uiICAZQLPoln_4F8GEu_6OQ99MkxtJvGa4bctAGxjCisiuYyfsmF-lRhMy8R6xZ8xObsRioC5SVVhJMZVa8Q=s4800-w800-h600"], "a": ["Sir William's pub", "J. R. Fernandez"]}, {"c": "beer", "n": "Lajbah", "zh": "craft beer, riverside garden", "lat": 46.044202, "lng": 14.5067047, "m": "4.7★ · noon–midnight, CLOSED SUN · flights available", "d": "A craft-beer bar on the quieter southern stretch of the river, with rotating taps, board games and a food menu that wanders from pad thai to camembert. Order a flight of four if you can't decide — the tap list turns over often.", "g": "https://maps.google.com/?cid=4551806395580371121", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCe6PtKlMQy1THabW7RqTVVE2rkGUDj53yKsfW4ML9TC3JPtVIVsYVEbvAu_sMZX1uACIrdWE43UoJYt3SziCRHqg-I926V0PelM78kyBBSBnM_4XscRVYJn3-jtnZ6GSLA-HMvLOqNMLbnUCPMXPNm=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDJgSEEmmdtTqLKXjOD0_6eLKDYuw6rljP_xyfIsIPv6fEzGTdFew2cQzqJHO_a7jQIafS8XOYK2YhHumjLa8IWg8z6OSEk4kzyCEBG21rE2WcdEvGL2jV9G-UbWS6nuNOpQd32HS9_1DAkOhE=s4800-w800-h600"], "a": ["Glen Mitchell", "Dubravka Martinović"]}, {"c": "beer", "n": "Union Experience", "zh": "brewery tour, guided tastings", "lat": 46.0597371, "lng": 14.4986266, "m": "4.5★ · 8am–8pm, CLOSED SUN · guided tour ~€15–20, book ahead", "d": "Ljubljana's own brewery since 1864, and unlike most famous names in this part of Europe, Union actually lets you in: a guided history tour, a VR brewing walkthrough, and a tasting of three beers. The gift shop has been closed a while — buy any merch at the bar instead.", "g": "https://maps.google.com/?cid=15537173904101201495", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAs8konZoGOYUSRLzNeK6UQ-638hn4k3AjVLcC8ejH35PDQ08CMUcB4phC4lx4i9MybAeucFmiHNsboh6G5ynrhfvnonIl_B44xwMyD5jYbcqYeIkV-XNP2uL3gvZLFL7J5vX1UweKrqe3lvA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB1QXKCOgMQpjbmX6_KS4wdHTCclCT7kQ2B9eFmIUYqJtR35-F7LvQwzBSbCZQGTKkYKvroNYwvxAoSOKW4VucEbcABRMGtXdwu1yae_iEGLthR3AAvP7Df0wT0tXELh2aKwqHto8jDgjwljao=s4800-w800-h600"], "a": ["Union Experience", "Rachel Ferguson"]}, {"c": "cafe", "n": "Pritličje", "zh": "bar, café, comic shop, all at once", "lat": 46.0497093, "lng": 14.5068643, "m": "4.5★ · 9am–2am daily · soft-serve with chocolate sauce", "d": "A café-bar-bookshop hybrid on Mestni trg hosting lectures and round tables as often as it pours coffee, with a soft-serve locals rate as highly as the beer list. Prices stay fair for a location this central, which is most of why it's always full.", "g": "https://maps.google.com/?cid=9116849305854824460", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAckhUb56uTsCxAvdcrWOenf6GQUxlfG0svA-huYbk9IDq7KMk9zU_c1hG_Ty6M_gR9dta_jgMJXpIiSOatqsDR6_LonEql1EjUNSqwnFLFz1EoBswHQ9VFOioYC-n_EwDXdAJbkdEtHeBQkQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCHo6kw03tWLDxHqHr9C-fFOyanowF8O16RrktQIqCR8yAFXGDDObejMPQZidqeZ573YIlOljmanw5Cp4VOLSXanFZPAXRnXgDPzCsgMD2i23t8umL-LbOBxi_ioLDzHLa0gLpQIXEdHjY3Yg=s4800-w800-h600"], "a": ["Pritličje", "Pritličje"]}, {"c": "cafe", "n": "Rafinerija Cukrarna", "zh": "specialty coffee inside the gallery", "lat": 46.049899, "lng": 14.5200649, "m": "4.3★ · check current hours · Črno Zrno beans, craft beer too", "d": "The café attached to the Cukrarna gallery, roasting under the Črno Zrno name and pulling some of the best coffee in the city inside a striking piece of adaptive-reuse architecture. Pastry selection is small and changes daily — go early for a specific cake.", "g": "https://maps.google.com/?cid=14445142179090645781", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBFRiyBYel63MoqoVRuJrDH7Olj8Xg3NmELkzxdW615XRacThqwI99qRWTHUIQMobiXvDNOGJT5HuaQZBZYCiEsZ-HZ0pKzd6JKY2THc1gJfMe9P3ZgljR3qh5iMH4C7CaMzFEME0PNX_Ol1g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCo1DYd4VcWNy8bCak-r9y-e4jyI0cSDcR1CCi3f04TRLCG24nCJuSYPt9CE4REM8eMu5poQ_SYO7tcySvUHg9lscotUsV0UoXy0lpzVLMCzSzAt7OAxne9R41i9ftmXcS7-Baft09QG9lMjyk=s4800-w800-h600"], "a": ["Saska Grusovnik", "nadya f"]}, {"c": "cheap", "n": "Burek Olimpija", "zh": "€ · burek since 1979", "must": true, "lat": 46.0567314, "lng": 14.5062183, "m": "4.7★ · Open 24h · cash and card, ~€3–4", "d": "A 24-hour burek counter on Slovenska cesta that's sold over five million slices since 1979 — the place locals actually queue at. Meat, cheese, potato and spinach are the classics; the pizza burek is Ljubljana's own invention, the one to try if you've had burek elsewhere.", "g": "https://maps.google.com/?cid=6210675089199200993", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBhDewaE0ojB-XJ5u-qMJ4mPXk3_6uZFlDxyg4GqsOE_kZBnhrNUAEtku-AST3ZX3O-eXa-90n6YcBUcFG5Z1-VaatcSXKqaVRbaStFojvmCROSdOc4M3clpIwwppyjO8py1T713eruwRVD-tt4T-RK=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAyU-OPjgMoksz8c_rogOEwsluWbwxz1q8tJ1AGBTiJkilNYYqBzjWLwgZfbGmGyOedX1d3gg7-A6QNdBG0yBkrBUGbFW2yZQMI3QQds97vvu-qnEGnsjTxNyHcHL5peO4-V1ETUfEBqUAb0py3091ZjQ=s4800-w800-h600"], "a": ["Burek Olimpija", "Burek Olimpija"]}, {"c": "cheap", "n": "Klobasarna", "zh": "€ · Kranjska klobasa, sausage with mustard", "lat": 46.0504042, "lng": 14.5078781, "m": "4.6★ · 10am–9pm daily · half sausage ~€5", "d": "A tiny counter near the cathedral doing one thing — Carniolan sausage with horseradish, mustard and bread — plus jota (sauerkraut stew) and a barley soup called ričet. Standing room mostly; share a table if seats are full. The skin stays on the sausage, so know that before you order.", "g": "https://maps.google.com/?cid=8601776393657088103", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDou3dVG6lgqiGbZk00vHEQbNbf76ncsXRnL2jIjxI_onI0EJdFp9CyiKAmVXqAho06y7Ig-A3-z85HRgclWvToyPxtXYH9uCZtIerDj19I-IM5YOo7qEAhtF4GIExWUSsJYGQ5qsv0pUpyuco=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAUAlpMB2owRRG_SiVkT0xuxkjfnVkSNZjqgdMWnhWvQeXWErDXPDK16DUPf6UUPb8FgcA3U9yNNggsVtcBzk9vkQvnk1xqPv7pbLykZSQIb79gooAJdtXvdzX3rtWy-mc0Mw3K8r153wih8w=s4800-w800-h600"], "a": ["Aleš Sterle", "Klobasarna"]}, {"c": "cheap", "n": "Moji Štruklji Slovenije", "zh": "€€ · Slovenia's first štrukljarnica", "lat": 46.0512794, "lng": 14.5075208, "m": "4.6★ · 7:30am–8pm, to 10pm Fri · 20+ fillings, ~€6–9 each", "d": "Under Plečnik's market arcades, the country's first restaurant built entirely around štruklji — the rolled dumpling made in Slovenia since at least 1589. Order two or three to share across sweet and savoury; walnut-cinnamon and a savoury cheese-herb version are the ones to start with.", "g": "https://maps.google.com/?cid=10853496027762371207", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC2sCoUhlfV3XSko-QgfO79tcrA0tlfAayUrgy66NisfWFUbzRpwqqughirfKEJv5s5P-ytVYadScQ96nyB9egQ1e9wyIxSXB8Fnw3j0gxqcHwBDmqakHEp_iD7vw66f6Z1INCR3Ov8uAwR=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCMxk05ZL4dajnkqets-8Qo-RxgkNJElQQkHsO6iE_KamFXlA3d7KR9JeGKVx1Yz3KI3AkdE3ckvnySGvIJDkI60ZLlsO-xsA60YdujprE9q7SeM6QklRKFfAG2hX9H1hfcp-o98XNZgWqS3w=s4800-w800-h600"], "a": ["Eva", "Moji Štruklji Slovenije"]}, {"c": "cheap", "n": "Hot Horse", "zh": "€ · the horse burger", "lat": 46.0600064, "lng": 14.4964744, "m": "4.1★ · 10am–10pm, CLOSED SUN · order at the machine, ~€8–12", "d": "A Tivoli Park kiosk built almost entirely around horse-meat burgers — genuinely Slovenian, not a novelty, here. Order and pay at the touchscreen before queueing at the counter. Portions run much larger than the photos suggest.", "g": "https://maps.google.com/?cid=4420234643260723202", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMgpy9fEANjaWcthwPAt2ov54z6yr3XuWREc8FKon6C9kHZo9H2WzU9M0nn9MOyd4VKmKbdLn__uysQEBXLrbd7Q5DjAB2e-weD2d98-hkfEzN4nC0JGvQ9KhvABmoe8WLTi057og=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNJ438bfPbaphsU4qAxCePGCdl7eTba4YROL-YGTMqTD1twpaI9CuEU5YjunI7kpbJY-VtdzqqrYBJatwAfJ0ZOZ7ISzhpAJsV3V27lkHCpKKUcat4jVwpMNx_-Lsx2nHjQnywB=s4800-w800-h600"], "a": ["Hot Horse TIVOLI", "Hot Horse TIVOLI"]}, {"c": "cheap", "n": "Pri Podkvici", "zh": "€ · underpass canteen, daily menu", "lat": 46.0646836, "lng": 14.5092897, "m": "6 reviews so far, all 5★ · 6am–4pm, CLOSED SUN · daily menu, cash-friendly", "d": "A small underground canteen north of the centre with a menu that changes daily and a following almost entirely local — barely discovered by review sites, which is the point. Coffee, beer or a proper lunch, unfussy and cheap. Little atmosphere, decent food.", "g": "https://maps.google.com/?cid=4361614365361003043", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCJswoxExtMZhUJATQUf-bwCPigrEwEVjYKY-FisZT4kaLvCgpP-umFEY7KTCU8ZjZI9zuci5k2s4LIByOBfvnhmcJf5vpskCgi6AP_a94EDvGBi9D8C4oXQE9YrmKzcmM2GHLmqtgYjFhQAEs=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD8qkWt_HFu57yuPgOMh5-YEiPGX9ziGi292iwJIOtuLJnij-WwRj7m_ZPyWRlS2U3kMzduUrGff5mrvG3zGYhlp9RdnUg0-R5kH8viWgXhBuMA5Dmo9fFaqNCDHWudOG-tYekvmsf2ox5LYaU=s4800-w800-h600"], "a": ["Nejc Hötzl", "Nejc Hötzl"]}, {"c": "cheap", "n": "Abi Falafel", "zh": "€ · Slovenia's first falafel counter", "lat": 46.0524386, "lng": 14.5109667, "m": "4.6★ · 11am–9pm, to 10pm Fri–Sat · wrap easily shared, ~€8", "d": "Opened as Slovenia's first Middle Eastern snack bar and still the student favourite near Dragon Bridge, with a soup-or-salad starter and an apple to finish. One large wrap comfortably splits between two. Indoor seating runs warm in summer — try the small terrace then.", "g": "https://maps.google.com/?cid=5963500506912424689", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmP8QeNhwDlt27SPq8RSU12D2fyexiHEsz2okPViMdhZb5uLIoQLoInqV2oUPb7iCAdDXrMVsVG_feMzb8jTU2n8u08yNNohF12KSHq8Lg0ohhq0puisbOi_8kJygPvwXTgptmP8heiSEPpJ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMBhMR7zoPSQBjy4VyFjoULxH5ITAguuuy5qj6va00CcT8s7eNa7NCDoRwRMvxCJSwFiDISVikffb8QOm75_zR0SjAz570pjk15efSNyNE-7mnq8Hu8A3rKv8tyNmJRPuJ-dLjS=s4800-w800-h600"], "a": ["Mr. O", "Abi Falafel"]}, {"c": "sweet", "n": "Kavarna Zvezda", "zh": "€€ · potica, gibanica, the city's cake shop", "lat": 46.0504974, "lng": 14.5047013, "m": "4.2★ · 8am–10pm daily · cake ~€5–7", "d": "A pastry institution on Kongresni trg since 1999, known for kremna rezina (custard cream slice), Prekmurska gibanica, and a potica regulars rate among the city's best. Reviews split on service speed and portion sizes creeping down over the years — go for the cake, not the pampering.", "g": "https://maps.google.com/?cid=556367888070282636", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBvQ9ItMlfUNli_A2CBIE-_-_clBGeyva62yH-ZF-tcDOZTeRU9U2AvNHZFU2UHz7Lg88pztmzSiVWgT57hmvcjBb6-Gmw0QYs-drEchYIewCTXGdeNev0g4MhfsAbfA9DTRAHcdDk7Q_JPKhl02YLOKA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAaJ-Chz_HeEUcvaWzgGbOT4p3QwNJGS5OkUmaVasmjmhMWDt7I9QQFMkqnCDtsz6SaQ8IOw2ZBuHtdO8Cg8gjVhk9xCtqDHkiHpHrHtlaOqxKDmCdxhslJYPibjJ7iOYh2SpC0hYMT0OH_ZaaWWIn6hA=s4800-w800-h600"], "a": ["Kavarna Zvezda", "Alexandru Bogdan Vitalaru"]}, {"c": "streetfood", "n": "Odprta Kuhna", "zh": "Open Kitchen · Fridays only, Mar–Oct", "lat": 46.0511251, "lng": 14.5081793, "m": "4.6★ · FRIDAYS ONLY, 10am–9pm, Mar–Oct · mains ~€6–12", "d": "A Friday-only food market on the square behind the Central Market, dozens of stalls running everything from Slovenian sausage to biryani, with wine and craft beer alongside. Genuinely popular with locals — arrive by early evening or the good seating is gone. Nothing runs Nov–Feb.", "g": "https://maps.google.com/?cid=16868005791113054073", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjComX71FIoom0PdVeHracBz1ctmGDwe2M88Mx1PaPgtm9TggN7YUATv2fV9GIXaKWbl_oaLSOqilIluK4W11_TeLCVMccNmKW9BQYiFCz115bWjJSO8qve1i41Bgr2eSCwxsHOk2FPyZlT0xg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDgEujezWRev72rilnPmZ13QZaUJ8f-O15O1qB7mEcao3B6uRXh7jGzNUKcCJTx-hKuYJwYav4sSqUPouuhSAzhslZiAZYcpM1-_kONmPbtvfkc1dOclIMzm_sRPfsKTRBcaKQDOnjFQWGTmw=s4800-w800-h600"], "a": ["Filka Goranova", "Emese Hanolné Toldy"]}, {"c": "mid", "n": "Monstera Bistro", "zh": "€€€ · zero-waste tasting menu", "lat": 46.0547744, "lng": 14.5110827, "m": "4.8★ · hours vary, book ahead · lunch 3-course ~€25", "d": "A small zero-waste kitchen off the tourist track that punches well above its size — a fixed multi-course tasting menu, seasonal and technically ambitious, at prices that undercut most fine-dining names in the old town. Book ahead; the room seats very few and word has gotten out.", "g": "https://maps.google.com/?cid=18160975194050192666", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDFd-L561Phh3li9WIcOjhMmz8oCeZ9iaQadQ9bhvLAmXjZJOTR3YghCvVFzHbGTVwsQjP3ctmRuyhTQ-8Namr2yUpT1H7AKpMp6LlbJg1dLPsAWHpn2DnjrUcielURAqa1Ov5dzjdhAejMNA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBsInSYN1GAc9_OsRJKPxcMN_pXnJroT-Yg52UtmWIVnyQCKilj3kbYaao2ZxS6LQRWRK1pnykO3K7al9Q-0QKtwjjqwcXXmWKh7oRrMy66_qjFgBepN9Xm5bD9_0QbbuQ8COVbcmJRtp69-A=s4800-w800-h600"], "a": ["Andreas Schupp", "Guntram J."]}, {"c": "mid", "n": "Gostilna Sokol", "zh": "€€ · traditional gostilna since 1870", "lat": 46.0502726, "lng": 14.5074824, "m": "4.3★ · 7am–11pm daily · mains ~€12–20", "d": "Dark wood, staff in traditional dress, and a menu of hearty Slovenian classics — mushroom soup in a bread bowl, Idrija dumplings, mangalica pork — that leans into a costume-gostilna format some love and others find staged. The food holds up regardless; portions are big enough to share.", "g": "https://maps.google.com/?cid=13666260686457602322", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjABoVE2kL2hrHXuXoKL8vOngZsUVrLl4GyleqybPTExKLXGSXNpEe1phAq1UQJtyKzrLi_FufGp6_z8SPGUar3J3wShWRb5bTeQMU72W20jnxaqNrELZV7aXYgcraUJMF-zC_yOenipFLRze6s=s4800-w533-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCckyKVjD4Ug49Pe6z8u5sdGcmMM4GhEeOI_tyZ95mugjQx4MQN6ObXRu5odNseGFx4qQQlXsICBx7g8SXeSBnV_MDeGF-JzzEDHVXO8HYC4IPDHsDm4NbUYVhiVQD7xqhONM_QwjaM_jY8=s4800-w800-h600"], "a": ["Gostilna Sokol", "Gostilna Sokol"]}, {"c": "mid", "n": "Valvas'or", "zh": "€€€ · Old Town elegance, wine pairings", "lat": 46.0480406, "lng": 14.5062828, "m": "4.7★ · noon–10pm, CLOSED SUN · mains ~€25–35", "d": "An elegant Old Town dining room on Stari trg doing beef tartare, lamb medallions and a well-regarded Slovenian wine list. Reviews consistently praise the food and just as consistently flag slow service at busy times — book, and don't expect to be rushed in or out.", "g": "https://maps.google.com/?cid=7260327231106751072", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDxdb8jXVGYXoAKeI3BCHzsZMZ1bshVRLv8gZpC8_nwpcQOYelwh_ZFa_SMDo9igSd7DLwjoOLcN5e3Fjeqsd2jazErYRUhRQkc2jwkjRFyEuzBfKU8dFxNrgLlGPemluuMluL4uA4nd83_xA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAWj-Rq-39UQu27ECZEqwJxOuyKuGnLJ5rJZSeWlSilEUlC6ABUutOhfs2I2JuWlW880Azdblvbp9TPq7mPnNyJVjqBdlcqeAZFmc4BZgnecHFi-kis2-dP622UWEOY4SFvMfPIUAFFOQt0-A=s4800-w800-h600"], "a": ["Зоран Златановић", "Nicolae Ionita"]}, {"c": "mid", "n": "Manna", "zh": "€€€ · former Slovenian institution, now South Indian", "lat": 46.0433394, "lng": 14.5051643, "m": "4.5★ · 11am–11pm daily · dosa ~€12–16", "d": "For decades this riverside address was one of Ljubljana's best-known Slovenian 'slow food' restaurants, reportedly hosting First Lady Laura Bush, before quietly reopening as the city's first restaurant combining South and North Indian cooking. The dosas are the reason to come now.", "g": "https://maps.google.com/?cid=1457105810916643673", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDLZgKaijedEHmNBGHx1rwmVhxCC0SR9PS_oYIexJn7dvNAI9a9Mkdal-G8Xj_yMuKm-vE6ffPKNiIq7Qdg6bPwpSQVDbjvf7b7ud7Vvx3Ni55fa8sovD7Nb2VxSSbuLJ3RS4Jb1kMz6rcBxVT_sQ0ZgA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA8TpxY9gPSaYmUuWgtArhdyxhLkAoEKCMxphEZ3NQA0MyfJ1FOHRTOPMiXinQVYEgTtznZfuuPVkrrjFRjq7wyekRYyjpX39vQZMk-6y4gxbtR9l2g3naQGGF2y9LBLafCqENKWtQLqa6J9B0o9EsrcQ=s4800-w800-h600"], "a": ["Manna Indian Restaurant", "Manna Indian Restaurant"], "s": "Manna spent years as an upscale Slovenian institution before its owners pivoted the entire concept to South Indian cuisine — dosa, sambar, Kerala-style curry — while keeping the same riverside room and the same name. Long-time visitors hoping for old menu favourites are occasionally surprised.", "sl": "Same name, same room, completely different kitchen"}, {"c": "mid", "n": "Druga Violina", "zh": "€€ · social enterprise, home-style lunch", "lat": 46.046978, "lng": 14.5067224, "m": "4.5★ · 8am–10pm, CLOSED SUN · fixed lunch menu ~€10", "d": "A social-enterprise restaurant employing people with intellectual disabilities, serving a daily fixed lunch — a stew or roast with soup and a small dessert — for around €10 in a prime Old Town spot. Reviews are mixed on any given day's dish, consistent on value and on the reason to come.", "g": "https://maps.google.com/?cid=14945147621693446533", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmO6jq_6NiML0vUGahWBt6JwU0Mon2LNR8vh7gdKHLVDGyGLEET6A5qwwFAYWfgxrAp6yi1x9CEZBojLc82FXD065yNwuI0BvCyEmc7jdaK63jkBjA8BmFq3-Xdc54co0NRkhbO4=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmN19WDtYeON3Gg0ANWPI2nqGekKw6YzFsi4o5fKmzV972un8vbwUvB8sYpbwAjrmJeg4brew8jLXLJtp-kWtlVk7-1KYyq72a-xojqPR2_hqw3Oczv5kCk-wZJRg864H_Fg9L0Z6_tIezFk=s4800-w800-h600"], "a": ["Jy", "Nelson Morales Meneses"]}, {"c": "splurge", "n": "Strelec", "zh": "€€€€ · Michelin star, inside the castle tower", "must": true, "lat": 46.0490116, "lng": 14.5092202, "m": "4.7★ · 5pm–10pm, Sat from noon, CLOSED SUN · tasting menu ~€100+", "d": "Ljubljana's only Michelin-starred restaurant, tucked into a 16th-century tower inside the castle walls, under 1952 murals in Slovenian folk-art style. Chef Igor Jagodic's tasting menu leans on foraged and hyper-local ingredients. Book the window seats for the view; the pairing is worth it.", "g": "https://maps.google.com/?cid=8570667632801246476", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDD4jEDucgMgfYoMhJKf8pytXv5vp2TPDDSdzYYMCBvvPqIpM2gAPtORGrNaNJI1xJxUNv8al5CmfoaDhTGjbHo_t3DFcTmRoU7SDTD2XDmMbHtUlcMMUjIiqBX0xhdOfLmCMqjqBRfNATUL_0=s4800-w700-h434", "https://lh3.googleusercontent.com/place-photos/AG9NLjCrXwh1lAdDwUh12QFj2xO9FEO2iBPiNZhUe5vOY6ph3_BkT0L00DMtLb6ttQvYTpfyEEYTurfl7LUnipecLkrQTeR-HXYFU_xP27gtw5lBdu9eaqXYLBe1elFGvYrltNHMUSyVmA_E_ca5KowgZweM0w=s4800-w800-h600"], "a": ["Restavracija Strelec", "Iron Man"]}, {"c": "splurge", "n": "Gostilna na Gradu", "zh": "€€€ · Bib Gourmand, castle courtyard", "lat": 46.0486596, "lng": 14.5085414, "m": "4.5★ · noon–10pm, to 5pm Sun · tasting menu ~€45–65", "d": "A Michelin Bib Gourmand inside the same castle complex as Strelec, at roughly half the price and a notably more relaxed room. The tasting menus run four to six courses with strong vegan and vegetarian options. If the funicular's stopped for the night, staff will sketch a walking route down.", "g": "https://maps.google.com/?cid=11560846327646073840", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCd2rhLrKQfW1KoD0XH0OGEI32nJlmAWBAA5OkqdjvY3hk6OzNDj4Zzohz1cv5jth6R44PXn8rxERkc2vM_W7T0w5VaTC9jsnEpujvqJxICpOSDvdLna4yGrM6ofpPc_OkVE-tAAYCok9IN1w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCIyJhcy148LBZtJMiFS3kcKmwAu8VsT5SBFtsSJOPxBEUFCKWlIskDFK-Z9pkDDaVfH3IWMuWRISN7zdmLfFEficYKfeITqvV38vkoMbYNnK4P-erDowaznyWjeJMcVdBIl-uJzj4lsfPwG2nE0pO1BA=s4800-w800-h600"], "a": ["Gostilna na Gradu", "Stefano Picco"]}, {"c": "splurge", "n": "TaBar", "zh": "€€€€ · Bib Gourmand, offal and foraged veg", "lat": 46.0516019, "lng": 14.514641, "m": "4.4★ · 11am–midnight, CLOSED SUN · bar menu or tasting menu", "d": "A former bicycle factory turned two-level restaurant: bar snacks downstairs, a surprise blind tasting menu upstairs built around chef Jakob Pintar's own vegetable garden and zero-waste ingredients like deer offal. Reviews split sharply between thrillingly original and unsettling.", "g": "https://maps.google.com/?cid=2165174665119692289", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmO5cysqV9T0whSSkTVOMjDpBEs5tr-DWrzDejERa6FD7izFkbzDYCECyqFCDimQz7UjWFxpTKKrAFbXEbnKGiQzEAHFOwiiMM_Hdv79osmQkpUItsBfzMsHMBJ-7aJlPJaMzuuEWUd8-Sc=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNpBFm07FxI1I6gQw8hKLshn14P85QohxnyUYMQGm8WzOpp7RAN4joVVM3rl85VuOjj7JDemiJdvG1MVAieD-qR2yzAvbDdITng0-BpZthutteWyveUGKrv_sCvyQgsGswI1WMTTCTNXkuM=s4800-w800-h600"], "a": ["TaBar", "TaBar"]}, {"c": "splurge", "n": "Landerik", "zh": "€€€€ · modern Slovenian, Old Town", "lat": 46.0477575, "lng": 14.5063534, "m": "4.4★ · noon–10pm, varies by day · tasting menu ~€55–75", "d": "A farm-to-table tasting menu on Stari trg, built entirely around Slovenian ingredients and producers without leaning on folk-costume cliché. Reviewers consistently flag it as some of the best value at this price tier, with a strong by-the-glass Slovenian wine list.", "g": "https://maps.google.com/?cid=11876497275166879936", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAc2ngze8Kr4w8BNTer1CW_LJ7-lPlU276IbYncu7EXcG4PunxisAfxdpVKsokQA4K0LGRj2LfzDiiPTDZ1FCuvVvQTojyW6EBMfi4hgvMbEhOao3oeWJfAP_DIxHgW_AhvrTYdrSxb2fw67Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA4tJmB66HWa16qmHj9sqAclFmExi8p1h2uFKR3zZlv6HFxfhVnir4J-DU-eD_QLQSn-5vkj2PHL2NoWl6cqtW8F_wzkJALKseNJ1cXmAu0QB4ooYEOJ-s6RJDDJ9mn_d8ZcJMaxmWFBT1xrFpgGmc6GQ=s4800-w800-h600"], "a": ["Landerik", "Ralf Müller"]}, {"c": "stay", "n": "Old Town & the riverside core", "zh": "most atmosphere, priciest, book early", "lat": 46.049, "lng": 14.5065, "nophoto": "district, not a business", "m": "Walk to everything · priciest · light evening bar noise", "d": "Cobbled, car-free, within a 10-minute walk of every sight on this map. Also the most expensive part of the city and the first to sell out — book several months ahead for summer. Streets right on Stari trg and Mestni trg get bar noise into the evening."}, {"c": "stay", "n": "City Center", "zh": "practical, best hotel range, near the stations", "lat": 46.0514, "lng": 14.5045, "nophoto": "district, not a business", "m": "10 min walk to Old Town · widest hotel range", "d": "The area around Prešeren Square and Čopova ulica, on the modern west bank — the widest range of hotels from budget to luxury, an easy walk to the old town, and close to the train and bus stations for day trips. Less atmospheric than the Old Town itself, considerably easier to book."}, {"c": "stay", "n": "Around Metelkova", "zh": "budget, hip, hostel-heavy", "lat": 46.0575, "lng": 14.5115, "nophoto": "district, not a business", "m": "Cheapest beds · loud weekend nights · 5 min to the station", "d": "Budget hostels cluster around Metelkova itself, including the well-known Hostel Celica in a converted military prison. Five minutes from the train station, a similar distance on foot into the old town. Expect noise from the squat's clubs on Friday and Saturday nights."}, {"c": "stay", "n": "Trnovo & Krakovo", "zh": "quiet, local, south bank of the Ljubljanica", "lat": 46.043, "lng": 14.503, "nophoto": "district, not a business", "m": "Leafy and residential · 15 min walk to centre · fewer tourists", "d": "Low houses, kitchen gardens and a village feel a 15-minute walk south of the centre, past Trnovo bridge. Quieter at night than anywhere closer in, with a handful of good neighbourhood restaurants (Manna and Lajbah are both here) and none of the crowds."}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+(pl.must?' must':'')+'" style="background:'
+         +CATS[pl.c].color+'">'+glyph(pl.c)+(pl.must?'<i class="star-badge"></i>':'')+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true,
+    zIndexOffset: pl.must?1000:0});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galPrev.style.visibility = pics.length>1?'':'hidden';
+  galNext.style.visibility = pics.length>1?'':'hidden';
+  galPrev.disabled=true; galNext.disabled=pics.length<2;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+  const multi=imgs.length>1;
+  galPrev.style.visibility = multi?'':'hidden';
+  galNext.style.visibility = multi?'':'hidden';
+  galPrev.disabled = i<=0;
+  galNext.disabled = i>=imgs.length-1;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+/* arrows, for mice and keyboards; touch users just swipe */
+const galPrev=document.getElementById('galPrev'), galNext=document.getElementById('galNext');
+function galScroll(dir){
+  const w=galTrack.clientWidth||1;
+  const i=Math.round(galTrack.scrollLeft/w)+dir;
+  const n=galTrack.querySelectorAll('img').length;
+  galTrack.scrollTo({left: Math.max(0,Math.min(n-1,i))*w, behavior:'smooth'});
+}
+galPrev.onclick=e=>{e.stopPropagation();galScroll(-1);};
+galNext.onclick=e=>{e.stopPropagation();galScroll(1);};
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng+"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  panToPlace(pl);
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+/* Wide screens show the card as a left-hand panel, so the gesture axis and the
+   map centring both have to change. Keep this threshold in sync with the CSS. */
+const SIDE_MIN_WIDTH = 720;
+function sideMode(){ return window.innerWidth >= SIDE_MIN_WIDTH; }
+
+function panToPlace(pl){
+  const ll = L.latLng(pl.wlat, pl.wlng);
+  if(!sideMode()){ map.panTo(ll,{animate:true}); return; }
+  // shift the centre left by half the panel so the pin sits in the visible half
+  const panelW = (document.querySelector('.sheet')||{}).offsetWidth || 390;
+  const pt = map.project(ll, map.getZoom()).subtract([panelW/2, 0]);
+  map.panTo(map.unproject(pt, map.getZoom()), {animate:true});
+}
+
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the card down to dismiss ----
+   Touch: drag anywhere in the card, but only when it is scrolled to the top, so
+   reading a long card still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    // In side mode the dismiss axis IS the gallery axis, so the gallery wins
+    // any gesture that starts on a photo.
+    if(sideMode() && e.target.closest && e.target.closest('.gal')) return;
+    // Vertical scroll only conflicts with the bottom sheet.
+    if(!sideMode() && sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'go':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  const side=sideMode();
+  // side panel slides out to the LEFT; bottom sheet slides DOWN
+  const along = side ? -dx : dy;      // movement toward dismissal
+  const across = side ? dy : dx;      // movement that belongs to the gallery
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(along)>Math.abs(across) ? 'go' : 'other';
+    if(drag.axis==='other'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(along<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=along;
+  sheet.classList.add('dragging');
+  sheet.style.transform = side ? 'translateX(-'+along+'px)' : 'translateY('+along+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();   // distance OR flick
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='go' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  const ab=document.getElementById('about');
+  if(ab && ab.classList.contains('open')) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- city overview ---------- */
+const about=document.getElementById('about'), aboutBtn=document.getElementById('aboutBtn');
+function esc(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function rich(x){ // allow **bold** only
+  return esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+}
+function renderAbout(){
+  if(!CITY || !Object.keys(CITY).length){ aboutBtn.style.display='none'; return; }
+  document.getElementById('abTitle').textContent = CITY.name||'';
+  document.getElementById('abTagline').textContent = CITY.tagline||'';
+
+  const st=document.getElementById('abStats');
+  st.innerHTML=(CITY.stats||[]).map(s=>
+    '<div class="stat"><div class="k">'+esc(s[0])+'</div><div class="v">'+esc(s[1])+'</div></div>'
+  ).join('');
+  st.style.display=(CITY.stats||[]).length?'grid':'none';
+
+  document.getElementById('abSections').innerHTML=(CITY.sections||[]).map(s=>
+    '<h3>'+esc(s[0])+'</h3>'+String(s[1]).split('\n\n').map(par=>'<p>'+rich(par)+'</p>').join('')
+  ).join('');
+
+  const musts=CITY.musts||[];
+  document.getElementById('abMusts').innerHTML = musts.length
+    ? '<h3>Must see, do &amp; try</h3><ul class="musts">'
+      + musts.map(m=>'<li>'+rich(m)+'</li>').join('') + '</ul>'
+    : '';
+
+  const near=CITY.nearby||[];
+  document.getElementById('abNearby').innerHTML = near.length
+    ? '<h3>Nearby</h3><ul class="nearby">'
+      + near.map(n=>'<li>'+rich(n)+'</li>').join('') + '</ul>'
+    : '';
+
+  document.getElementById('abFoot').textContent = CITY.foot||'';
+}
+renderAbout();
+function toggleAbout(open){
+  about.classList.toggle('open',open);
+  about.setAttribute('aria-hidden',open?'false':'true');
+  aboutBtn.classList.toggle('active',open);
+  if(open) about.scrollTop=0;
+}
+aboutBtn.onclick=()=>toggleAbout(!about.classList.contains('open'));
+document.getElementById('aboutClose').onclick=()=>toggleAbout(false);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') toggleAbout(false); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+let wasSide=sideMode();
+window.addEventListener('resize',()=>{
+  const now=sideMode();
+  if(now!==wasSide){ wasSide=now; if(selected) panToPlace(selected); }
+});
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
