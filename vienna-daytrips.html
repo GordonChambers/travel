@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!-- city-guide-maps template v7 capabilities: swipe-dismiss,drag-handlers,click-away,escape-key,gallery,side-panel,must-see,overview,filters,fullscreen,geolocation -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Day Trips from Vienna</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{position:relative;width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .pin.must{border-color:#F2C14E;border-width:3px;
+    box-shadow:0 0 0 1.5px rgba(120,80,0,.55),0 2px 7px rgba(0,0,0,.45)}
+  .star-badge{position:absolute;top:-5px;right:-5px;width:12px;height:12px;
+    background:#F2C14E;border-radius:50%;border:1.5px solid #fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+    width:30px;height:30px;border:none;border-radius:50%;cursor:pointer;
+    background:rgba(0,0,0,.42);color:#fff;display:none;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);transition:background .15s ease}
+  .gal-nav:hover{background:rgba(0,0,0,.65)}
+  .gal-nav:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .gal-nav svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .gal-nav.prev{left:8px} .gal-nav.next{right:8px}
+  .gal-nav[disabled]{opacity:.3;cursor:default}
+  /* only for real pointers — touch users swipe */
+  @media (hover:hover) and (pointer:fine){
+    .gal:hover .gal-nav, .gal-nav:focus-visible{display:flex}
+  }
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  /* when there is no photo the grabber would sit on the text */
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---- city overview sheet ---- */
+  .about{position:absolute;inset:0;z-index:1400;background:var(--paper);
+    overflow-y:auto;transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.32,.72,.35,1);
+    -webkit-overflow-scrolling:touch}
+  .about.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.about{transition:none}}
+  .about-inner{max-width:640px;margin:0 auto;padding:18px 20px calc(40px + env(safe-area-inset-bottom))}
+  .about h2{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:3px}
+  .about .tagline{font-size:14.5px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+  .about-close{position:sticky;top:0;float:right;width:34px;height:34px;border:none;
+    border-radius:50%;background:#eef1f5;color:#5b6472;font-size:16px;cursor:pointer;
+    line-height:1;z-index:2;margin-left:10px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;
+    margin-bottom:20px}
+  .stat{background:#f6f4ef;border-radius:11px;padding:9px 11px}
+  .stat .k{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#8b8577;margin-bottom:2px}
+  .stat .v{font-size:14px;font-weight:700;line-height:1.25}
+  .about h3{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:20px 0 7px}
+  .about p{font-size:14.5px;line-height:1.6;color:#374050;margin-bottom:9px}
+  .musts{list-style:none;margin:2px 0 4px}
+  .musts li{position:relative;padding:7px 0 7px 27px;font-size:14.5px;line-height:1.5;
+    border-bottom:1px solid #f0ece4}
+  .musts li:last-child{border-bottom:none}
+  .musts li::before{content:"";position:absolute;left:5px;top:14px;width:9px;height:9px;
+    border-radius:50%;background:#F2C14E;box-shadow:0 0 0 2px rgba(242,193,78,.28)}
+  .musts b{font-weight:750}
+  .nearby li{padding:7px 0 7px 27px;font-size:14px;line-height:1.5;list-style:none;
+    position:relative;color:#374050}
+  .nearby li::before{content:"";position:absolute;left:6px;top:15px;width:7px;height:7px;
+    border-radius:50%;background:#9E9D24}
+  .about .foot{font-size:11.5px;color:#95a0ae;margin-top:22px;line-height:1.5;
+    border-top:1px solid var(--line);padding-top:13px}
+  /* ---- wide / landscape: the card becomes a left-hand panel ----
+     A full-width bottom sheet letterboxes photos badly once the window is wide. */
+  @media (min-width:720px){
+    .sheet{left:0;right:auto;top:0;bottom:0;width:390px;max-height:none;height:100%;
+      border-radius:0 20px 20px 0;box-shadow:8px 0 30px rgba(16,24,40,.22);
+      transform:translateX(-105%)}
+    .sheet.open{transform:translateX(0)}
+    .gal, .gal-track img{border-radius:0 20px 0 0}
+    .gal-track img{height:auto;aspect-ratio:3/2}
+    .grabber{top:0;bottom:0;left:auto;right:0;margin-left:0;width:24px;height:100%;
+      flex-direction:column}
+    .grabber::after{width:4px;height:38px}
+    .sheet:has(.gal.none) .sheet-body{padding-top:16px}
+    .sheet-body{padding-right:26px}
+    /* keep the filter panel clear of the card */
+    .panel{left:auto;right:70px}
+    .about-inner{padding-left:26px}
+  }
+  @media (min-width:720px) and (max-height:520px){
+    /* phone held sideways: shorter, so trim the photo further */
+    .gal-track img{aspect-ratio:2/1}
+  }
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Day Trips from Vienna</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="aboutBtn" title="About this city" aria-label="About this city">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Everything here is a day out from Vienna, sorted by what it is rather than which direction it lies in. Journey times in the sub-labels are from a central Vienna station. Seasonal closures are IN CAPS and matter: Carnuntum shuts for winter, the Wachau boats run roughly April to October, and the storks leave in August. Research for this map is logged with the main Vienna guide. Place data and photos (c) Google and the photographers credited on each card; the photos are traveller submissions that could not be viewed while this map was built.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <button class="gal-nav prev" id="galPrev" aria-label="Previous photo">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="gal-nav next" id="galNext" aria-label="Next photo">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="about" id="about" role="dialog" aria-label="About this city" aria-hidden="true">
+  <div class="about-inner">
+    <button class="about-close" id="aboutClose" aria-label="Close">✕</button>
+    <h2 id="abTitle"></h2>
+    <p class="tagline" id="abTagline"></p>
+    <div class="stats" id="abStats"></div>
+    <div id="abSections"></div>
+    <div id="abMusts"></div>
+    <div id="abNearby"></div>
+    <p class="foot" id="abFoot"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"town": {"label": "Towns & spa towns", "color": "#5D4037", "icon": "signpost"}, "abbey": {"label": "Abbeys, palaces, castles", "color": "#6A1B9A", "icon": "castle"}, "roman": {"label": "Roman & underground", "color": "#EF6C00", "icon": "columns-3"}, "nature": {"label": "Nature & scenic rail", "color": "#2E7D32", "icon": "mountain"}};
+const ICONS = {"castle": "<path d=\"M10 5V3\"/> <path d=\"M14 5V3\"/> <path d=\"M15 21v-3a3 3 0 0 0-6 0v3\"/> <path d=\"M18 3v8\"/> <path d=\"M18 5H6\"/> <path d=\"M22 11H2\"/> <path d=\"M22 9v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9\"/> <path d=\"M6 3v8\"/>", "columns-3": "<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/> <path d=\"M9 3v18\"/> <path d=\"M15 3v18\"/>", "mountain": "<path d=\"m8 3 4 8 5-5 5 15H2L8 3z\"/>", "signpost": "<path d=\"M12 13v8\"/> <path d=\"M12 3v3\"/> <path d=\"M2.354 10.354a1.207 1.207 0 0 1 0-1.708l2.06-2.06A2 2 0 0 1 5.828 6h12.344a2 2 0 0 1 1.414.586l2.06 2.06a1.207 1.207 0 0 1 0 1.708l-2.06 2.06a2 2 0 0 1-1.414.586H5.828a2 2 0 0 1-1.414-.586z\"/>"};
+const CITY  = {"name": "Day trips from Vienna", "tagline": "Vienna sits where four countries nearly meet, on a river that was the empire's motorway. Almost everything worth a day out is inside two hours by train, and several of the best are inside one.", "stats": [["Bratislava", "1 hour, return from ~EUR 16"], ["Baden bei Wien", "30 min, REX from Wien Meidling"], ["Carnuntum", "45 min from Wien Rennweg"], ["Melk", "1-1.5 hours from Westbahnhof"], ["Krems (Wachau gateway)", "1 hour from Franz-Josefs-Bahnhof"], ["Semmering", "1.5 hours, UNESCO railway"], ["Eisenstadt", "~55 min"], ["Tickets", "OeBB app; book ahead for the longer runs"], ["Best months", "May-June and September for the Wachau and the wine"], ["How many", "Do 3 days in Vienna first, then one trip every few days"]], "sections": [["Why these are so close", "The Habsburg empire ran on the Danube and on a rail network built to converge on one capital, so what looks like the edge of Austria on a map is usually an hour away in practice. Bratislava was Pressburg, the Hungarian coronation city, 60km upriver. The Wachau shipped its wine down to Vienna. Semmering existed because Vienna's rich needed somewhere to spend August.\n\nThat also means the trains are frequent and the tickets are cheap. Nothing here needs a car, with the partial exception of the Seegrotte and Heiligenkreuz, both of which are a bus ride from a station."], ["The Wachau, in one paragraph", "A 36km stretch of the Danube between Melk and Krems: terraced vineyards on schist, apricot orchards, a ruined castle where Richard the Lionheart was held for ransom, and two of Austria's great white wines, Gruener Veltliner and Riesling. The classic day is the train to Melk, the abbey in the morning, then the boat downriver to Duernstein or Krems and the train home from there. Boats run roughly April to October only; outside that season take the train along the valley instead."], ["Food and drink out here", "In the Wachau you eat Marillenknoedel, apricot dumplings rolled in buttered crumbs, from about July, and drink the local Riesling. In Burgenland it is goose in November and Blaufraenkisch red all year. In Bratislava, bryndzove halusky, potato dumplings with sheep cheese and bacon, at about a third of Vienna prices.\n\nAbbeys are also wineries here: Klosterneuburg has been making wine since 1114 and its cellar tour and tasting is the best value on this map."]], "musts": ["**Melk Abbey** - the Baroque library and the terrace over the Danube (~EUR 15)", "**Duernstein and the Wachau** - the blue tower, the castle ruin climb, the boat (boat ~EUR 30)", "**Bratislava old town** - another country, an hour away, half the prices (train ~EUR 16 return)", "**Carnuntum** - a Roman town rebuilt with Roman methods, not a ruin field (~EUR 15)", "**The Semmering railway** - a UNESCO world heritage site you ride for the price of a ticket", "**Klosterneuburg** - abbey plus a 900-year-old wine cellar, 25 minutes out"], "foot": "Prices and journey times indicative for 2026 and worth re-checking on oebb.at. Place data and photos (c) Google and the photographers credited on each card."};
+const PLACES = [{"c": "abbey", "n": "Melk Abbey", "zh": "Stift Melk - 1 to 1.5 hours", "lat": 48.2282795, "lng": 15.3312091, "must": true, "m": "4.7* - ~EUR 15, guided tour extra - 9am-5pm DAILY - NO PHOTOS INSIDE", "d": "A yellow Baroque abbey 60 metres above the Danube, and the reason most people come to the Wachau. The library is the room: 16,000 volumes under a ceiling fresco painted to look like open sky. Photography is not allowed indoors. Do the abbey in the morning, then walk down to the pier and take the boat downriver rather than the train back.", "s": "Umberto Eco named the narrator of The Name of the Rose Adso of Melk after this abbey, and the labyrinthine library at the centre of that novel is partly modelled on it. The real library survived the Reformation, Napoleon, and Joseph II's dissolution of a thousand monasteries, largely because the abbots kept making themselves useful to whoever was in charge.", "sl": "The library in The Name of the Rose", "g": "https://maps.google.com/?cid=12392016821520964545", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBngvg8DxsDjJNDKNE-VMR9QLx0GWpFbPvt78kpw9Ho2UBpXYEATgFV1ilXLGJADtXWQ9pUNUUv4wmJo872SGx_7M14jUSj032V5pOFl0sYocHDQWb_GPxt3tWrAK-kAQEiL_haka2HLn1bQ70=s4800-w736-h490", "https://lh3.googleusercontent.com/place-photos/AG9NLjDBOBcUg9ePfeQrqj9v8M44mjkS4ZmSLKrAq9pCqiOZzhBQPtPhRv8Q15XB3kw4eZh7O-J3plYym9-nhRFIOohxPiOet659sLSiet3nkHeJb8Mk06BIj7AaaPaN2S2jdeDfnmzjcZz4cC5KCQ=s4800-w800-h600"], "a": ["Randolfo Santos", "Nobby"]}, {"c": "abbey", "n": "Duernstein", "zh": "the blue tower on the Danube", "lat": 48.395443, "lng": 15.5195036, "must": true, "m": "4.6* - abbey church ~EUR 6 - 9am-5pm - CASTLE RUIN IS A STEEP 30-MIN CLIMB", "d": "A village of 900 people with a blue-and-white Baroque church tower that is the postcard of the whole valley. Above it, the ruin where Richard the Lionheart was held prisoner in 1192: a stiff twenty to thirty minutes uphill on loose stone, and worth every step for the bend of the river. Wear proper shoes. The main street is wall-to-wall wine shops by lunchtime.", "s": "Richard I was captured on his way home from the Third Crusade and locked up here by Duke Leopold V, who had a grudge from Acre. Legend says his minstrel Blondel found him by walking Europe singing a song only the two of them knew, until a voice answered from a tower. The ransom that freed him was 23 tonnes of silver, and Vienna's medieval walls were built with it.", "sl": "Where England paid 23 tonnes of silver", "g": "https://maps.google.com/?cid=8599454339653456429", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCsrMRws6z0Xk8PCJMDW9ykpG9tuWLDUpz4UMn6tB_djzmaTLEILnpPOLYPgjTD1HahJ-UvtDwS0PgBF-JMfyQ8HLtGf9BYrmBp4CIJm_V7hGRUoBriFnvk-fmBjJ9qtqLrahzpdoE11YU_orw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC63AIHxATnAkGTlOC3AbnERG5P4iNXv0E5tNcgXqv1Ieako4Mo0c-zhuuPYXslaSGtzkNQKMBynMt_ztDxZcP5_HfoJbtPS8O3mblpTR5QAUpXloSMHWiz2JCYthPYKvaCdsP0qqvGEJ62ImOxoIOj6w=s4800-w800-h600"], "a": ["Stift Duernstein", "Ludomir B"]}, {"c": "town", "n": "Bratislava old town", "zh": "Hlavne namestie - 1 hour", "lat": 48.143508, "lng": 17.1084789, "must": true, "m": "4.7* - FREE - 24h - return train from ~EUR 16, or catamaran ~EUR 34 one way", "d": "Another capital, another country, one hour from Wien Hauptbahnhof, and everything costs about a third less. The old town is small enough to walk in a morning: the main square, Michael's Gate, the blue Art Nouveau church of St Elizabeth a few streets east. Buy the Bratislava-Ticket, which bundles the return train with local transport. Eat halusky.", "g": "https://maps.google.com/?cid=6774207005440058464", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD4xqErfqzkP4IpuYDlqOcCnD2vT1Bh5V3aQMA8mhxZlgcTc3KWwWC6cEPWGMEIfDhGBWy2oTy7PpFsmeuRXvuriH8jD3PlOS8a5I9qo6sGR5ACp_1Gl0vVuvzEyUJLPvvZB55a4tSSFrUMRw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBDMVW8cfYgueWYOgZE25VgE-bB3oh5fEUqGz9Oc4H-kQQ-uX3x7CCbofj-KY0yj6fsC0jlSU-upCKWXvLhQWRj7_i8duQsBhNhsn9cBdAFDkOarVs1Op892DilEgwIAPWA6L7ouPIAK_TypQ=s4800-w800-h600"], "a": ["Patrick Wong", "Alper"]}, {"c": "abbey", "n": "Bratislava Castle", "zh": "the upturned table", "lat": 48.1421086, "lng": 17.1002348, "m": "4.5* - GROUNDS AND TERRACE FREE - museum ~EUR 12 - 8am-10pm - 20 min uphill walk", "d": "A white block with four corner towers that locals call the upturned table, on the hill over the Danube. The grounds and the baroque garden cost nothing and give you the view over the river, the communist-era UFO bridge and, on a clear day, into Austria and Hungary at once. The museum inside is optional. Twenty minutes uphill from the old town, with stairs.", "g": "https://maps.google.com/?cid=3446134353892385081", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA3XzsKc7tcym5kaPNhvbhnxiY3ku_5OFJi3Y6p2TRDxkH207Y_0NJi5trVOEIDtmgg8nrL09J-YaeMQsS7PWLSwXPsiU_DzNzl7F78hiQDYX8qxcY7uuOqtNR7WHPR6-kvh4KyJyp9ccpnXwI=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA13XXoFUZSN0-zIYm5KvVZnlMgekKzlfng3BVXbGDk4iRxcungppYoW_meg72j0ZcYs_2gWjS4522AaZZXeeMfQNThZkb-9zvn9gAp06FdIQiFZqRMb2t_ygYUiDd3jOGUpt_VZdwQaN1Xdg3weTkr=s4800-w800-h600"], "a": ["Branislav Straka", "Monika Van Zyl"]}, {"c": "roman", "n": "Carnuntum Roman City", "zh": "Petronell - 45 min", "lat": 48.1125061, "lng": 16.8585271, "must": true, "m": "4.7* - ~EUR 15 - 9am-5pm (6pm Fri-Sun) - allow 3 hours - CLOSED IN WINTER", "d": "Not a field of foundations but an actual Roman quarter rebuilt on its own footings using Roman tools and materials: a townhouse with underfloor heating that works, a bath complex, a cloth merchant's shop. You walk into rooms rather than past them. The amphitheatre is a separate site nearby. Train from Wien Rennweg to Petronell-Carnuntum, then a 15-minute walk.", "s": "Carnuntum had 50,000 people and was the capital of Upper Pannonia. Marcus Aurelius wrote part of the Meditations while stationed here fighting the Marcomanni. In 308 AD it hosted the imperial conference at which Diocletian, summoned out of retirement, refused to return to power and reportedly told his colleague to go and look at the cabbages he was growing instead.", "sl": "Where an emperor chose cabbages over power", "g": "https://maps.google.com/?cid=7102545747796976348", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBGqlzCvOc1py0F3im3X2CWzyNQlbgbuos5Zdq4AhvolLMDBPWma3iomGJLaOvceSMIU32PCZAQ39rYt0pv3CQkvOOe19QrhV3nOfA6zI1OZZrJoVBIoD7X5owEm2mG25IDKqhHqD0H6FAq_A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD3A06WrxgE1SnN1lD1pgGgMoQ7BRshbl20lZfhbogco71Ywkn9AQIC8BQ2j77AbVCrd8Jrm70Mc3ornzthC3xinKQLu4vpEYZ7F_vzl91b88uNec_tJKLXF8hvwTdTQb6d56_r3qf9JEl8=s4800-w800-h600"], "a": ["Roemerstadt Carnuntum", "Daniel Leila"]}, {"c": "nature", "n": "Semmering Railway", "zh": "UNESCO, 1854 - 1.5 hours", "lat": 47.6392137, "lng": 15.830471, "must": true, "m": "4.7* - JUST BUY A TRAIN TICKET - info centre THU-SUN 9am-3.30pm - sit on the right going south", "d": "The first true mountain railway in the world: 41km, 16 viaducts, 15 tunnels, cut through the Alps in 1854 by 20,000 workers with hand tools. You experience it by buying an ordinary ticket towards Graz and looking out of the window. Better still, get off at Semmering and walk the Bahnwanderweg to Breitenstein, a two-hour trail that looks back at the viaducts.", "g": "https://maps.google.com/?cid=12825078456066590093", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBU8dLmresKCvClOUZMU9J1-_4r3rZ32lCVycFC4ElVvlhUbckffy1vfZDvMLoD8Tc-d_MIxa29kyV6ofk07Q_jttiWZ8z_5wou-_JPGUyIIzw67d1OVeFXF9_P7Lj4cYxAnEErq8-oW_-hKz0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDx_bKRv4ZCKd8nuwd27X6Uoh8qFsYJ7rCtmBKQo2wLaM82sNCfhk-Yq9YeykIbTRPQ37JFrH9lpBFC63AdoDMwKF-ZPFG03ewHHFRgIDe4eF8P97kSSkuFcnr6tRnaNkQVDiXSd9y0htm8SQ=s4800-w800-h600"], "a": ["Vlado Robota", "Andreas Hansch"]}, {"c": "abbey", "n": "Klosterneuburg Monastery", "zh": "wine cellar since 1114 - 25 min", "lat": 48.3063814, "lng": 16.3273288, "m": "4.7* - abbey tour ~EUR 13, wine tour and tasting ~EUR 25 - 9am-6pm DAILY", "d": "The closest of the great abbeys, twenty-five minutes on the S40 from Franz-Josefs-Bahnhof, with green domes visible from the Kahlenberg. The Verdun Altar of 1181 is one of the finest pieces of medieval enamel in Europe. The real draw is underneath: Austria's oldest working winery, with vast cellars and a tasting at the end that is the best value on this map.", "g": "https://maps.google.com/?cid=12293122418112296224", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBJFF-UiezT-Cz_-6D6-bH7KQnXpNVzWPFnZSkaccFzJWOwcJ6jyoiSmVOpLcBwRQAAc5l7Oo8mqXej_bS--CZTZbBUAUkL8YgdEOHNdE82YjXgwg2RoVDssDRm7ReS2Lgbul64XPCmsb31sQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA9o0-VrgDi6FQNCyruq-saMz7mYG29JDeDN4PGwJ_0vRJv_ogRdmmbDAvg8o3NvSjAvipBTRZ1WmP5VCkMkD71pBbIKW8NNckprxVDLeHWlSsF3Wryj5Yk1771oHpZgZ9M3-X6wrI-U3OaZkc=s4800-w800-h600"], "a": ["Stift Klosterneuburg", "Doris Karapici"]}, {"c": "town", "n": "Rosarium, Baden bei Wien", "zh": "30 min by REX from Meidling", "lat": 48.0080319, "lng": 16.222259, "m": "4.8* - FREE - 24h - ROSES PEAK IN JUNE - spa in town from ~EUR 15", "d": "Austria's largest rose garden, 30,000 bushes, free and open all hours, in the spa town where Beethoven spent fifteen summers and wrote part of the Ninth. Come in June for the roses; any other month, come for the sulphur baths and the Kurpark instead. The old Badner Bahn tram from the Vienna Opera takes an hour and costs less than the train.", "g": "https://maps.google.com/?cid=1755493716342158843", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDuNFYbxeHFy7m7IoMmRDkzJrvzZL5tV37D9jXYJ6xBQeVW37wpc67KXhqxqFDyqj6ATjupI1H0vm4rW9P2kZb2eVH3O4Gce3c-e_pWM_0Z7CtES4ah7dlPFHaUzq0cSVHti7QG3IkxQxqmFw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBOp9YVeJ8aKrQFR69Qv_J4yIywn3sl00WyF7ePB254MkDN64SHb3BOeflj-ePuVbOmEZA71fg-6737i-z9p3FHJDN0C-B_aPXZPVvR0yZwcH2cA6y5MvK0tpfpQYB-Vq3UPptPJdY-2qSHEWeDEgow=s4800-w800-h600"], "a": ["noKos Kostelnik", "else ColorArt"]}, {"c": "roman", "n": "Seegrotte Hinterbruehl", "zh": "Europe's largest underground lake", "lat": 48.0861882, "lng": 16.2575493, "m": "4.5* - ~EUR 15 - 9.30am-4.30pm DAILY - TICKETS ON SITE ONLY - 9-12C, BRING A COAT", "d": "A gypsum mine that flooded in 1912 and became a 6,200 square metre underground lake you cross by boat. In the war the Nazis built He 162 jet fighters down here using forced labour, and the guides say so. It is 9 to 12 degrees year round, so take a jacket even in August. Cards are not sold online; buy at the door. About a kilometre of walking.", "g": "https://maps.google.com/?cid=9941373726767836987", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD0ozFMfDm3-fsR7Y9U7bNuiS9yBApjrIDmdPAqb5ZkpxZAExF5X-ycoU-u7a5Wiy2IcKwNXztL0hke8G1WW3CwmNlx_rl_JV4vvraQ9j4hTCE2Aihf06yErs1OPPVYW1mmeTDBJn00rMtVqA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCXJw58BMhmDrOM1N1w9ndpVQPdbur-BvL6uxR5CO1FmWM1Yx8YqJXq5lvTJDN09azkhFNL5PAciEyCgp13slo_kIzTyNc5WRv8VYsRRF-haktrLcZx1xSkiU7jNuwJpN52o2lXLDKK9UGS=s4800-w800-h600"], "a": ["Alexander Kaiserseder", "Magyar Gabor"]}, {"c": "abbey", "n": "Esterhazy Palace, Eisenstadt", "zh": "Haydn's workplace - ~55 min", "lat": 47.8461952, "lng": 16.5194638, "m": "4.6* - ~EUR 19 - 10am-4pm DAILY - GUIDED TOURS ONLY ON WEEKDAYS", "d": "The Hungarian princes who employed Joseph Haydn for thirty years kept court here, and the Haydnsaal is still the concert hall he wrote for, with a wooden floor that is the reason its acoustics are famous. On weekdays you can only see it on a guided tour, so time your arrival. The wine museum in the cellars is better than it sounds. Burgenland reds in town afterwards.", "g": "https://maps.google.com/?cid=18076110218109577348", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBByM5ODkgD4-9kAceRSbvlz4f4OTConsQmAt8HBzfuogeaV25qFHidbTjqsXhyD-f2WlStDGiYvJRjaGkkqs86cxzhtr7B0GcLErUYypMhl6LbXiDvD0yuA_qsf95OHtMYgoyMaO6MHcc2bc8=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjASzYTKOoVrfh-AG-IdDzi1OcnHsnx0o5NNe_xJ642KyHtWA9h12mITQsSzKricDoNcXRPL4z8RslKHVHSZCKr7-pbvwJBeFvHJ6QnFMniPTxf1CF9t-d2yG0HJhkS_8GYdp_j8q4pyxmTmOUc=s4800-w800-h600"], "a": ["Schloss Esterhazy", "Rabea H"]}, {"c": "abbey", "n": "Heiligenkreuz Abbey", "zh": "Cistercians since 1133", "lat": 48.0553504, "lng": 16.1308153, "m": "4.7* - tour ~EUR 12 - CLOSES 11.30am-1.30pm FOR LUNCH - Sun afternoons only", "d": "The oldest continuously occupied Cistercian monastery in the world, in a fold of the Vienna Woods, with monks who still sing the full Latin office and once had a chart-topping plainchant album. Time your visit around the midday closure. Free to attend a sung service: vespers is the reason to come. Bus 1140 from Suedtiroler Platz, or combine it with Mayerling nearby.", "g": "https://maps.google.com/?cid=16379602321581512155", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBbWSpsDcZvpIPe7N7651nfuywzQ7CZWqEGM6YTrRMlX4K2vPtiilNqV5XWwrzPY_EW1xaDD1pehNstafZqkoqKWnz17SuYkLQblE5-7BOCWD_gC-hzfAcfmwqpbVRDP689MbyrDKoA7fXO1iRrpm1y=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAmzYJaCIPKLrU5aTlvE8VTxNd99RE9SOT2vkikSfP3Zi4JV_WfEsTO9sLKlxGP8Mb1rQosT-l7tRz345gRw3ATTj8ZTC-f0p6QL6W_8kcx8GMWAZzy_xeYNT3g2FXXCHAjMQl58TkP_BTIMg=s4800-w800-h600"], "a": ["Stift Heiligenkreuz", "Istvan Horvath"]}, {"c": "abbey", "n": "Schloss Hof", "zh": "Prince Eugene's country estate", "lat": 48.2138375, "lng": 16.937384, "m": "4.7* - ~EUR 17 - 10am-6pm DAILY - terraced gardens, farm animals", "d": "Prince Eugene of Savoy's rural palace out towards the Slovak border, with seven descending garden terraces, fountains and a working estate farm with rare breeds. It is the best of these trips for children by a distance. Awkward without a car: bus from Vienna, or combine it with Bratislava, which is closer to it than Vienna is.", "g": "https://maps.google.com/?cid=5840040915125857441", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAOHdbcMeQ6DCGMZ0kw-ls9P3dX_K6pwGeLPmgMbW05MVVRpxFgUAMtOntL1FF59lAFRSJckadLuurklB_VPUh1JsCeYLNtHlYmmLKfantiDkYbo649275ZjjrnLdZkRcmuprZN7EMj_Ybzfj4=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAN2iLI_2DP9DyhbvP8eBfwOSbdsbdzzLDlLW305g0YwmsfFNqBESLsJtWfkzXenIMGE_nKYJRdpoBmh6kNDe5TUTC6tqjjsSJr_sW_IxQyw4KxDd9WBZeCDiZjvsWg5Hpq170HkMA34O7AhA=s4800-w800-h600"], "a": ["Schloss Hof", "Venislava Isuska"]}, {"c": "abbey", "n": "Burg Liechtenstein, Moedling", "zh": "the family's original castle", "lat": 48.0926314, "lng": 16.2703765, "m": "4.6* - tour ~EUR 12 - CLOSED WEDNESDAYS - 10am-4pm - hourly tours only", "d": "The 12th-century castle the principality of Liechtenstein is named after, on a wooded ridge above Moedling, restored and only enterable on the hourly guided tour. Even shut it is worth the trip: the approach through the Vienna Woods and the view from the outside are free. Combine with the Seegrotte, twenty minutes away, for a full day.", "g": "https://maps.google.com/?cid=6827002299847550167", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjADyMWwVcQI5PFitqFNzcbX6UDl5vSe7w1sn1euez8GOZ_vS_1rmKxh7AJDfhVBprZ5aCbMEsWEuIt6CrdFUOXLC2tQ_WzoBBXxOCcbHm9ZkZP2DMonYzTzXpptJEDmClVA8fTksYxVDbkPqg=s4800-w640-h478", "https://lh3.googleusercontent.com/place-photos/AG9NLjDZnBs4CEBfLwj3wJXwBrEwkxFuHwOhq985Xf9OxQyvDX2PKCWkeJHWK_K0oaqv4SUCw9aBLPjP2xJEPzglt23tQ-8FArXBrfBgAkwy4goz4TZF1dYNps0mmnPDQ3zp8tuCdz5k8DZrGkLLgcI=s4800-w800-h600"], "a": ["Burg Liechtenstein", "christian wallner"]}, {"c": "nature", "n": "Storchenwiese, Rust", "zh": "storks on the Neusiedler See", "lat": 47.7988066, "lng": 16.6779884, "m": "4.8* - FREE - 24h - STORKS ARE HERE APRIL TO AUGUST ONLY", "d": "Rust is a small wine town on Austria's steppe lake where white storks nest on the chimneys of the old houses every spring, and the meadow on the south-eastern edge has a small tower for watching them feed. Free, quiet, and pointless outside the season: they leave for Africa in late August. Combine with the lake, a swim, and a bottle of Blaufraenkisch.", "g": "https://maps.google.com/?cid=13040858270904495165", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDXUQG60TB_HN8BdE5rDNPHybIuQuOgojXJ633srkNjfNdf6be6opYDZzRTxRK5xeNda2vlNfJ1hFgIadga6k5oOy3c2fQNxZIbYEygQHmQTbiKSV3lqZJwRlFtRpnBdIse333pgkKmG6H-2Ec=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjABgeDCf9_Rs3NEI42TguCfawFNU-n7yoAblGWdXZFRhpxXXUC0EXfsi61Q1q7gdT9XKO1nCzM-UGWNYlsh6MjYys9Etm_Gn0o_Rbt9b1hKbdoB9v45XE8i82lLiB9WyicGKxnyjyVJ0PwGP3k=s4800-w800-h600"], "a": ["Ilse Wiespointner", "Karin Veyvoda"]}, {"c": "nature", "n": "Kahlenberg viewpoint", "zh": "484m, still inside Vienna", "lat": 48.2744864, "lng": 16.3367417, "m": "4.5* - FREE - 24h - bus 38A from Heiligenstadt - half a day, not a full one", "d": "The hill from which the relief army came down to break the Ottoman siege in 1683, and the best free view in Vienna: the whole city, the Danube, and on a clear day the airport and the Schneeberg. Bus 38A gets you to the top. The good version is to walk down through the vineyards of the Nussberg to Nussdorf, stopping at a Heuriger on the way.", "g": "https://maps.google.com/?cid=8267238424696297238", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDZzyw9e4alEYXKndxwse1qJQ4eW1pJPxr6lxwRK3JbNthYcXWeXtCcdfL0W9IV4j7zpmpZw_G1VtoaH6qQLBGiD8PMPACC-1rcuitBZypMPX5AqZe1ExfDzvg-ZVq8D7lhgR8Xej21C7e6iOltsJCSvw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBg8VlcfTgBJ-TlQQYBYIK4AT7mOuWC_RrwRuBVKxWI435b9vtrRizuwLvQldljIZQkgXVO1Qu8-pZUTIMy1LLXYX8RMXfEpJBvKvPW3snqhRU1SlNuFyagBU87NTHrixZ9ee64h8wwIwUl-1fHcnWvIA=s4800-w800-h600"], "a": ["Tomoko Mayeda", "Michael Niedermaier"]}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+(pl.must?' must':'')+'" style="background:'
+         +CATS[pl.c].color+'">'+glyph(pl.c)+(pl.must?'<i class="star-badge"></i>':'')+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true,
+    zIndexOffset: pl.must?1000:0});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galPrev.style.visibility = pics.length>1?'':'hidden';
+  galNext.style.visibility = pics.length>1?'':'hidden';
+  galPrev.disabled=true; galNext.disabled=pics.length<2;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+  const multi=imgs.length>1;
+  galPrev.style.visibility = multi?'':'hidden';
+  galNext.style.visibility = multi?'':'hidden';
+  galPrev.disabled = i<=0;
+  galNext.disabled = i>=imgs.length-1;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+/* arrows, for mice and keyboards; touch users just swipe */
+const galPrev=document.getElementById('galPrev'), galNext=document.getElementById('galNext');
+function galScroll(dir){
+  const w=galTrack.clientWidth||1;
+  const i=Math.round(galTrack.scrollLeft/w)+dir;
+  const n=galTrack.querySelectorAll('img').length;
+  galTrack.scrollTo({left: Math.max(0,Math.min(n-1,i))*w, behavior:'smooth'});
+}
+galPrev.onclick=e=>{e.stopPropagation();galScroll(-1);};
+galNext.onclick=e=>{e.stopPropagation();galScroll(1);};
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng+"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  panToPlace(pl);
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+/* Wide screens show the card as a left-hand panel, so the gesture axis and the
+   map centring both have to change. Keep this threshold in sync with the CSS. */
+const SIDE_MIN_WIDTH = 720;
+function sideMode(){ return window.innerWidth >= SIDE_MIN_WIDTH; }
+
+function panToPlace(pl){
+  const ll = L.latLng(pl.wlat, pl.wlng);
+  if(!sideMode()){ map.panTo(ll,{animate:true}); return; }
+  // shift the centre left by half the panel so the pin sits in the visible half
+  const panelW = (document.querySelector('.sheet')||{}).offsetWidth || 390;
+  const pt = map.project(ll, map.getZoom()).subtract([panelW/2, 0]);
+  map.panTo(map.unproject(pt, map.getZoom()), {animate:true});
+}
+
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the card down to dismiss ----
+   Touch: drag anywhere in the card, but only when it is scrolled to the top, so
+   reading a long card still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    // In side mode the dismiss axis IS the gallery axis, so the gallery wins
+    // any gesture that starts on a photo.
+    if(sideMode() && e.target.closest && e.target.closest('.gal')) return;
+    // Vertical scroll only conflicts with the bottom sheet.
+    if(!sideMode() && sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'go':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  const side=sideMode();
+  // side panel slides out to the LEFT; bottom sheet slides DOWN
+  const along = side ? -dx : dy;      // movement toward dismissal
+  const across = side ? dy : dx;      // movement that belongs to the gallery
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(along)>Math.abs(across) ? 'go' : 'other';
+    if(drag.axis==='other'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(along<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=along;
+  sheet.classList.add('dragging');
+  sheet.style.transform = side ? 'translateX(-'+along+'px)' : 'translateY('+along+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();   // distance OR flick
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='go' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  const ab=document.getElementById('about');
+  if(ab && ab.classList.contains('open')) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- city overview ---------- */
+const about=document.getElementById('about'), aboutBtn=document.getElementById('aboutBtn');
+function esc(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function rich(x){ // allow **bold** only
+  return esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+}
+function renderAbout(){
+  if(!CITY || !Object.keys(CITY).length){ aboutBtn.style.display='none'; return; }
+  document.getElementById('abTitle').textContent = CITY.name||'';
+  document.getElementById('abTagline').textContent = CITY.tagline||'';
+
+  const st=document.getElementById('abStats');
+  st.innerHTML=(CITY.stats||[]).map(s=>
+    '<div class="stat"><div class="k">'+esc(s[0])+'</div><div class="v">'+esc(s[1])+'</div></div>'
+  ).join('');
+  st.style.display=(CITY.stats||[]).length?'grid':'none';
+
+  document.getElementById('abSections').innerHTML=(CITY.sections||[]).map(s=>
+    '<h3>'+esc(s[0])+'</h3>'+String(s[1]).split('\n\n').map(par=>'<p>'+rich(par)+'</p>').join('')
+  ).join('');
+
+  const musts=CITY.musts||[];
+  document.getElementById('abMusts').innerHTML = musts.length
+    ? '<h3>Must see, do &amp; try</h3><ul class="musts">'
+      + musts.map(m=>'<li>'+rich(m)+'</li>').join('') + '</ul>'
+    : '';
+
+  const near=CITY.nearby||[];
+  document.getElementById('abNearby').innerHTML = near.length
+    ? '<h3>Nearby</h3><ul class="nearby">'
+      + near.map(n=>'<li>'+rich(n)+'</li>').join('') + '</ul>'
+    : '';
+
+  document.getElementById('abFoot').textContent = CITY.foot||'';
+}
+renderAbout();
+function toggleAbout(open){
+  about.classList.toggle('open',open);
+  about.setAttribute('aria-hidden',open?'false':'true');
+  aboutBtn.classList.toggle('active',open);
+  if(open) about.scrollTop=0;
+}
+aboutBtn.onclick=()=>toggleAbout(!about.classList.contains('open'));
+document.getElementById('aboutClose').onclick=()=>toggleAbout(false);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') toggleAbout(false); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+let wasSide=sideMode();
+window.addEventListener('resize',()=>{
+  const now=sideMode();
+  if(now!==wasSide){ wasSide=now; if(selected) panToPlace(selected); }
+});
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>

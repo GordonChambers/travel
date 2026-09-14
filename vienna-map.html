@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!-- city-guide-maps template v7 capabilities: swipe-dismiss,drag-handlers,click-away,escape-key,gallery,side-panel,must-see,overview,filters,fullscreen,geolocation -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Vienna - Three Weeks</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{position:relative;width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .pin.must{border-color:#F2C14E;border-width:3px;
+    box-shadow:0 0 0 1.5px rgba(120,80,0,.55),0 2px 7px rgba(0,0,0,.45)}
+  .star-badge{position:absolute;top:-5px;right:-5px;width:12px;height:12px;
+    background:#F2C14E;border-radius:50%;border:1.5px solid #fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+    width:30px;height:30px;border:none;border-radius:50%;cursor:pointer;
+    background:rgba(0,0,0,.42);color:#fff;display:none;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);transition:background .15s ease}
+  .gal-nav:hover{background:rgba(0,0,0,.65)}
+  .gal-nav:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .gal-nav svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .gal-nav.prev{left:8px} .gal-nav.next{right:8px}
+  .gal-nav[disabled]{opacity:.3;cursor:default}
+  /* only for real pointers — touch users swipe */
+  @media (hover:hover) and (pointer:fine){
+    .gal:hover .gal-nav, .gal-nav:focus-visible{display:flex}
+  }
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  /* when there is no photo the grabber would sit on the text */
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---- city overview sheet ---- */
+  .about{position:absolute;inset:0;z-index:1400;background:var(--paper);
+    overflow-y:auto;transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.32,.72,.35,1);
+    -webkit-overflow-scrolling:touch}
+  .about.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.about{transition:none}}
+  .about-inner{max-width:640px;margin:0 auto;padding:18px 20px calc(40px + env(safe-area-inset-bottom))}
+  .about h2{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:3px}
+  .about .tagline{font-size:14.5px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+  .about-close{position:sticky;top:0;float:right;width:34px;height:34px;border:none;
+    border-radius:50%;background:#eef1f5;color:#5b6472;font-size:16px;cursor:pointer;
+    line-height:1;z-index:2;margin-left:10px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;
+    margin-bottom:20px}
+  .stat{background:#f6f4ef;border-radius:11px;padding:9px 11px}
+  .stat .k{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#8b8577;margin-bottom:2px}
+  .stat .v{font-size:14px;font-weight:700;line-height:1.25}
+  .about h3{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:20px 0 7px}
+  .about p{font-size:14.5px;line-height:1.6;color:#374050;margin-bottom:9px}
+  .musts{list-style:none;margin:2px 0 4px}
+  .musts li{position:relative;padding:7px 0 7px 27px;font-size:14.5px;line-height:1.5;
+    border-bottom:1px solid #f0ece4}
+  .musts li:last-child{border-bottom:none}
+  .musts li::before{content:"";position:absolute;left:5px;top:14px;width:9px;height:9px;
+    border-radius:50%;background:#F2C14E;box-shadow:0 0 0 2px rgba(242,193,78,.28)}
+  .musts b{font-weight:750}
+  .nearby li{padding:7px 0 7px 27px;font-size:14px;line-height:1.5;list-style:none;
+    position:relative;color:#374050}
+  .nearby li::before{content:"";position:absolute;left:6px;top:15px;width:7px;height:7px;
+    border-radius:50%;background:#9E9D24}
+  .about .foot{font-size:11.5px;color:#95a0ae;margin-top:22px;line-height:1.5;
+    border-top:1px solid var(--line);padding-top:13px}
+  /* ---- wide / landscape: the card becomes a left-hand panel ----
+     A full-width bottom sheet letterboxes photos badly once the window is wide. */
+  @media (min-width:720px){
+    .sheet{left:0;right:auto;top:0;bottom:0;width:390px;max-height:none;height:100%;
+      border-radius:0 20px 20px 0;box-shadow:8px 0 30px rgba(16,24,40,.22);
+      transform:translateX(-105%)}
+    .sheet.open{transform:translateX(0)}
+    .gal, .gal-track img{border-radius:0 20px 0 0}
+    .gal-track img{height:auto;aspect-ratio:3/2}
+    .grabber{top:0;bottom:0;left:auto;right:0;margin-left:0;width:24px;height:100%;
+      flex-direction:column}
+    .grabber::after{width:4px;height:38px}
+    .sheet:has(.gal.none) .sheet-body{padding-top:16px}
+    .sheet-body{padding-right:26px}
+    /* keep the filter panel clear of the card */
+    .panel{left:auto;right:70px}
+    .about-inner{padding-left:26px}
+  }
+  @media (min-width:720px) and (max-height:520px){
+    /* phone held sideways: shorter, so trim the photo further */
+    .gal-track img{aspect-ratio:2/1}
+  }
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Vienna - Three Weeks</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="aboutBtn" title="About this city" aria-label="About this city">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Pin shapes: circles are sights, rounded squares are food, diamonds are drinks. Food is banded by price, not cuisine. Closing days are IN CAPS in the meta line and matter more here than in most cities: many of the best Beisl shut at weekends and most museums shut on Monday or Tuesday. Place data and photos (c) Google and the photographers credited on each card; the photos are traveller submissions that could not be viewed while this map was built.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <button class="gal-nav prev" id="galPrev" aria-label="Previous photo">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="gal-nav next" id="galNext" aria-label="Next photo">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="about" id="about" role="dialog" aria-label="About this city" aria-hidden="true">
+  <div class="about-inner">
+    <button class="about-close" id="aboutClose" aria-label="Close">✕</button>
+    <h2 id="abTitle"></h2>
+    <p class="tagline" id="abTagline"></p>
+    <div class="stats" id="abStats"></div>
+    <div id="abSections"></div>
+    <div id="abMusts"></div>
+    <div id="abNearby"></div>
+    <p class="foot" id="abFoot"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"heritage": {"label": "Heritage & landmarks", "color": "#5D4037", "icon": "crown"}, "vienna1900": {"label": "Vienna 1900 / Jugendstil", "color": "#00838F", "icon": "landmark"}, "museum": {"label": "Museums", "color": "#1565C0", "icon": "palette"}, "music": {"label": "Music & performance", "color": "#4527A0", "icon": "music"}, "green": {"label": "Parks, views & the Prater", "color": "#2E7D32", "icon": "trees"}, "market": {"label": "Markets", "color": "#8D6E63", "icon": "shopping-basket"}, "cheap": {"label": "Cheap eats (EUR)", "color": "#00ACC1", "icon": "utensils", "shape": "food"}, "mid": {"label": "Mid-range (EUR EUR)", "color": "#F9A825", "icon": "utensils", "shape": "food"}, "splurge": {"label": "Splurge (EUR EUR EUR)", "color": "#C2185B", "icon": "utensils", "shape": "food"}, "coffee": {"label": "Coffee houses", "color": "#D84315", "icon": "coffee"}, "bar": {"label": "Bars", "color": "#37474F", "icon": "martini", "shape": "drink"}, "heuriger": {"label": "Heurigen (wine taverns)", "color": "#7B1FA2", "icon": "wine", "shape": "drink"}, "stay": {"label": "Where to stay", "color": "#455A64", "icon": "bed"}};
+const ICONS = {"bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "coffee": "<path d=\"M10 2v2\"/> <path d=\"M14 2v2\"/> <path d=\"M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1\"/> <path d=\"M6 2v2\"/>", "crown": "<path d=\"M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z\"/> <path d=\"M5 21h14\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "martini": "<path d=\"M12 12 4.207 4.207A.707.707 0 0 1 4.707 3h14.586a.707.707 0 0 1 .5 1.207z\"/> <path d=\"M12 12v10\"/> <path d=\"M7 22h10\"/>", "music": "<path d=\"M9 18V5l12-2v13\"/> <circle cx=\"6\" cy=\"18\" r=\"3\"/> <circle cx=\"18\" cy=\"16\" r=\"3\"/>", "palette": "<path d=\"M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z\"/> <circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>", "shopping-basket": "<path d=\"m15 11-1 9\"/> <path d=\"m19 11-4-7\"/> <path d=\"M2 11h20\"/> <path d=\"m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6l1.7-7.4\"/> <path d=\"M4.5 15.5h15\"/> <path d=\"m5 11 4-7\"/> <path d=\"m9 11 1 9\"/>", "trees": "<path d=\"M10 10v.2A3 3 0 0 1 8.9 16H5a3 3 0 0 1-1-5.8V10a3 3 0 0 1 6 0Z\"/> <path d=\"M7 16v6\"/> <path d=\"M13 19v3\"/> <path d=\"M12 19h8.3a1 1 0 0 0 .7-1.7L18 14h.3a1 1 0 0 0 .7-1.7L16 9h.2a1 1 0 0 0 .8-1.7L13 3l-1.4 1.5\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "wine": "<path d=\"M8 22h8\"/> <path d=\"M7 10h10\"/> <path d=\"M12 15v7\"/> <path d=\"M12 15a5 5 0 0 0 5-5c0-2-.5-4-2-8H9c-1.5 4-2 6-2 8a5 5 0 0 0 5 5Z\"/>"};
+const CITY  = {"name": "Vienna", "tagline": "Capital of an empire that no longer exists, and still built for one. Two million people living in a city sized for five, which is why it keeps winning liveability surveys and why the coffee houses let you sit for four hours on one melange.", "stats": [["Population", "~2.0m city, 2.9m metro"], ["Founded", "Roman camp Vindobona, 1st century AD"], ["Districts", "23, numbered in a spiral from the centre"], ["Language", "German (Austrian). English widely spoken"], ["Airport", "16 min by CAT, 25 min by S7 (~EUR 4.50)"], ["Transport", "24h ticket ~EUR 8, weekly ~EUR 17.10, Mon-Mon"], ["Budget/day", "~EUR 60 thrifty, ~EUR 140 comfortable"], ["Bratislava", "1 hour by train"], ["Best months", "May-June, September-October"], ["How long", "3 days for the highlights, 3 weeks to live here"]], "sections": [["History in five minutes", "Vienna is grand out of all proportion to Austria because for 640 years it ran an empire from here. The Habsburgs married their way across Europe rather than fighting for it, and the loot came home: Bruegels, Velazquez Infantas, a crown, a horse-riding school.\n\nTwice the Ottomans besieged the city and twice failed, in 1529 and 1683. The second failure is why Vienna looks Baroque: the suburbs had been flattened, the aristocracy rebuilt in the new style, and the captured cannon were melted into the cathedral's great bell.\n\nIn 1857 Franz Joseph ordered the city walls demolished and replaced with the Ringstrasse, a boulevard of parliament, opera, museums and town hall built in five different historical styles at once. Within forty years a generation of architects had had enough of pastiche, and the Secession broke away.\n\n1918 removed the empire and left the capital. The city that followed was Red Vienna: a social-democratic council that built enormous workers' housing blocks financed by luxury taxes, most of them still lived in. Then 1938, the annexation, the deportation of a Jewish population that had produced Freud, Mahler, Schnitzler and Wittgenstein. The city has never got that back."], ["Culture and society", "The stereotype is that the Viennese are grumpy, and it is half true and half theatre. The waiter who sighs at your order is performing a role that has a name, Schmaeh, and the correct response is to enjoy it rather than complain.\n\nThe coffee house is the load-bearing institution: on the UNESCO intangible heritage list, and understood as a place where you rent a chair rather than buy a drink. Order a Melange (like a cappuccino), a Kleiner Brauner (espresso with cream on the side) or a Verlaengerter (an americano). Never a latte.\n\nDeath gets more attention here than anywhere else in Europe: a fine funeral is a schoene Leich, the Central Cemetery has 3 million residents against 2 million living Viennese, and there is a museum devoted to undertaking."], ["Economy, then and now", "The empire left behind the head office of a country that no longer needs one, so Vienna does headquarters: OPEC, the IAEA and a UN office are all here, plus banks with a Central and Eastern European footprint dating from the Habsburg map.\n\nAbout 60% of Viennese live in council or subsidised housing, which caps rents across the whole market and is the single biggest reason the city feels prosperous without feeling expensive to live in. Tourism is large but not dominant, and 700 hectares of the city are vineyards, making Vienna the only capital with a commercial wine industry inside the city limits."], ["Iconic food and drink", "Wiener Schnitzel is veal, beaten thin, fried so the crumb blisters away from the meat, served with potato salad and lingonberry. Pork is legally not Wiener Schnitzel, it is Schnitzel Wiener Art, and it costs about half.\n\nTafelspitz is boiled beef in its own broth with apple horseradish and chive sauce, which sounds dull and is the best thing on most menus. Then Gulasch, Backhendl (fried chicken), Beuschel (lung ragout, better than it sounds), Kaiserschmarrn (shredded pancake with plum compote), Apfelstrudel and Sachertorte.\n\nAt the Wuerstelstand you order a Kaesekrainer, a smoked sausage with cheese inside, with mustard, horseradish and a Semmel. Sausage-stand culture joined the UNESCO intangible heritage list in 2024.\n\nTo drink: Wiener Gemischter Satz DAC, a field blend of grape varieties planted and picked together, unique to Vienna's own vineyards. At a Heuriger you drink it as a Spritzer, half wine half soda, and nobody will judge you."], ["Unique to Vienna", "The Heuriger: a winegrower is allowed to sell their own wine on their own premises for part of the year, hang a pine branch over the door to say they are open, and serve a cold buffet. It is a licensing quirk from 1784 that became a way of life, and it is why Vienna has vineyards on tram lines.\n\nThe Standing places at the State Opera: 567 of them, sold 80 minutes before curtain for EUR 13-18, for productions that cost hundreds of euros in the seats. Bring a scarf to tie to the rail and claim your spot.\n\nAnd the Ringstrasse itself, which is not a road so much as an argument about what a city is for, settled in 1857 and never quite resolved."]], "musts": ["**St Stephen's Cathedral** - free to enter the back of the nave; south tower climb ~EUR 6.50, catacombs ~EUR 7", "**Schoenbrunn Palace** - Grand Tour ~EUR 32; the park and the Gloriette hill are FREE", "**Kunsthistorisches Museum** - the world's best Bruegel room (~EUR 21). CLOSED MONDAYS until 4 Oct", "**Upper Belvedere** - Klimt's The Kiss, ~EUR 19; the gardens between the two palaces are FREE", "**Standing tickets at the Staatsoper** - EUR 13-18, sold 80 minutes before curtain", "**The Riesenrad and the Prater** - wheel ~EUR 15, the fairground and Hauptallee cost nothing", "**The Hofburg, Sisi Museum and Imperial Apartments** - ~EUR 21 including the silver collection"], "nearby": ["**Bratislava - 1 hour by train.** A different country, a compact old town and half the prices. Return tickets from about EUR 16.", "**Melk and the Wachau - 1 to 1.5 hours.** Baroque abbey above the Danube, then a boat down a UNESCO valley of vineyards.", "**Baden bei Wien - 30 min by REX from Meidling.** Thermal spa town, Europe's largest rose garden, Beethoven's summer rooms.", "**Carnuntum - 45 min from Wien Rennweg.** A Roman town rebuilt with Roman tools, not a ruin field with signs.", "**Semmering - 1.5 hours.** The first mountain railway in the world, a UNESCO site you experience by simply buying a ticket."], "foot": "Prices indicative for 2026 and worth re-checking. Sources: Wikivoyage, GPSmyCity themed walks, Michelin Bib Gourmand Austria, Austrian food and coffee-house blogs, Wien Museum and KHM opening data, Google Places. Place data and photos (c) Google and the listed photographers."};
+const PLACES = [{"c": "heritage", "n": "St Stephen's Cathedral", "zh": "Stephansdom", "lat": 48.2084114, "lng": 16.3734707, "must": true, "m": "4.7* - nave FREE - tower ~EUR 6.50 - catacombs ~EUR 7 - 6am-10pm", "d": "The building Vienna is arranged around, with a tiled roof of 230,000 glazed shingles laid in a double eagle. Walking into the back of the nave is free; everything else is ticketed, and tickets are cash-on-the-day. Climb the south tower's 343 steps rather than taking the north lift: fewer people, better view.", "s": "Carved into the stone to the right of the main Riesentor is a small O5. The 5 is the fifth letter, E, so O-E is OE for Oesterreich, a country the Nazis had just erased from the map. Members of the Austrian resistance chalked and cut it across the city from 1938. It survived the war, the 1945 fire that destroyed the roof, and every cleaning since.", "sl": "The two letters that were treason", "g": "https://maps.google.com/?cid=1699924089753055577", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBaxCFEjAkpdYzo2AMh1WwI8EFjz1lEj9TxDFn225lK44bll6ABu3CzyVLtXSOoN1hlKeOy7HXOIoIPxGyr801YXv_tbLfyiS1PO2sBfq79ynzUm-1MMQZGYPWtLvpIlTRZl0fouD3v0Rplidf7G3i_HA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCzDX8ZQbvsWSdQuC8WVtXywhXCbtO8M1NaaIV_turIquD0x-kcJHJkJFtAhXaKYaUmrBeNZ2a2X22HTLPd6_-RywhgMT9h3VtEddCmM4wkX_78AcLxRyac0yUTJiVIJRQ7NvZDRjmxlTgSl1xREyqtCQ=s4800-w800-h600"], "a": ["Andreas Lehofer", "Troy23"]}, {"c": "heritage", "n": "Hofburg: Sisi Museum & Imperial Apartments", "zh": "the winter palace", "lat": 48.2076979, "lng": 16.365938, "must": true, "m": "4.4* - ~EUR 21 incl. silver collection - 9am-5.30pm daily", "d": "The Habsburgs' winter address, and the better of the two palace visits because the Sisi Museum is honest about her: an empress who hated the job, exercised obsessively, and was murdered with a file in Geneva. The free audio guide is genuinely good. Go at opening; the rooms are narrow and jam by eleven.", "g": "https://maps.google.com/?cid=4292483785059598492", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBF01iK_fOtEF4Hc_uieq0sqvvXGCtQIXf9oZjuYhN9SKlmNjzpCf1lBzdi6q5eSchwAJQxVwB-5LSkdub-ElOXEHVlMPbFEvWjuMsBEih3siibeCJfhtM6cRpK18EsVRZWYJQekHjN_QMP8Vg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDr5X6D0AtZg2N5tVoHdr_35aU4tMfm37dnZNi1LxPd927lm22EpSRxzT3U98KCFPjy_TZmlWGm4XFg82LpKJ6f-HinKat1iDIood_6q6GXvmCAEflHfRNzYtCEl6oQuJMUTtUASbfitrnG6CYyWc1IGw=s4800-w800-h600"], "a": ["Sisi Museum Hofburg Wien", "Lina Garavela"]}, {"c": "heritage", "n": "Schoenbrunn Palace", "zh": "1,441 rooms, 40 of them open", "lat": 48.1858124, "lng": 16.3127641, "must": true, "m": "4.7* - Grand Tour ~EUR 32 - PARK IS FREE - 8.30am-5.30pm", "d": "The summer palace, and the one place in Vienna that genuinely needs booking ahead. If you skip the interior you lose very little: the park, the Neptune fountain and the walk up to the Gloriette are free and open from dawn, and the view back down over the city is the photograph everyone comes for. Come at 8.30am or after 4pm.", "s": "Maria Theresa had sixteen children here, married them across Europe, and sent the youngest to France, where she became Marie Antoinette. In 1762 a six-year-old Mozart played in the Mirror Room, then jumped into the empress's lap and kissed her. He is said to have proposed to one of the archduchesses who helped him up after he slipped on the floor.", "sl": "Where Mozart proposed at six", "g": "https://maps.google.com/?cid=5650252119948299209", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB52S45mD6JdNzi8s0TByh16oymLQ-Y0ZGo9D8G2mXt1zlst1UCInizR4wEWOpRFdoN1C_kDqUSX4jQzT2DhJcLriMFJIY98g2shK6BGHAOgieaLPiQCpiukoDq_6Jpch1OroW9HkhFyjBCyQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDSsFWcsepMFHHioRGOzJepv6su4MPrPV9wSUw_us6RZ3M_AgdzNGr1498F9E9EWdS30i-gwR_AxIr9TzQTjsv2kkL9ZCUpqM0IJjbUo8rF6Jqaem3kEzrEw7-1OOEKhb2iQ7CucTqNkG_89Q=s4800-w800-h600"], "a": ["Martins Mezciems", "Suzy"]}, {"c": "heritage", "n": "Karlskirche", "zh": "a plague church with two Trajan columns", "lat": 48.1985626, "lng": 16.3716999, "m": "4.6* - ~EUR 9.50 incl. dome lift - 7.30am-7pm - Sat from 8.30am", "d": "Built on a vow made during the 1713 plague, and unlike any other church in Europe: a Roman portico, a Baroque dome, and two spiral columns lifted straight from Trajan's in Rome. The ticket buys a panoramic lift up into the dome, which puts you a few metres from the ceiling fresco. Evening Vivaldi concerts here are a tourist fixture but the acoustics are real.", "g": "https://maps.google.com/?cid=14892178823400846642", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjANIz97P2EE6Yy-P6maKF4G7He62Biba-hvleMrxQPgMo2BVS1oMZf5eYvk2bhv3t2EiAevcwCK_9f3top9eNAyjCKyzKOL9xwkRJJ3NsgEoXb7rO_4sTO49DWPhjWA4r0BWXK8lHd0IfoS=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAcLpa5U1xaIpTZoc6FjgKcFHC_qDk9CprxMgBCNQSV8gieJQ00sv0WUcgDrBvLewuU-Hyeh5fZKCUCxsz1jcork4wA9LVU9l_xkmyYpw54sK_3km33-R7mvpqTvZGGUOJgxD94vtFFXAP5mg=s4800-w800-h600"], "a": ["Ilias Sidiropoulos", "Iryna Pastukhova"]}, {"c": "heritage", "n": "Peterskirche", "zh": "the free one", "lat": 48.209427, "lng": 16.3699436, "m": "4.7* - FREE - 8am-7pm - free organ concerts most afternoons", "d": "Thirty seconds off the Graben and almost always overlooked, which is absurd: it is the most theatrical Baroque interior in the city, gold and pink and crowded with gilded angels, and it costs nothing. Free organ recitals run most weekday afternoons around 3pm. If you only go into one church interior after the cathedral, make it this one.", "g": "https://maps.google.com/?cid=6868023159781152885", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCJnpMMCA1ShSVIe-oRAW7A-TLS9ziJ1ZeyyaGJfuqN8yNIHtkq6Fj5RAt-cCi7AezObeGIe7aWfIxkYA4g5XHe2IdxWqZ9RvD_AqAksRGorFJU7cjD79vjSKDiaoRgPAUVZmQayfS7ebxS5w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDGlmWCdU92wuMJei6CGvrn7fFoH8TCMG0sMiDpZhNbFveKgWUw22DKgf2Leb_eTgWWxlXU0cpfTc1ttKJ4htOlQvRICcS1rA29Ko3CWwZUgIdPT9tALVYQPasccAcEj5gVzoH5x_3rU1V9QQ=s4800-w800-h600"], "a": ["Smile Goodman", "Philippe Graille Photographie"]}, {"c": "heritage", "n": "Imperial Crypt", "zh": "Kapuzinergruft - 150 Habsburgs", "lat": 48.2057146, "lng": 16.3700245, "m": "4.6* - ~EUR 9 - 10am-6pm daily - no queue, buy at the door", "d": "Under a plain Capuchin church on Neuer Markt lie 150 Habsburgs in sarcophagi that get progressively more deranged the closer you get to Maria Theresa's, which is the size of a small car and has her sitting up in bed with her husband. Their hearts are elsewhere, in silver urns in the Augustinerkirche. Quiet, cold, unforgettable.", "s": "Every Habsburg funeral ends the same way. The master of ceremonies knocks three times. A friar asks who wants to come in. The full list of titles is read out, and the answer comes back: we do not know him. Three more knocks, the achievements are read, same answer. Three more knocks, and this time: a mortal and sinful man. Then let him in. It was last done in 2011, for Otto von Habsburg.", "sl": "Three knocks and a refusal", "g": "https://maps.google.com/?cid=566978324250672061", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAOxM8eNQuHdtmrG9KMSXmAKm7yP11Q6kVWUIYr164GsyS34sT1xfSxoh8VdKLMe9lV0s081oRTwjb5DWi-_P9VKPMi64KFuEKfUydm-QdtBxQUVb5qYloxW1eEx7sb743jGiCULinsLk1G9A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAQeuuc5_p_anMTI0akI11KnWsMZe6tw3LTuxs-YPQSHmzrj9s2VQ0rgMf1NNOU7vvvmFCztZAN1gcQlELu-5r03TG2sBgRL8CoxFXCWAVtJQtpVXbB3FJSPOXOFwrTGhkSIskS8IiD81rp7XQ=s4800-w800-h600"], "a": ["Davorin A.", "Anne-Heidi Meijer"]}, {"c": "heritage", "n": "Rathaus", "zh": "neo-Gothic town hall", "lat": 48.21097, "lng": 16.3566389, "m": "4.7* - FREE guided tours - BOOK 2 WEEKS AHEAD - NO TOURS AT WEEKENDS", "d": "A Flemish-Brabantine cloth hall blown up to civic scale, with a 98m tower topped by an armoured standard-bearer. The interior is only accessible on the free tour, which needs booking well in advance and does not run at weekends. In summer the square in front becomes a free open-air film and food festival from about 6pm nightly.", "g": "https://maps.google.com/?cid=2209559938800879065", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAUTjdLQD4bzNd45ikVjlMNpBxwLmsnDGu5tpKdfIHbzOF51Vo9Mwi_RkpqNlQ9IJOwPo950KdbFJu2hRR7ugSoEvM47si8b8bzh56TscPKsYURnFRLAYxWsmVaRhdKCdEuMhldfVGmdTlBiA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBAsTjfhR3DrBX2gQlgqdvqcGS665pLy8D-PAED5cAVl7x9d-imnyqY4RFODhppyLInxNVtfevzV92uUD2JalE_gW4yLlS1BvNo_drImSVXbPL1Q8DNtd22y7QPNWb7qWugvCfHO81uxVmlcgJGY9gCSw=s4800-w800-h600"], "a": ["Ilias Sidiropoulos", "Valentin Wong"]}, {"c": "heritage", "n": "Austrian Parliament", "zh": "Greek temple, reopened 2023", "lat": 48.2080757, "lng": 16.3584468, "m": "4.7* - FREE guided tours - BOOK ONLINE AHEAD - CLOSED SUNDAYS", "d": "Reopened in 2023 after a five-year rebuild, and one of the best free things in Vienna. The tour lasts about 50 minutes and gets you into the glass-roofed chamber; English slots are limited so book. Enter behind the Pallas Athena fountain. Afterwards go up to the rooftop cafe terrace, which is open to anyone.", "g": "https://maps.google.com/?cid=3826788382577995984", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBk6DWYAhI4nI4SMbz80ioinnkRtJNEOWGNWosc9ov2R7gFIx_J5060_rgwQp_6-jlqJaBuWS88YUmBW7sXEvzZJv1B8HwyVVw0Xz867TfN9XHG5dm7Ug88sDeMiHMaq12Pn7uRd5JdyVYKzUU=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBbVbWe_NqB9DBKxBPwpRNvcGjjgfV0qXdHGopkKxmOuLaDaHPNOUlUBR3H7y5fZhYBLc78tReq7Fjes1R4-9rLrarjdQzZ93tIsXpx_hl9CnBKrTfTOmSeqPq088erkUJbGNePlcyx3ijd=s4800-w800-h600"], "a": ["Sjoerd Koot", "Michael Jarosz"]}, {"c": "heritage", "n": "Looshaus", "zh": "the house without eyebrows", "lat": 48.2083698, "lng": 16.3667432, "m": "4.5* - FREE - banking hall Mon-Fri 9am-3pm - CLOSED WEEKENDS", "d": "A tailor's shop from 1912 that looks like nothing at all, which was the entire point. Adolf Loos stripped the ornament off the upper floors and the city lost its mind. Walk into the ground-floor banking hall on a weekday, where the marble and mahogany interior survives, then step back and compare it with the Hofburg gate opposite.", "s": "The windows had no decorative surrounds, so Franz Joseph is supposed to have called it the house without eyebrows. The story goes that he refused to use the Michaelerplatz gate of his own palace again rather than look at it, and had the windows facing it shuttered. Loos eventually added flower boxes as a peace offering.", "sl": "The emperor stopped using his own front door", "g": "https://maps.google.com/?cid=10702570326872392046", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAw-JN05Mb-dPBhAErC06_rA3k_bTnEy9qPgNGmRZdjoi4KZ9Lz7yIt2DalJ70UoW09ufK1GXpUu9CZ9Iw7QGiZLww10GPBHDakfyHFHorFi1fhJhPTMRkDeZD32uUtju4oxijhk4nlakTqYw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDNWfHexddHYXqpcdBGwtwb3qTSXCFcP0feIBwsjik44CEN1K7pMRlLrTyCYUsk8l3H9w1Wp17JmvY_aPJPeROrJwsp5x6212lubF305q3YOGX7R8w16t4Dy01GqzpU5Vons83yV9ij-DPHWg=s4800-w800-h600"], "a": ["Pedro Paiva", "Andrea Popovic"]}, {"c": "heritage", "n": "Hundertwasserhaus", "zh": "council flats, 1985", "lat": 48.207337, "lng": 16.394294, "m": "4.5* - FREE from outside - EXTERIOR ONLY, people live here", "d": "Uneven floors, 200 trees growing out of the walls, no straight lines anywhere, and still ordinary municipal housing with tenants behind those windows. You cannot go in. Five minutes on foot is the Kunst Haus Wien, the artist's own museum, which you can. Come early or late; the little square opposite is a souvenir bottleneck by midday.", "g": "https://maps.google.com/?cid=9535331515537916316", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDhq6flQZbHlIpWpK3xYa94uInqF1iWwsXSFShJWE4wHcGz_c67WZjNdBYMUMiNvoDIHrFLSMXeE8Ii_OO1WypbVCM1im7G_7AyVWsLe6AcDD1_O9bpY2RtkRvMzBcbcal4-jmS0raS1ec_AczZLmdqpw=s4800-w736-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDb9cBtGZSgZoT4NrW1k4h1xNbbfLP2g1Gg1vG39FeBudsC3ET_XJw0NV1zIMxLxThHqZL1L4oxTTSjBAajlDGgllpDAAGluo7ZEI7VPnDUgx4qIEmCTkwVwZ-gtnVvJudy4iVZ1CKqiLdSeQ=s4800-w800-h600"], "a": ["Julio Fernandez Casanova", "SoMi"]}, {"c": "heritage", "n": "Ankeruhr", "zh": "Jugendstil clock, Hoher Markt", "lat": 48.2107949, "lng": 16.373668, "m": "4.4* - FREE - 24h - ALL TWELVE FIGURES AT NOON ONLY", "d": "A bridge-shaped clock from 1914 across which one historical figure crosses each hour, from Marcus Aurelius to Haydn. At noon all twelve parade past with music, which takes about ten minutes and draws a crowd, so arrive five minutes early. At any other hour you get one figure and thirty seconds. Two minutes of your day, correctly timed.", "g": "https://maps.google.com/?cid=1312166254946121765", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAYiGqdMTksOng_NrO9q5FjyGsVLwkl8I_OVHmCemhY4wh8qLnWuxbTTDJ70vueaOvRAt_X2eERUXcEHViYcP7zdRUQGwLIKl8LRrhGuxUhoQKt-fpEtbya78Ys3vzNzHxt3DZfhiRHC6TbXFE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBk--_0EETXDE4oDhuWmrEGHusz1h2EJ_KKLyPiX5gS1ve8W_4GdtjKy0_Y4sOI25EIunqyDwRTtzYz_LzI5nXNRESYJvSB7-2Wu9HiEN-ofyy25s59jRqwpDXpXyUMEqMwaGoZLFJraY1M5vc=s4800-w800-h600"], "a": ["abode saban", "Anna Tomczuk"]}, {"c": "heritage", "n": "Karl-Marx-Hof", "zh": "Red Vienna, 1,100m long", "lat": 48.2464259, "lng": 16.3626994, "m": "4.4* - FREE from outside - U4 Heiligenstadt, 3 min walk", "d": "A kilometre of ochre council housing built 1927-30 with 1,382 flats, laundries, clinics, kindergartens and libraries, funded by taxes on champagne and servants. In February 1934 the army shelled it during the Austrian civil war; you can still find the marks. Look up at the four majolica figures over the archways. People still live here, so keep out of the courtyards.", "g": "https://maps.google.com/?cid=9541547416578590054", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA7-O7LsMK1_ChdgRZ7wDft58rqt7MigYOInWbWCnvoB1jltdiCrYPzImt8iqnrFcvpEf6HY5rLB9JPeFJoFSvTP2PgW4YWtWpSwVO17J14jVkzanvBHBKiOkjXq65mX5Vzqvgif0hQJ5Yk6AU=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCW_EZros6AVEXayOcpBRm2qr47FSaYbdxSXZMJfyEDmEXL5MjSWUNxlyCcl9aCnYWEP2Uq3aoHY4jpZXy_U3wz4PXVN0blML2NVXw1uUN_eAX1PSaeq4P2vzdals_iuY4JFc5P4gmAxl_PlBp5kCj0yw=s4800-w800-h600"], "a": ["Jack Salamander", "JOPSIA"]}, {"c": "vienna1900", "n": "Secession", "zh": "the golden cabbage", "lat": 48.2005106, "lng": 16.3657857, "m": "4.2* - ~EUR 12 - CLOSED MONDAYS - 10am-6pm", "d": "The 1898 manifesto building of the artists who walked out of the establishment, with a dome of 3,000 gilt laurel leaves the Viennese immediately nicknamed the cabbage. Downstairs is Klimt's 34-metre Beethoven Frieze, restored and lit, with the Ninth playing. The 4.2 rating is people annoyed at paying EUR 12 for one Klimt plus contemporary art; go for the frieze and treat the rest as a bonus.", "g": "https://maps.google.com/?cid=17742804781593817605", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCinjbqZLZBW_CdtzEJQjkczYZhGJq8FwwJPyie0QM5I9uLjE8CI7WXQ6i5D6jkmOFL3Bsm51ie_nJc2h_yFmI6kh2XmMQLCCwOCzYed3nRby4AnL_QHQruZnduSJe8rIXnqkOaHyo06DejSQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDwyMINivbx-AuTwhAeBtG1rCMT-7YcPECROMDmZkilthWhVYY5cKCZhcadfuv6UaDH7o-XUqpHzt8n3kXish32xwRNJ1gXryoFCZLcreyu332xuIy4WPlUF7062bV5JmDEOLj1tAS_Dskz0aM=s4800-w800-h600"], "a": ["Thomas Schmalnauer", "Dimitar K Dimitrov"]}, {"c": "vienna1900", "n": "Kirche am Steinhof", "zh": "Otto Wagner, 1907", "lat": 48.2106173, "lng": 16.2787785, "m": "4.7* - ~EUR 8 - CLOSED 1 OCT TO 1 MAY - Sat opens 2pm only", "d": "Europe's first modern church, built on the hill of a psychiatric hospital and designed around its patients: rounded corners, a sloping tiled floor for washing down, a holy-water font with a drip tap so infection could not spread. Marble panels bolted to brick, 8,000 gilded copper plates on the dome. Bus 48A. Check the winter closure before you go, it is absolute.", "g": "https://maps.google.com/?cid=16223669047582791545", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDdQvTfvvWbdP8wDCMQpMHi2NneSDDU07spIHJjsnPcKpeC4aJbmXPU5tkZRDIgzKyHoHwQw_CisKo6BdMlqKZB3QR1shLoZdYO2kIsdCp42O-N6aimHbpOgZ032HTpW9ByFTYmpnlgj_7r=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAVNFiWCh99SEDUQEWpFMOIqWr1QNvppqtHLaBybvyR2tl6kE2y4YGHBQQ7WnsW6K1zEWcKeZRadpaHNuD2Q-o865EXHdAzM3sI1lP8599E2rvPMFVE5DhtIIKrdcni11TjrN4SNH9yxEaS=s4800-w800-h600"], "a": ["Wien Museum Otto-Wagner-Kirche am Steinhof", "Christoph Dopplinger"]}, {"c": "vienna1900", "n": "Otto Wagner Pavilion, Karlsplatz", "zh": "a metro station as a manifesto", "lat": 48.2002745, "lng": 16.37032, "m": "4.2* - ~EUR 5 - FRI-SUN ONLY 10am-1pm & 2-5pm - closed Mon-Thu", "d": "Two 1899 Stadtbahn entrance pavilions in marble panels and gilded sunflowers, built when Wagner was designing the whole city railway and decided a station portal deserved civic architecture. The western one is a small Wien Museum about him; the eastern is a cafe. Both are free to admire from outside, which is most of the point.", "g": "https://maps.google.com/?cid=17872873160538443630", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC9VfziHOhkY-OoACi12eR9UgVAMgoVtjmtUt1cd1ZNuXJ91OxRpiCz5oBQ00ItnYpr01aKO21TEmOZQDjacxeINic5ZMMt2l2UrM6T58OFzsSFWOSn1WpCAM6jfoSOQmX5Bsc85GN1u1MSbA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDDMmxPqYOCtfBaPwi2yPUqOXwiqm2BS44PK--zCWvbMBZFtBxAqBdBuTx7IKdXuCMq3SpCQr-C16YGlUc5ZHMAkkC9LPKX7MpHwtS2RwlCUUSJjfEit2OyEnNqcX9VhZkd9slJ1BLiGcR7PA=s4800-w800-h600"], "a": ["Wien Museum Otto Wagner Pavillon Karlsplatz", "Marketa Losmanova"]}, {"c": "vienna1900", "n": "Majolikahaus & Medallion House", "zh": "Linke Wienzeile 38-40", "lat": 48.1974453, "lng": 16.3592122, "m": "4.5* - FREE - 24h - facades only, still flats", "d": "Two Otto Wagner apartment blocks side by side from 1899: one tiled top to bottom in a weatherproof floral pattern, the other covered in gold medallions by Koloman Moser with gilded shouting women on the roofline. Stand on the far side of the Wienzeile to see them properly. Two minutes from the Naschmarkt, so combine them.", "g": "https://maps.google.com/?cid=16478547294343660653", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBqO0iZAM0XzwXkzLHk57XyGWwQZJ7mCRd2dGJuo6BEqSh5yka5lsdiit99aZXkV21koD1UghqZgQvBs_vGGMemsInZQ-XcT-NgAWkuewobvmeC-aDHUSfhfIei2kKW-xNyDDT0IkUd5GRo9Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD6gqDlZDiBOobnuLzWD_IRKb3tc4gHzxp3l9ugzIceRWDp3YCn88ORrs3o_7Ou4zMzFKgzW1bQ2-jhjUwEwZLjPJi4G1zp0PKfGvbcSByBYlxj8Eb3lAbizS-VfjVtHck6eqbB0v5W2axDig=s4800-w800-h600"], "a": ["John Maloney", "Sugar Nagy"]}, {"c": "museum", "n": "Kunsthistorisches Museum", "zh": "KHM", "lat": 48.2038016, "lng": 16.3617874, "must": true, "m": "4.8* - ~EUR 21 - CLOSED MONDAYS TO 4 OCT - TIMED SLOTS FROM 8 SEPT", "d": "The Habsburg collection, and the reason art historians come to Vienna: a third of all surviving Bruegels in one room, including the Tower of Babel and the Hunters in the Snow. Also Vermeer's Art of Painting, Velazquez's Infantas, and the Kunstkammer of imperial oddities. Go straight to the Bruegel room at opening, then work backwards. Thursday it stays open to 9pm.", "g": "https://maps.google.com/?cid=8025505475139647553", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCYFpHNW1izhY6YulhfjUgAouAl851BUAE_IlWwlh8Z55k3aLz_hbragXRVRbGwfn9X2tc_nerMZ2wAqb-HxtyFQOb9L8jLIGBGi9Imcs6dh3KAg2xuzjKt5U6gEpTolZRatdPUZO4d_Y7wuzY=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjA_hCtbedhRuVB6GfzdewlWcMGVxa7t4kXypMQw397n1GxIUqF0DOsbADsqsrAbu6XkXqFlf8WaO_s6b6cOT9jNLN7FnrLBevhUrO9nlbtyrIkZkMFTWJdy4HZEd69WE3Wj6kVifc6oqqKvpII=s4800-w800-h600"], "a": ["Lorella De Lotto", "Szabolcs Gaertner"]}, {"c": "museum", "n": "Natural History Museum", "zh": "NHM - the Venus of Willendorf", "lat": 48.205212, "lng": 16.3598451, "m": "4.8* - ~EUR 18 - CLOSED TUESDAYS - Wed to 8pm", "d": "The KHM's identical twin across the square, and arguably the better building: 39 halls with the original 19th-century cabinets still in use. The reason to come is an 11cm limestone figure carved about 29,500 years ago and found up the Danube. She has her own darkened room. The meteorite hall is the world's oldest and largest on display.", "g": "https://maps.google.com/?cid=14168657301880489417", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDlnpXetD9OMgGXCiURT2HJVno6XWOgv6i8C2Yx2Mkb06KWM-S_c49in_8uXsPDoK0finLz7vdocTUsc6_-b2_lfNTE8AOnnodhZ_0Lo7MOFT6DbOItkl-jyY1LVnb0gxInD8UuH0wYp6kWgw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCSe2RZtvHauPv9tf1F--0pzeGdW5Mvfuj7dMS2cUOCnVrCle5tto7Gq-rs04rhKhrynnPetR0rC45zO_ma8kbaomMueLSs4AVDUBP-rij3U83exP7SLR-hrC_XKQl-aC8GO-m6t5nptHv-NA=s4800-w800-h600"], "a": ["Oleksandr Protsenko", "Petar Petrov"]}, {"c": "museum", "n": "Upper Belvedere", "zh": "Klimt's The Kiss", "lat": 48.1914751, "lng": 16.3809322, "must": true, "m": "4.7* - ~EUR 19 - GARDENS FREE - 9am-6pm, Fri to 7pm", "d": "Prince Eugene's summer palace, now holding the largest Klimt collection anywhere, with The Kiss in a room of its own and a permanent scrum in front of it. Also Schiele, Kokoschka and Messerschmidt's grimacing heads. Book a timed slot online. The formal gardens running down to the Lower Belvedere cost nothing and are worth an hour on their own.", "g": "https://maps.google.com/?cid=5360968363265979911", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDwizoyWP4CnFhyYIvydq28WlrxuwQW1oQXI8HMU8zX0WFwWx97kpdL7XY8COk8_uyqVftMdiLof2qQQBZ8uzSO53mx5KPgcM67p2UxSnw_dl_KKsq9delVdtJqhx8feDzzj-yCrXzYJSh6IKDj8BJx=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCmytUW-iJu_G1-LQKGzvxGQrw6xdMK0mugSgKfDPfBICpXObnwGcGjA4tiEIYUIDgPzd37nfDWIPYKb5YNIWdV4MXyPlraNXeRXeOMd1QnsvFJTCcHHHXYmvvlHDyduw3SBk78mLu4zL95cQ=s4800-w800-h600"], "a": ["Gianfranco Pinto", "jableh jableh"]}, {"c": "museum", "n": "Leopold Museum", "zh": "Schiele, and lots of him", "lat": 48.2026499, "lng": 16.3591421, "m": "4.7* - ~EUR 19 - CLOSED TUESDAYS - MuseumsQuartier", "d": "The world's largest Egon Schiele collection, assembled by one obsessive ophthalmologist who started buying in the 1950s when nobody wanted them. Better than the Belvedere for understanding Vienna 1900 as a whole: Klimt, Gerstl, Wiener Werkstaette furniture, and rooms that explain rather than just display. The MuseumsQuartier courtyard outside is free and full of people lying on painted benches.", "g": "https://maps.google.com/?cid=2390246380000666170", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCm2Yx6qxaPCQJxmFqm_fwjcIDyfoJdoU-klVhJ8qzZ9xrGEySB0we50w2WkJ75DXvntYKtKsEXlauBel3qSgjpaseZMw6la4eYw0uPF3JazJj41xe8R7_LpxW_aJVPm3-MypsBjavWUYw5mg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBu0qVaOzKZ6IfptKYl72ZvAd87iRd4CWoXu2tbEnvz0d0W1GXJj-iGGyCFojwoB8cXrXVXiDA8DxoBBSbMw5Oj_pqamZrFpDLWgmJHudJ2VQhnygzLwelDPDwBUVi9gIUvCTYChpBMU6g9-g=s4800-w800-h600"], "a": ["Leopold Museum", "Renato Gucciardi"]}, {"c": "museum", "n": "Albertina", "zh": "Duerer's Hare and a lot of Monet", "lat": 48.2046992, "lng": 16.3681824, "m": "4.7* - ~EUR 20 - 10am-6pm, Wed & Fri to 9pm", "d": "A Habsburg palace on the ramparts holding a million prints and drawings, of which Duerer's Young Hare is the famous one and is only occasionally shown because paper fades. What is always up: the Batliner collection of Monet, Degas, Picasso, plus the restored state rooms. Go out onto the terrace first, which gives you the opera from above for free.", "g": "https://maps.google.com/?cid=7417299499413397176", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBag5zmRSqLU90-gk6RLLBJ4sLMR_THDwjU5PyJ6WagAx5C3baiTTryEyoYhp7uqLphIlUv3sLjt1u3j-Y-E149AoMeBH1H4CGCj-4ca2XjQteUYeezCXykMWzTT9oeXXNj5jF5EHi3woaRYiHsfJTcaA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjABokQvky9shCvVzKob7Q-v9KPkbaQ0j7osIxEXrDA2bYTh6lg0i-euFq-d7c_DCbaiOp4mmBUeFDvRPAQtNf_hgUOO_V-MwS3AX7fT7h2Z5DcbpxXcHEWx9YZwT0UgTn3WMON7cGw3pYHOCg=s4800-w800-h600"], "a": ["Roongko Doong", "Alessandro Rossi"]}, {"c": "museum", "n": "Wien Museum Karlsplatz", "zh": "the whole city, free", "lat": 48.199437, "lng": 16.37296, "m": "4.7* - PERMANENT EXHIBITION FREE - CLOSED MONDAYS - Thu to 9pm", "d": "Reopened in December 2023 after a four-year rebuild, and the permanent exhibition is free to everyone, permanently. It runs from neolithic bones through Roman Vindobona to Red Vienna and after, with the original Donnerbrunnen figures, Klimts, and a five-metre model of the cathedral. Give it three hours. The terrace cafe looks straight at the Karlskirche.", "g": "https://maps.google.com/?cid=15592089655687817397", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDgrGHZN3jiWGocHqXIGAGcbuC1iNXDyFry3uT2c10GcGVsIz6nULa0-sNwSda9tYCWttJckEHGhOSOq-vcqn8e_8njF1RQl2c7aV8dIBITDSDMmsHy1fMXKAthdyAT1k-biLWO6OVbrbSE=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjChuwyL1wagzN3n-sKmmxpmJuK3sH8w1tPKdRmxP-x6ifs4LSl2g16yc1Pee3_2g1wFJfmAZI2ufESelW-9TXLkB8ec4Rlc0TGvpo5xoDn6IdiEnMwZGEe54y2TMzyN-EIpDxYxzBKXHirEvEb0QHYI=s4800-w800-h600"], "a": ["Wien Museum", "Thomas Leeb"]}, {"c": "museum", "n": "Sigmund Freud Museum", "zh": "Berggasse 19", "lat": 48.2186272, "lng": 16.3630759, "m": "4.0* - ~EUR 15 - 10am-6pm daily - the couch is in London", "d": "The flat and consulting rooms where psychoanalysis was invented, and where Freud lived until the Gestapo made him leave in 1938. Be clear about what you are getting: he took the furniture and the famous couch to London, so the rooms are deliberately left empty, with the absence as the exhibit. That is why it rates 4.0. The Sunday 2pm English tour is excellent.", "g": "https://maps.google.com/?cid=6892188814948747863", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAcZBoUG6aDxn1SOcHR2Vx2bO6IaWnJLHqKiwmB7zbdr6izY-GdNzleuDi5aXRRi_U7flvh0wK2n6RGPrpUfnW-MCkK9p_b8V3jr8CDgs4a7nPglmOSR394su8vY58Gm4Pc2wUnVNABTvYahg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDA7UL6Bu7FC_C1KJhTyGQRK_eRD3YtY8yIYwCyegM3Jr8UHv44CCRE_VtXg0LJnSUd5a53Zo87nh4PrSaG2b5qb6dOn4Ct_RTFRwayVLJB4Ane_avh7xNakL2-e1D7BXNslw-fU9iShgZROOk=s4800-w800-h600"], "a": ["Sigmund Freud Museum", "Cervi"]}, {"c": "music", "n": "Vienna State Opera", "zh": "Staatsoper - standing places EUR 13-18", "lat": 48.2034306, "lng": 16.3692034, "must": true, "m": "4.7* - STANDING TICKETS SOLD 80 MIN BEFORE CURTAIN - cash and card", "d": "The cheapest world-class night out in Europe. 567 standing places go on sale 80 minutes before each performance from a separate entrance on Operngasse; queue about an hour earlier for the Parterre spots. Tie a scarf to the rail to hold your place at the interval. Daytime guided tours run when there is no rehearsal, but the standing ticket is the real thing.", "g": "https://maps.google.com/?cid=18255664952179653974", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCMngg576a4zH_NJOu_idaLzwhlBmoXG0ubutMBcOBfT0mhy-TqiEGrgH1xNJdJBWf6NXB0rJoUmVc_Y6VSUFwfdOvgxCZNt7wBs4bda6QbOmA5GzZT55wHKEYqjX8rQPP1Y2d326wFcxl80hs=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDHvOtXPk4bpzE2l6SL-gQM46e3d_VaDiTJ9zXdOSUml3GqVsdIVv-3Xw8LvJyhfARqJhnzgOhEKLzeFrYTVSHSC0ZvYrpMA_G4ACwpRpu8L_zb0K5SPawQ8mV6WoG2lzCLNBpab7oJLwdkvLCFXyEspQ=s4800-w800-h600"], "a": ["sava brankovan", "Makka Musostowa"]}, {"c": "music", "n": "Musikverein", "zh": "the Golden Hall", "lat": 48.200544, "lng": 16.372359, "m": "4.7* - tickets from ~EUR 15 standing - New Year's Concert ballot in Feb", "d": "A shoebox hall from 1870 whose acoustics are still the reference other concert halls are measured against, and the home of the Vienna Philharmonic. Standing places exist here too and are far cheaper than the tourist Mozart-in-costume concerts sold on the street. Check which hall your ticket is for: the Golden Hall is the one you want, not the Brahms-Saal.", "g": "https://maps.google.com/?cid=9421859999995495247", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCBqpSyAd7jDdiwsgB1xeee7MHyqxMazU15yNSMVtw-JY3eHsi44ODY3TMDh8k8NfXTxu8aQV006LxXSlY19PpDAx58GIH2zcwfB6SLELuGcbpA6XxSn5uobSzvL0fHrm1yWbI7dJ_VpLTcdg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAtjj_WzFVi_Z44VoXO56YVn8XME14cBBUJnl2xHW1i7ljAMhJqSFV6A2SGDKsgBsDMezPHveYkvUlyl9Iv-kcNhumBZfXXROnz2RbzPy9rJK60qUQa4X-Dq_rP5STrhD1gjrYkJ-7lSLdt=s4800-w800-h600"], "a": ["Malgorzata Sobon", "Muhui Chu"]}, {"c": "music", "n": "Spanish Riding School", "zh": "Lipizzaners, since 1565", "lat": 48.2076428, "lng": 16.3661597, "m": "3.5* - morning exercise from ~EUR 16, performances from ~EUR 30 - READ THE REVIEWS", "d": "The 3.5 rating is doing real work here. Reviewers report tense, under-muscled horses and forced movements, and sightlines from the upper gallery that are genuinely bad. If you go, buy the morning training session rather than the gala: it is cheaper, more honest, and you see the work. The stable tour is the least compromised option. Some visitors will want to skip it entirely, and that is a fair call.", "g": "https://maps.google.com/?cid=4811969600479170788", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCkau1Sq_j2jhYegaSIVdG_5oimNfBAHId4iSAZDwvFruUVPTqdEW7sje2WDQ5TtoMN8q418siQY5YePLBGqPPtzAy91FRvKBda1w9U4rkuLksR8n59eKi9vFGVJFd9-pqOEhfPljQe4v730w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCg1wTw_8Aslkdc1ZAoD2Dpz8k3HwN9kFocWBHIhY3wyNXgHlSsHvNQsNw2Gl7dSswe-hy_n5EoxVLDg39EsY9hCJIBZNo7Wa1clx_YgWlJO5xB6hpggvrCJXos2e4ak_uRD22SeW7a-Y_4HQ=s4800-w800-h600"], "a": ["Alfredo RG", "Phillip Welty"]}, {"c": "green", "n": "Riesenrad & the Prater", "zh": "the wheel and the fairground", "lat": 48.2166995, "lng": 16.3959008, "must": true, "m": "4.5* - wheel ~EUR 15 - FAIRGROUND FREE TO ENTER - 9am-11.45pm", "d": "Built in 1897, and one of only two survivors of the great 19th-century wheels. Fifteen euros buys twenty slow minutes in a wooden cabin. The Wurstelprater around it costs nothing to walk into and you pay per ride. Behind it stretches the Hauptallee, a 4.5km avenue of chestnut trees that is where Vienna runs, cycles and eats on Sundays.", "s": "The wheel had thirty cabins until 1944, when it burned. It was rebuilt with fifteen, evenly spaced, which is why the gaps look wrong in old photographs. In 1949 Orson Welles rode it as Harry Lime in The Third Man and delivered the cuckoo-clock speech, which he wrote himself and which is historically nonsense: cuckoo clocks are German.", "sl": "Half its cabins are missing", "g": "https://maps.google.com/?cid=12454319285338461958", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBoicDa8z7ckuUmYWvWsOTVQUKpeteFx3J74fYUEGCWBZBxzuM56cBVwcDYVeomwdtCQFmjIBqAbgAz9jD4MPjh6I8qFcc-tzMTS8nnAUhyx0hZeaaSMjcawv71wwGxC5i6gEtKNhHHMqASzA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAMxQHydgc6QmDFPzci05ZH9zfWdaHn_E0NKNUs4VZvn8xgee_LQuk88UaMmZqgYp2QQWSo3W5ORGx8IGSZ5mDZ547CQNLSGyPKbgzoi6LuWQbUQFkkG62ctvnS6jtDyab_hhWFPfPQRnRiJw=s4800-w800-h600"], "a": ["Gerald Carroll", "Petr Sobisek"]}, {"c": "green", "n": "Zentralfriedhof", "zh": "Beethoven, Schubert, Brahms, Falco", "lat": 48.1511225, "lng": 16.4384361, "m": "4.7* - FREE - 7am-7pm - tram 71 to Gate 2", "d": "Three million graves, more residents than the living city. Get off at Gate 2 and walk straight in for group 32A, where Beethoven, Schubert, Brahms, Strauss and a Mozart memorial stand in a semicircle. Falco is nearby and always has fresh flowers. The Jewish section by Gate 1 is deliberately left overgrown, and is the most affecting part. Bring water, it is enormous.", "g": "https://maps.google.com/?cid=14129418601532551641", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBLUJMJwpwPJELInDKjQPlu_6FEXnv3i3X__lJOgcGEjqXVLPCWP37GETj0mmpU0rcqLrc_1f1y56IKol9HU9gObqqBQbnGqvNWFheirgMSijyik0tbtxalfieSJkac6SU1ds3_KOct7qql7Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDfK-CPFmWukw01M8oIJOVx203Yw6jIBDKVDV6ySf3QK8gnWMpDRqi3m4ZQ7US9INbAabPf8LnUZdRpOGn0O_zOZn_dPy6U9L2GJBJR0CoVFlzOTPYRjrWQbS7xGfX-P4e7seg91LFq_Ugm74GL3DI=s4800-w800-h600"], "a": ["Wiener Zentralfriedhof", "Silvia Schmidt"]}, {"c": "green", "n": "Haus des Meeres", "zh": "an aquarium inside a flak tower", "lat": 48.1976502, "lng": 16.3528868, "m": "4.6* - ~EUR 24 - 9am-8pm daily - rooftop terrace", "d": "A 47m concrete anti-aircraft tower from 1942 that the city could not demolish and so filled with sharks, crocodiles and a free-flying tropical house you walk through. The building is the point: it is one of the few honest pieces of Nazi-era architecture left standing in a European capital. The rooftop gives one of the best panoramas in Vienna. Lots of stairs.", "g": "https://maps.google.com/?cid=1809943440690619954", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCMRHXYULoxf4nukEp3-51NhvIzxGr0ELL-n2Ex0fC9k9HZzSetUPtLDD2zpxINZOhd4d6utNs4auVImq4VYTQnzk0c4AYfF0E8MljmK8KDS3hpkhIKQULfWvu8s1OXfjTHHhIsz6NWFJITEA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD5Pw6OINDvU_ApsvtDFp4lpUlHxGROPrtUtWCr-Dhv7VgNQioR44b1vG8S36oeWOZJ1peIhqeULAeUtLDfJgCIhtqmgkw7TyIrlS_F-7ss2gcLyPmXkpEXS4BycUYJUSXQk-BORGl8Be0uxA=s4800-w800-h600"], "a": ["Carmen (mickey)", "Mateusz Motyka"]}, {"c": "market", "n": "Naschmarkt", "zh": "1.5km of stalls", "lat": 48.1986178, "lng": 16.3636494, "nophoto": "Google files the Naschmarkt as a street, not a business, so there is no photo card", "m": "4.3* - stalls Mon-Sat ~6am-7.30pm - CLOSED SUNDAYS - prices rise as you walk east", "d": "Vienna's big market, and a place with two halves. The eastern end nearest Karlsplatz is restaurants with touts and tourist pricing; keep walking west and it turns back into greengrocers, Turkish delis, pickle stalls and cheese. Buy where the signs are only in German. Everything shuts Sunday.", "g": "https://maps.google.com/?cid=419029651176840894"}, {"c": "market", "n": "Flohmarkt Kettenbrueckengasse", "zh": "Saturday flea market", "lat": 48.19679, "lng": 16.3585775, "m": "4.2* - SATURDAYS ONLY 8am-3pm - haggling expected", "d": "Every Saturday the far end of the Naschmarkt fills with a proper flea market: vintage clothes, Bakelite, Loden coats, Austrian silver, crystal and a great deal of junk. Come between 8 and 9am for the best of it and bring cash. Prices start high because the market is central, so ask, and expect to pay maybe two thirds of the opening number.", "g": "https://maps.google.com/?cid=2527918946648261075", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC1Wdt-Qf2dn_6ySqw3w85uysdjDIN6scifM2QtL-ElGcKTdkimJbjk5tEKYa5GL_e3suEtyTkL5zwYN1Owxjn3D6dQyZEy9uqSvX5Fc7onIdTYr5zOxxCfrMtQMb8XkAIHA2MCTGruzCTBcnHwOz9qvA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCtccHmf8loBE-SQahh2u9_B9DWM5KUp7TOAgMR9dG0AlqCajaSiCKbEAOhAs4_kThLjBSQdJiOOS8hxoEn7ltg3MuRqb4pkc8ViYXf2XRABQ_kaaxB44s4sVaBrOOiWJz0V1RKTKiHorfe4kgX4maSGA=s4800-w800-h600"], "a": ["Jian Chen", "Oren Dugma"]}, {"c": "market", "n": "Brunnenmarkt", "zh": "Ottakring - the cheap one", "lat": 48.2123173, "lng": 16.3362901, "m": "4.5* - Mon-Fri 6am-9pm, Sat to 6pm - CLOSED SUNDAYS - Saturday is the day", "d": "The longest street market in Europe and the one Viennese actually shop at: Turkish, Kurdish and Balkan stalls, fruit at a third of Naschmarkt prices, whole roast chickens around EUR 10. Saturday it turns into a street party and spills into Yppenplatz, where the cafes at the far end are the best brunch in the 16th. U6 Josefstaedter Strasse.", "g": "https://maps.google.com/?cid=8807755637438099617", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBqTzT2GLLP9gdcYh4F1h5RViUWTAOrZb47ClV0F5lfFH7kNZMXD2vct7cTwo5rPVAth6EhfZWknfd4mOd5twAe72icEms5kcnjqFb5wcIohU1NFb5a_tHJLtL8D0BocTnJmNT-1XxzkJ93x1A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBCyn9k6nVPu-nEMwPt_yYjD0RfISGYDZEd9c1vnW2pFdncWdfkX7nA_XDzCsyujWHhx7CdlPrKP_6OS-QuWXiW-QU7zJUo8ZwbfNLs3LdHiZHj2n_cX1H8YRsz1J0MFxrx_FpAvRaZZnRNFQ=s4800-w800-h600"], "a": ["CJ", "Mr9flood"]}, {"c": "cheap", "n": "Buffet Trzesniewski", "zh": "EUR - open sandwiches since 1902", "lat": 48.2081124, "lng": 16.3702837, "m": "4.7* - ~EUR 1.90 each - Mon-Fri 8.30am-7.30pm - Sun 10am-5pm", "d": "Twenty-odd spreads on small squares of dark bread, eaten standing at a marble counter thirty seconds from the Graben. Order four or five and a Pfiff, a 0.125l beer that arrives in a glass the size of a thimble. The egg-and-onion, the herring and the paprika-cream are the classics. Point at what you want; nobody expects you to read the labels.", "g": "https://maps.google.com/?cid=1089711171735402059", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBTIk-gNisMfLDLKvS2P9z8L58XCSQEwKNWznawk4OiRtt6wweVqb4t-qIxD2x1lMsG4Jk-NnCevyLcQPsQeukseBPUdP6LOcqG7rJa3MfW8p2ZnRflVEreKe0QfgTCMTTztyfEl6IIbOyg6A=s4800-w450-h330", "https://lh3.googleusercontent.com/place-photos/AG9NLjAjYqsFPfmrGx6QNR1zAhQrbTc__eVlliZ_LsLUAB4tSpilXMTDsNGA0clSUrJSfRtYP5pkcsEj5UAweN2EFHaTpYvceiyJ5z9_EkHljdCryNke3FQDnRLXYFRN40iVVlJXoPnp1DDnXaVJ9A=s4800-w800-h600"], "a": ["Buffet Trzesniewski", "H. G."]}, {"c": "cheap", "n": "Bitzinger Wuerstelstand", "zh": "EUR - Kaesekrainer by the Albertina", "lat": 48.2040964, "lng": 16.3685027, "m": "4.1* - ~EUR 6-8 - 8am-4am DAILY - standing only", "d": "The sausage stand behind the opera, open until four in the morning and selling champagne alongside the Kaesekrainer, a smoked sausage with melted cheese inside. Order it mit Senf und Kren, with mustard and horseradish, and take the Semmel rather than the hollowed baguette. The 4.1 is people surprised that a stand costs more than a supermarket; it is still the correct post-opera meal.", "s": "Viennese sausage-stand culture went onto the UNESCO intangible cultural heritage list in 2024, which makes ordering here officially an act of cultural participation. There is a whole dialect that goes with it: a Kaesekrainer is an Eitrige, a can of Ottakringer beer is a 16er Blech after the 16th district it comes from. Nobody under sixty says either with a straight face any more.", "sl": "UNESCO protects this sausage", "g": "https://maps.google.com/?cid=116976483062929155", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAplIhF6q-aEwJRzs33Sz6u4ZAQY0KiAT-EwlLVs1kT1hmx6EonJAlYdHngYJQk1mSzkzKaSJfR0gnFjoIROKQiA0gR4jHPQl-D0oa-UYcOcBtbLeNYxKzRRfDReV0um6jKGAwfOIOXndRaRAv2wEoHjg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBoj-CNZ9_KoBTjam3v3a09HE__ibt3gqj0H7hoF26q5haDfA0ivfF4BkalMtRaIfJc0N7Cp7DjVHK-IztlGut0YNX9Hpa_QQgWzkFgrOoHUuQp0z3NVr3uMQrzVCFP2el-j04_lo22A-VG=s4800-w800-h600"], "a": ["Karl B.", "Luke Mueller"]}, {"c": "cheap", "n": "Schachtelwirt", "zh": "EUR - Wiener Kueche in a box", "lat": 48.2114663, "lng": 16.3735295, "m": "4.6* - mains ~EUR 9-13 - 11.30am-10pm DAILY - order at the counter", "d": "Proper Viennese cooking served in a cardboard box in the first district, which is close to a miracle given the postcode. Schnitzel, Backhendl, Schweinsbraten and goulash, all fried to order, all around ten euros. The roast pork is the one to get. Order and pay at the counter, sit at a bare table, do not expect ventilation.", "g": "https://maps.google.com/?cid=10612082532720496513", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAxwn7OVhzIcFlAcecASy2MMV8N54NpcV5xB4KZ7svHNsXUGBRpqQdUs1-fCNaDqF8iUId_q1Lt6H8N2XgN1NoBZGdRdMsYF6HPZSWr4ciJ_ugGBVic6eWCU3w0kq9BeSWx1-YzDZROxDniGRs=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBE-34VInYRZVnXDwz36DZGPgizaLqpUpPmL_0XBim9w4LZ4EsXSxiOQn00-TTXslp4_zdHJr0tc11emAAFAYiNhIQhjQwtN3s3RZQTn2V3XDOUYGJVSceL0eP49m3bf6TGohH5Ceiiy_joIlE=s4800-w800-h600"], "a": ["Schachtelwirt", "Schachtelwirt"]}, {"c": "cheap", "n": "Schnitzelwirt", "zh": "EUR - Neubaugasse, since 1972", "lat": 48.2025369, "lng": 16.3491982, "m": "4.4* - pork schnitzel from ~EUR 10 - CLOSED SUN & MON - expect a queue", "d": "A wood-panelled room in the 7th with bar stools shaped like a pair of Lederhosen and schnitzels that overhang the plate by several centimetres. This is pork, so Schnitzel Wiener Art rather than the real thing, and it is half the price accordingly. Portions defeat most people; taking half away is normal. No reservations at busy times, so come at 11.30 or after 8.", "g": "https://maps.google.com/?cid=15180236517316571003", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAiaqDwpChj7qLzK-xpFhkYR_rRlKYH4ZNIOZvvrNEsFf7MRVZTbfEXIpfdGC8vfHdHqPsG5BMEnmHYoM82m09xv5Lp86qwMBGM0Ecxwcl6eVBtZyo7EbTclUGKb1jmmFeY_6pMHVGNnSIOM3iK6XHdEA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDMoBqmbbtWGNSmcfx9BfEfCzAP343-0F1gz6UIDrgkHK4haa_eBiKjpTAEEePwB8ErX47RkqMRNoA69eqTmAHsUVY5EyzDV6Weg6p53iNSB17zBy9vSJXY6NdCy4s98z2TEyXAX5vPF8gR=s4800-w800-h600"], "a": ["Marcin Brenner", "Ljubica Biba"]}, {"c": "cheap", "n": "Der Wiener Deewan", "zh": "EUR - all you can eat, pay as you wish", "lat": 48.2171023, "lng": 16.3626837, "m": "4.6* - PAY WHAT YOU WANT - card minimum EUR 8 - CLOSED SUNDAYS", "d": "Pakistani buffet near the university that has run on the honour system for two decades: eat as much as you like of six or seven curries, rice and salads, then decide what it was worth. Half the dishes are vegan. Bring cash if you want to pay under eight euros, and pay properly if you can, because the model only works if people do. Draw on the walls.", "g": "https://maps.google.com/?cid=11298832364781043339", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCPOWzANcgqjP966Fk9zzuHXpgptUVsAmihTabrAiwDVUkX0YPH8Ejv1zwL6YSbPuodT9tW27yzF0Rncm7aR3KRczQZDSFCDs71RXv8ti9NCYEHmdWuCi752uB3WqTyxCSdXybjl94yI2zr=s4800-w567-h438", "https://lh3.googleusercontent.com/place-photos/AG9NLjDpw5kg4oe5krb4IlgKmujOVbj0X1xQh7CPmTih6RHS0SWGCp_PBBEeV5uTSpR1k5Aj2VHSZEszm_laS7kHaFklD11L80q6Q7AB1ks_GvLfKGRh5sh6yNKCrnfAjzUdAKpRXjtGp4c_Lw0PtNc2XwlayA=s4800-w800-h600"], "a": ["Der Wiener Deewan", "Der Wiener Deewan"]}, {"c": "cheap", "n": "Cafe Anzengruber", "zh": "EUR - Beisl, cash only", "lat": 48.1977778, "lng": 16.3644444, "m": "4.3* - schnitzel ~EUR 15-20 - CASH ONLY - OPENS 4PM - CLOSED SAT & SUN", "d": "A dark Wieden Beisl run by a Czech family, serving what many Viennese quietly think is the best schnitzel in the city plus a life-restoring goulash. Read the constraints first: no cards, shut at weekends, nothing before four in the afternoon, and they expect you to order a drink. The staff are brusque. Go anyway, and go early because the locals fill it.", "g": "https://maps.google.com/?cid=13384569579221237768", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAFG1QZvoxGMbkCuUkan0vLH_5b5P8TTbx6Sgq2thy00qfNx0O2E2w4KEVBEmrvfjXNR7XkdHptlXHNmzDPg2yOsP1c1DS6W-0mQovxvN0NpZtSGT2XvXt4wiWaaeG49CsaoideOXxJOT-W2A=s4800-w628-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBXtwHOJVBy0CaLSuo3H5i790K98JiQE0Bs1Y7_BZhYulMUrLdk1GbAUALs4fZX9rYVSqvgPrwc0YlM94wYEj3kTcjTO_IVaTixFFikOLznFff0jaSPO1SGgcqGRi25eqTm-1k2x1Q6UDAI=s4800-w800-h600"], "a": ["Rainer", "Benjamin Holdener"]}, {"c": "mid", "n": "Lugeck Figlmueller", "zh": "EUR EUR - schnitzel without the queue", "lat": 48.2096791, "lng": 16.375215, "m": "4.3* - veal schnitzel ~EUR 27 - 11.30am-midnight DAILY - book", "d": "The Figlmueller brothers' larger sister restaurant, two minutes from the original Wollzeile branch where the queue can run down the lane. The schnitzel here is slightly thicker, comes with a better mixed salad, and you can usually get a table. Ask for the potato salad with pumpkin-seed oil. Reviews split on value; the cooking is not in question.", "g": "https://maps.google.com/?cid=3333351678854945204", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDMvVtfj9gRnDB3yw1cagF7WcFsM_8X6SHROBoS5_tDLnchMyXT20P58FKxjYcQ7Yq58944q2KecVLihDcoy1nsE4yP20BuNUdLhJBw4BJNLwWk9hJBx_VhhwFNYM6GR08kXBp_VI3WeJLczg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCUXX2FNduvBdJhHa5W9MZjHiscnLGj6BWR7y-WmTmRW8TtipsqS3MB5YiOO7Jtv_qX3caEWJwpIbqL3Sv9ecX6zsmmLurQra4DxyNVvDpSisPNR1pUIOw089cHP2NOAMCeXpCMpoSCofGT-w=s4800-w800-h600"], "a": ["Restaurant Lugeck", "Restaurant Lugeck"]}, {"c": "mid", "n": "Gasthaus Poeschl", "zh": "EUR EUR - the locals' first district", "lat": 48.2066898, "lng": 16.373828, "m": "4.4* - mains ~EUR 18-28 - CLOSED SUNDAYS - noon-11pm - book ahead", "d": "A cramped, warm Gasthaus two streets from the cathedral that somehow stayed unfashionable enough to keep its regulars. Calf's liver, beef tartare, Kaiserschmarrn the size of a hat. The kitchen is visible and spotless. Twelve tables, so phone a few days ahead; walking in at nine on a weeknight sometimes works.", "g": "https://maps.google.com/?cid=4029625482253268335", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAJxOLNn3WsWQ7ih3eYTE1l-yS7HNwqrDxNDg6tpdvdZrP0aCZsPcVS3D9zYTXDICqt3O2e-pfqtIqgRvqd9I3GECynbevTVX2KD-1bkptyVmtR35m0sfAXnwnucwUunRIkMGgEBPg1b4_5NDKHgNVN=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAXNWBLy9MVxYMRbRhwSvMnT8g5wSZbJdo6c8sUrVwTDHbdKzHLR0uUi8JEwMzlwNdNKelUwqkPvDwmcckC1fHL1WCQvMrxqzU13_x0mYAHnqb-Yvy3rqroNc2UTLXQ_uPmhthkElVN4RNvnV6AFPbIMA=s4800-w800-h600"], "a": ["Chris M.", "Sasa-Mario Cvijanovic"]}, {"c": "mid", "n": "Oswald & Kalb", "zh": "EUR EUR - Baeckerstrasse institution", "lat": 48.2089056, "lng": 16.3764863, "m": "4.3* - mains ~EUR 20-30 - DINNER ONLY 5.30-11pm - CLOSED SUN & MON", "d": "Open since 1979 and still the place a certain kind of Viennese takes you: bare wood, low light, waiters who do not chat, veal schnitzel breaded with Kaiser-roll crumbs. The Tafelspitz and the apple strudel are both textbook. Dinner only, closed at the start of the week, and small enough that a booking matters.", "g": "https://maps.google.com/?cid=17867447042867044706", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCuqqJw3W-5Pz4qNUQ3E43nK5_DiK3FLEYV4jfoHGgSqwReVZ_NwkmxvjazBlEdFxMgt4nkj8ueoVlqNzFuJGOOzdE2Vta3B6Au5p8YY-Kf9rBZWh_YyS9SzA1ch3RuF0ENBzkrkAdqdWDYpB0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAQKql_u60VpiM1eXZOREO6zIxMh9oglQpnxtK2-SPd5b1PkrHu1QAA1estAvEwyqrHBWbsglosIY6BBuXZA2jkusdKf_oOSbeV6FVXoaJ2pbZXD63gbjHUbHcB32VlDn1967fTiRu-Jpr8kQ=s4800-w800-h600"], "a": ["Oswald & Kalb", "Oswald & Kalb"]}, {"c": "mid", "n": "Mochi", "zh": "EUR EUR - Bib Gourmand, Japanese", "lat": 48.2135414, "lng": 16.3817595, "m": "4.6* - ~EUR 30-45 - Michelin Bib Gourmand - CLOSED SUNDAYS - book weeks ahead", "d": "The restaurant that changed what Vienna eats, on the Praterstrasse: Japanese technique bent through Austrian produce, small plates, a very short room. The Dragon roll is the signature but the karaage and the miso asparagus are what people go back for. Walk-ins occasionally get a seat at 3pm; otherwise reserve well ahead and accept that it is cramped.", "g": "https://maps.google.com/?cid=11689861502916549837", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCQfm8Qel3e54vgTt6-_fuFb35L-2IVJHPbiQ05BRNJil2PmrpG8IyC8MEHypg0itevsVF4tEAPOkSI8kepSlpz72fSPLf14GmqAAbvrTAtyHAoCW3HohOmnVvShRcZ3EmktMy3nOST3pCxYw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB5cF6j4oNriH_u3x8X9bXvpUpBMeVt7T7rUB4YPKZEiwfefNI1ccJNOe_mY57AJN9_neVkrCIWR6mLGXKYuRTCZhkcuQOYxRXEWu9XLY2Hh9CP8XUBgNlKwnJf-rkgE0udqyTesOAf8cVPShE=s4800-w800-h600"], "a": ["Mochi", "Mochi"]}, {"c": "mid", "n": "Gasthaus Tante Liesl", "zh": "EUR EUR - Bib Gourmand, Servitenviertel", "lat": 48.220174, "lng": 16.3641703, "m": "4.6* - mains ~EUR 18-26 - Michelin Bib Gourmand - noon-11pm DAILY", "d": "On a pedestrianised lane in the 9th, doing Austrian classics with more care than the price suggests: Tafelspitz, Grammelknoedel, Maultaschen, Backhendl. Open every day, which almost nothing good in Vienna is. A minority of reviews complain about salt and slow service; the majority and the Michelin inspectors disagree. Sit outside if the weather allows, the street is lovely.", "g": "https://maps.google.com/?cid=1195722110456101642", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDXNSVkXibYwwyMbHzr55Ag74bH4qoOeWMjcKNVanf35C6-QhwjRHmSmPbN-2ScPMBssltrMz73bXtyj_Jv51vCmlbjLBbB8XdI3hMJ-NwaqQZfC1Gxt7OqBIgtGCSEsl_iJvD-XcoYNRYrRrUFcBVa=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCLyi8U34iEivpeTL_ptxJnPR_1COD7h3WJEA__YeWy2K5cYTBSlQY0BSKV_6fH_v12C94uTNdfbE4mmykB1hxRNKAGUIFRkjCBSOjKXlkpIr23IHxY11Z1hEZ1rMqxdgpGhJ7eqZiC90cMWdETI1zXgg=s4800-w800-h600"], "a": ["Tante Liesl", "Tante Liesl"]}, {"c": "mid", "n": "TIAN Bistro am Spittelberg", "zh": "EUR EUR - Bib Gourmand, vegetarian", "lat": 48.203067, "lng": 16.35513, "m": "4.5* - menus from ~EUR 45 - Michelin Bib Gourmand - DINNER ONLY - CLOSED SUN & MON", "d": "The casual arm of Vienna's Michelin-starred vegetarian kitchen, tucked into the Spittelberg lanes with a courtyard garden. Everything is meat-free and nothing announces it: mushroom flatbread that stands in for a kebab, chilled vegetable essence, an excellent Austrian wine list. Dinner only from 5pm, shut at the start of the week, and worth booking.", "g": "https://maps.google.com/?cid=13433513907505486319", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB5_0qZT2xWQEGaYGv8HrksxdQWklluwSEs5sKiWepjRGf_47kyu8wezL6WUBUHDFYQgsHiCZ-EXaATRvFGE7rcNkps8vJrxE9Zla1i1TofkVuVLIfPx5ANgkwnPvqEv3xnFdwf2jC6ShQC2Tw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDO_sO_1VG3wAsvvPYnE0HSe5jsGiVoC72JuylO6vrQIkXSj8jhnAGviNBf7B0omWK7N9GtPQgMU1KkWG9Ow-cwgMFcnyIs9tTzyP5SYTVhHyK2FleyY2ytEqsfgyE444xJdQEI_0DolBST3Q=s4800-w800-h600"], "a": ["TIAN Bistro am Spittelberg", "TIAN Bistro am Spittelberg"]}, {"c": "splurge", "n": "Steirereck im Stadtpark", "zh": "EUR EUR EUR - two Michelin stars", "lat": 48.2044578, "lng": 16.3813958, "m": "4.4* - menus ~EUR 190-230 - CLOSED SAT & SUN - book months ahead", "d": "Austria's most celebrated restaurant, in a glass box in the Stadtpark, built on obscure Austrian produce: freshwater fish, alpine char, carp in a sweet-sour sauce. The bread trolley and the cheese trolley are worth the trip on their own. Weekday lunch is the affordable way in. Its sibling, the Meierei downstairs, does a famous breakfast and 120 cheeses for a fraction of the price.", "g": "https://maps.google.com/?cid=7862296293303992340", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDx9iacvn77LyfZEtOwFOt40HUcQiCG-thfdf99IINoVoijfN5gg75JIEN24zu-8EgmbR_Ex-CiNy93AgVy2FODu5s2TJOhoL4VkoJCGS462h2BZ2WZGrKCC_ZhAlK9V3nVn_z-ILZjGO9PHh8=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD3PTkspE-o7y6IK80eeQEPjIouX-_QDPCHeJKPijC-ZiFInDaukqgq4ArMHoPdIyOTRthbuPxHA-t042Nd2NZcZfgz5ExNingtxTQ1A-yrf3sA9cerl1vI88iUdjkVrln_ZsCojV0iOzxWSQ=s4800-w800-h600"], "a": ["Jessica", "Sara Agai"]}, {"c": "splurge", "n": "Meissl & Schadn", "zh": "EUR EUR EUR - schnitzel as theatre", "lat": 48.2022341, "lng": 16.3749321, "m": "4.2* - Wiener Schnitzel ~EUR 32 - noon-11.30pm DAILY - open kitchen", "d": "A revived 19th-century name on the Ring where the schnitzels are hammered in an open kitchen you can watch from the street. Order it mit allen Schikanen, with all the trimmings. Also the best Tafelspitz within walking distance of the opera. They run a schnitzel course once a week if you want to learn to do it. The 4.2 reflects the price, not the plate.", "g": "https://maps.google.com/?cid=2836117205685232976", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAuj2w7yRy1uQeZpdM5dEPXMPCpBFKYPY6fyZumg3ZD9NYdQqce4bLVJtIaZ_-vqVm4a-5Ry1LN3UIaMncQDv0zhGgZJqGAz5UIMIPpP9RI9VBSKyMDjsKtvsmN0VtgwyVKTFsHia975Bvf=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBBq66EKhJJTxbZ5RbwCdZ1N9ebWL0gzYPsz9ryRtHq_s-Q0jeKsvjjxSQgy5Q21hDxvqd7yuavUO8LzuxDHhKMLc-p4bESZFWSqFqEnje7dvokq5UcjuXiN9XB2X-K7UZsBNh24BHuhsieUsI=s4800-w800-h600"], "a": ["Restaurant Meissl & Schadn", "Restaurant Meissl & Schadn"]}, {"c": "coffee", "n": "Cafe Hawelka", "zh": "Buchteln from 8pm", "lat": 48.2079316, "lng": 16.3697835, "m": "4.0* - Buchteln ~EUR 8 for four - 9am-midnight - NO MENU, JUST ORDER", "d": "Opened 1939, run by the same family since, and still smoke-stained, dark and full of newspapers on sticks. There is no printed menu, which is why tourists rate it 4.0 and regulars love it: you are expected to know. Say Melange, and after eight in the evening say Buchteln, warm yeast dumplings with plum jam and vanilla sauce, baked fresh nightly.", "s": "Leopold Hawelka greeted every guest with a handshake for seventy years, until he died in 2011 at 100. His wife Josefine baked the Buchteln to her own recipe every evening and died on a Tuesday, the cafe's closing day. In the 1950s and 60s the back room was the headquarters of the Wiener Gruppe; Andy Warhol turned up too. Look for the playing card stuck to the ceiling above the sofa.", "sl": "An ace is stuck to the ceiling", "g": "https://maps.google.com/?cid=17315220883369563508", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC-Q6n78Rf4ZXoAttzmcnz-wdCPKXAe7hiRyA9p2iFpDml94iz5OjPVhfsS6b3k-ZSJcqrfUYscAPKa1I30WDndJliK97cXC0fniyp86WJHgyHIcI26M9x9G_oNECvuM-HC3RRVUOFrksvIqEw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBMd3JCBcvo9xPuOCZgWKjvAuSwoxY7JWxbsbM58SOwvEW2RfWXZLepdy8HV1NEuflo0FeCdU3mH6RoA53qRu5U4loBIF5ugjliD6dIaBzyFnACko8u1sdDVKZ84B7c-nD1UQa2t69k-t3KueEO-hc6=s4800-w800-h600"], "a": ["Cafe Hawelka", "el desaparecido"]}, {"c": "coffee", "n": "Cafe Central", "zh": "Trotsky's local", "lat": 48.2104274, "lng": 16.3654339, "m": "4.3* - cake ~EUR 7 - EXPECT A 30-MIN QUEUE - reserve online", "d": "Vaulted, marble, magnificent, and completely overrun; the queue outside is permanent from ten to four. Freud, Trotsky, Zweig and Loos all worked here, which is why. The food is ordinary and the coffee is not the city's best. Book online, come at opening or after seven, order the Apfelstrudel and treat the room as the thing you paid for.", "g": "https://maps.google.com/?cid=6627758510497214025", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBiEfiLlfCPKDJGRNUfO3PqqeZHx5SbPbGjSHDJUZd6FTL6xmDLfYfrtW2kJ61eUUHNM3YW29W2Fis7b2FRJGzE3YAJLeUYJ-DFgUHniYMJWNFxUEb0Q-ZLaYVTbxnXNS9ngoVOj5NsQolO7Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCeANtP5jIDOtG3Nq37hFbV9TxkJNSDSOydQSbMxLvsxufLx7EpI8QMc7JCFLgr20TgxF7Wa853kooZA9efkfxMVKJJYKQsw4BUYSvN1cJiG1eV6hAr2upUyx294QJFHcUw3ElrGUks5c4Vwtmb3vQvTQ=s4800-w800-h600"], "a": ["Cafe Central", "Maria Menai"]}, {"c": "coffee", "n": "Cafe Sperl", "zh": "billiard tables since 1880", "lat": 48.1998326, "lng": 16.3611306, "m": "4.0* - Melange ~EUR 5.50 - 7am-10pm - Sun from 10am", "d": "The least altered of the grand cafes: original Thonet chairs, worn velvet banquettes, and two full-size billiard tables you can play on. Cheaper than Central or Sacher and half as crowded. Service is slow by design, which is the point of a Viennese cafe. Come for breakfast with the papers rather than for cake, and take a window seat.", "g": "https://maps.google.com/?cid=2263644902848451996", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCNjsZ3fR3Vl-dpUaFzOFHtQMIJXc_9fgx7piUMc9-jUMW-W4e9hZQJmYrWU00jedU9mfRxYbLQsldTmokAjy61mv2c_nukk5amdIfF6vDx-k36lyfzQ5OUUBDsghEpZgDZFL5Y_4KW0orDZ6c=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB7g2ZdQGI-us9CQSdCWNKdTzC6sGgJvB-Bc9lR3beBsSiLkym-FAECB7R8DIIvrtxD4ErfTlE0vWYpUacOFSBePpP6MlkU91UHN1G7AywG_hWEd1Heyazt4pwl06Q3zDkpgDcSNLfB-YXt37I=s4800-w800-h600"], "a": ["Cafe Sperl", "Meritxell Martinez"]}, {"c": "coffee", "n": "Cafe Jelinek", "zh": "the little Hawelka, without the tourists", "lat": 48.1952021, "lng": 16.3494101, "m": "4.3* - 9am-10pm DAILY - NO LAPTOPS AT WEEKENDS - open fire in winter", "d": "Two streets off Mariahilfer Strasse, behind a double door, with an interior nobody has updated since the 1910s and a wood stove actually lit in winter. Almost no visitors find it. Good vegan cakes, an unhurried room, and a rule worth knowing: laptops are banned at weekends and they will refuse to serve you food if yours is on the table.", "g": "https://maps.google.com/?cid=17761235595505147582", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBIoCRO3AMql_XAw6Dd_r54YMreoV2DcOKgvODhWXwXohrVFwW9YPxA2PxLptqboG1FEHs1Q-899OLw3LOrzGjaHQDi1Www7_3WOBdhFAwOM5_HaL8jlYU_8LBiernk4m7adKsk26QO7_1Svg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBweDgrlcqTjVN0KopVRbi2XhUj426H-XMlXDPYxdqo2cyx82YEutCeXEHRLlffK3WTxOA5zYColAL0VMcX5iANb8Mw_CTA4GoBl6X9Q5inRVDXgwQ6HJ66ZQdxzz11JAE_pL2lO5bivLUBamXqwJxA2A=s4800-w800-h600"], "a": ["Seval Aydogan", "Joerg Schwarz"]}, {"c": "coffee", "n": "Demel", "zh": "k. u. k. court confectioner, 1786", "lat": 48.2085962, "lng": 16.3672185, "m": "4.2* - cake ~EUR 8 - 10am-7pm DAILY - takeaway window at the side", "d": "Imperial confectioners on the Kohlmarkt with a glass-walled kitchen where you can watch the Kaiserschmarrn being torn apart. Their Sachertorte is the rival version, with the jam under the icing rather than through the middle. Yes it is a tourist stop and priced like one; the takeaway counter at the side lets you have the cake without the room.", "s": "Sacher and Demel fought a court case over the words Original Sachertorte that ran, on and off, for twenty-five years. It ended in 1963 with a settlement: the Hotel Sacher keeps Original Sachertorte, Demel sells the Demel's Sachertorte with a triangular seal on top. The difference is one layer of apricot jam. People still take sides.", "sl": "Twenty-five years in court over a cake", "g": "https://maps.google.com/?cid=8527852790156567128", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAeaWCcvvwn0uDFIy0M33d7DSBwCojVKcnx3SYANV4C0xouscdUpQV6qk_2ZcauizuuDPIF3AUEFaQceNem_iIAzY8g2jUuc1ymA3Y_D1CSpf1JXNfFQvovvUEC8_KJ_Qvqp86d3wVka2Em=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAneYc4S-gZxG_yCXBI7VHKW949ZC-3tUXBAm4G6PAwCe4HF5tQSEImaqdpX-EATGsHsvtPw0yuBF8jIAtFTIa74ibEPYCZy0MT8i2CbBO5L0Yb4fxJdkGE47Cx6sWO6g3RAwzEA0BSsq8o7JZs5j6bDw=s4800-w800-h600"], "a": ["Mehmet Yuecel Seven", "sunny ng"]}, {"c": "bar", "n": "Loos American Bar", "zh": "27 square metres, 1908", "lat": 48.207172, "lng": 16.3712536, "m": "4.1* - cocktails ~EUR 14-18 - noon-4am DAILY - NO PHOTOS - TINY", "d": "Adolf Loos designed this room in 1908 out of mahogany, onyx and mirrors, and the mirrors are there to make a bar the size of a large bathroom feel infinite. Around twenty seats. There is a no-sightseeing, no-photos sign on the door and they mean it. Reserve, or arrive in the afternoon when it is nearly empty. Order a martini and look up at the ceiling.", "g": "https://maps.google.com/?cid=2307746468841755707", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCfBOHzt7C7AiU8t_r5-13X5T25E6Q34UAldlJal2M_awchd67QtB8pd99t2gdKHlAPz1YpqCzu4fYtzbf9TzNnzbcLWZylbNwdoJgVrTh6rsQ8JtfkLMABP99bMsJjhM4Al7GnRrHvToFjRBTYQejT9A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCBSbAGlu2lyEPvxN7LnFJ3kI6O2HH6TC0vLebkQYOFQe-PxaKyrdSz__OGpZrNwbm7G05jEV49RiPdOS3chJ4hqOD1IC1TJhLHd_R3T73vkGTG6XMZO7DKDRpGpIEqjSZq40fS9AV-JEgGz7wGgkRFCQ=s4800-w800-h600"], "a": ["Loos American Bar", "Goggoschelle"]}, {"c": "bar", "n": "Kleinod Prunkstueck", "zh": "the modern reference", "lat": 48.2093613, "lng": 16.3753283, "m": "4.4* - cocktails ~EUR 15 - WED-SAT ONLY from 8pm - reserve 1-2 weeks ahead", "d": "Leather-lined walls, chandeliers, and the most technically serious cocktails in the city, in an 850-year-old building on Baeckerstrasse. Only open Wednesday to Saturday and it fills, so book. Ask for bartender's choice with an Austrian spirit and let them work. The original smaller Kleinod is a few streets away if this one is full.", "g": "https://maps.google.com/?cid=3406824120084408740", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA1Sj3I8-QQyBHT_fhDGpgFSdUc3azO0JqySmKpAipfTR9zP8iI_Pq7ECirRpuMHr9VqhcJk1EVHh6i5fqBJyy7FJLWBplbciSBK5-R8dCQHSdnBnPItIuNKXr3Fi0t4ox0xaZ2-ftNfUK06w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjArt0jarL3i_EcBHZ2Pa0PKB9ohdjPcT_tvtsWhQ8Uz44YbdPrIlpG8Y2AC5cjoKhD1lsmtSrxoe-AnG2Pt3UPb-NCoRjDKXU4tuGhhmJNdKYgAWKvJrqiVujrypajsdFjku1OWCUtHYS7E000=s4800-w800-h600"], "a": ["Kleinod Prunkstueck", "Kleinod Prunkstueck"]}, {"c": "bar", "n": "Strandbar Herrmann", "zh": "a beach on the Danube canal", "lat": 48.2118773, "lng": 16.3857175, "m": "4.4* - FREE ENTRY - beer ~EUR 5 - 2pm-2am, weekends from 10am - SUMMER ONLY", "d": "Imported sand, deckchairs, a DJ and the canal in front of you, five minutes from the centre and free to walk into. Self-service at the counter, so no waiting for a waiter. Almost entirely locals. It closes for the winter, roughly October to April, and on a hot evening every seat goes by six. Drinks have got dearer and some reviewers say so.", "g": "https://maps.google.com/?cid=12846619423660573410", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAoVBY67qBbs6CpDVHFo6Pv3-YjEooy0xl9hmXZ8M5syWRSvl2_TLKZ6bNGYspcuTFujscGJ3Ko_AQ3iBC9zd74wdZuudXvXIbS2F83zb-7wIQOjl3JwiGSBi0xjq4A1y0UO0636EqlgOdOXQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAKjueC2HGbLdMS91HgOmDaocNhSSNKdMUscJuYvaSU4iRxhszSnrFDb-utbvNQPut6ypmv96KGGdjVMGuk2Y15DCABD29S4nAspUW1d2ngG-qg-oNMBAd0VmWAUDLv-4358AP1iUEmOOngjdY=s4800-w800-h600"], "a": ["Strandbar Herrmann", "Benjamin Mund"]}, {"c": "heuriger", "n": "Mayer am Pfarrplatz", "zh": "Beethoven's house, Heiligenstadt", "lat": 48.2550739, "lng": 16.3588896, "m": "4.3* - buffet by weight, ~EUR 25-35 with wine - noon-midnight DAILY - book", "d": "Beethoven lodged in this building in 1817, and it is now the most polished Heuriger in the city: own vineyards, live Schrammel music most evenings, a cold buffet you point at and pay for by weight. Order the Gemischter Satz. It is the least rustic of the three on this map and the easiest to reach, tram D to Nussdorf then a short walk.", "g": "https://maps.google.com/?cid=7292709913895102821", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAhoyuL4ltIfdn--tGmsBr93DGiC2S6ePQ-01RiPtJJi-12CWlyML4erB893zIMjiDgHpy0ZFIxPtge97bGC0rG6mQ1ZZQo9rtusHtwIMaoIFr83y0JvHec6qdR72_zb0qLaEi0TiSbTskMXSpFKOoLxg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBlBC9lgOsP0Yy97PPVSssNRExLEIAC0k368uZzs6Bpi4nmxDkmhTG-jE4owd1-EB2YhUU0KgY9LNxI_NfP73MAqZw309BJU1Owv3XerOwUWQQzLe2WNK_xY4jc9ATq5H4wSVpYvCUyCK-bUzw1t06YWg=s4800-w800-h600"], "a": ["Mayer am Pfarrplatz", "Mayer am Pfarrplatz"]}, {"c": "heuriger", "n": "Mayer am Nussberg", "zh": "deckchairs in the vineyard", "lat": 48.2694201, "lng": 16.34182, "m": "4.3* - THU-SUN ONLY - OUTDOOR ONLY, GOOD WEATHER ONLY - from 2pm (noon at weekends)", "d": "A Buschenschank halfway up the Nussberg with nothing but benches, deckchairs and the whole city laid out below you. There is no indoor room at all, so it opens only in fine weather and only Thursday to Sunday: check before you climb. Cold plates and Gemischter Satz. Walk up from the Nussdorf tram terminus in about 30 minutes, or bus 38A to Kahlenberg and stroll down.", "g": "https://maps.google.com/?cid=6798924000043485216", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB1tDofZnq4ZU-dy3zMm-7KugIZV4rU4BqaQSj7m_llN1MznUQWi4tYyMHIXv6JeavoC94gbaR7aAZ-e1SO8PnMGS6vMs1UjFMHrZSjGZEwKtzh7E6HOPFUX07XDB5nZN1Zd18RCZa5xowKdw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDoSWGeVSmlU2-k_1iK9R-TJsN9vgw_EdKkvm_ZgkZxUaBy8nCyyNoiwPfm9dcuEuxjGOswjPd3Uy-Kwp-sioCS9Oa1Vp8iBlmvx3LtCvCbmRS9LtxTVMySK2DWLfiZ-_EK-wSjRuS8ZphYWJaESwa6qw=s4800-w800-h600"], "a": ["Stephan Welan", "Mayer am Nussberg"]}, {"c": "heuriger", "n": "Heuriger Wieninger", "zh": "Stammersdorf, where the Viennese go", "lat": 48.3012058, "lng": 16.4142528, "m": "4.3* - SAT & SUN ONLY - Sat noon-midnight, Sun to 10pm - CARD MINIMUM EUR 15", "d": "Across the Danube in Stammersdorf, the wine village with no tourist coaches, run by one of Austria's best biodynamic growers. Buffet plus a short a la carte, tables under walnut trees. Weekends only, so plan around it. Tram 31 to the end of the line. If it is shut, the Stammersdorfer Kellergasse nearby has a dozen more, including Helmut Krenek at the far end.", "g": "https://maps.google.com/?cid=15178550930233725528", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAO7lz6n47xTrzHHDR3ra-mO66A8qam0Ytpwowofnx7TUrG4fr7iqtySpfAxMJPT5ug_63HMEjYTIWrm-SgoBHa8EB3VgAD5UcapjyaT44m-hqGvzV-AH81vt71sQBGCzNL0qYLKCmnti3o=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBiHJADiH2xVwPQdL20roSJpvwodQYQ4S8KLhWfw8EVER_FTiBnekMCjgR5VxkbRLXYnKQkcCUTBr8UvDOaApl72rJPRzkMDssi0kpaL3y5S_aZuX7aQZu9BwYoy4dvGbD1xb71LHN1misBWxQ=s4800-w800-h600"], "a": ["Heuriger Wieninger", "Heuriger Wieninger"]}, {"c": "stay", "n": "Neubau & Spittelberg (7th)", "zh": "the best base for a long stay", "lat": 48.203, "lng": 16.352, "nophoto": "district, not a business", "m": "Walk to the Ring in 10 min - U3 Neubaugasse - mid to upper price band", "d": "Cobbled Biedermeier lanes behind the MuseumsQuartier, the highest concentration of independent shops, cafes and small restaurants in the city, and a ten-minute walk to the museums. Quiet at night once you are off Mariahilfer Strasse. If you are here three weeks and want a neighbourhood rather than a hotel district, this is it."}, {"c": "stay", "n": "Josefstadt (8th)", "zh": "quiet, central, better value", "lat": 48.211, "lng": 16.348, "nophoto": "district, not a business", "m": "Walk to the Rathaus in 10 min - trams 2, 5, 33 - mid price band", "d": "The smallest district, residential and genteel, with a theatre, good Beisl and no nightlife noise. Ten minutes on foot to the Ring and the university. Rooms cost noticeably less than the 1st or 7th for the same walk. Best choice if you want to sleep properly and still be central; least good if you want to be out until three."}, {"c": "stay", "n": "Karmeliterviertel, Leopoldstadt (2nd)", "zh": "green, young, across the canal", "lat": 48.217, "lng": 16.379, "nophoto": "district, not a business", "m": "5 min over the canal to the 1st - U2 Taborstrasse - AVOID THE BLOCKS AT PRATERSTERN AFTER DARK", "d": "Once the Jewish quarter, now the liveliest young food and cafe scene in Vienna, with the Prater and the Augarten on the doorstep and the canal walk into the centre. Cheaper than anywhere similar west of the water. One caveat repeated by locals and guides alike: the immediate area around Praterstern station is unpleasant late at night, so stay a few streets from it."}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+(pl.must?' must':'')+'" style="background:'
+         +CATS[pl.c].color+'">'+glyph(pl.c)+(pl.must?'<i class="star-badge"></i>':'')+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true,
+    zIndexOffset: pl.must?1000:0});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galPrev.style.visibility = pics.length>1?'':'hidden';
+  galNext.style.visibility = pics.length>1?'':'hidden';
+  galPrev.disabled=true; galNext.disabled=pics.length<2;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+  const multi=imgs.length>1;
+  galPrev.style.visibility = multi?'':'hidden';
+  galNext.style.visibility = multi?'':'hidden';
+  galPrev.disabled = i<=0;
+  galNext.disabled = i>=imgs.length-1;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+/* arrows, for mice and keyboards; touch users just swipe */
+const galPrev=document.getElementById('galPrev'), galNext=document.getElementById('galNext');
+function galScroll(dir){
+  const w=galTrack.clientWidth||1;
+  const i=Math.round(galTrack.scrollLeft/w)+dir;
+  const n=galTrack.querySelectorAll('img').length;
+  galTrack.scrollTo({left: Math.max(0,Math.min(n-1,i))*w, behavior:'smooth'});
+}
+galPrev.onclick=e=>{e.stopPropagation();galScroll(-1);};
+galNext.onclick=e=>{e.stopPropagation();galScroll(1);};
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng+"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  panToPlace(pl);
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+/* Wide screens show the card as a left-hand panel, so the gesture axis and the
+   map centring both have to change. Keep this threshold in sync with the CSS. */
+const SIDE_MIN_WIDTH = 720;
+function sideMode(){ return window.innerWidth >= SIDE_MIN_WIDTH; }
+
+function panToPlace(pl){
+  const ll = L.latLng(pl.wlat, pl.wlng);
+  if(!sideMode()){ map.panTo(ll,{animate:true}); return; }
+  // shift the centre left by half the panel so the pin sits in the visible half
+  const panelW = (document.querySelector('.sheet')||{}).offsetWidth || 390;
+  const pt = map.project(ll, map.getZoom()).subtract([panelW/2, 0]);
+  map.panTo(map.unproject(pt, map.getZoom()), {animate:true});
+}
+
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the card down to dismiss ----
+   Touch: drag anywhere in the card, but only when it is scrolled to the top, so
+   reading a long card still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    // In side mode the dismiss axis IS the gallery axis, so the gallery wins
+    // any gesture that starts on a photo.
+    if(sideMode() && e.target.closest && e.target.closest('.gal')) return;
+    // Vertical scroll only conflicts with the bottom sheet.
+    if(!sideMode() && sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'go':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  const side=sideMode();
+  // side panel slides out to the LEFT; bottom sheet slides DOWN
+  const along = side ? -dx : dy;      // movement toward dismissal
+  const across = side ? dy : dx;      // movement that belongs to the gallery
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(along)>Math.abs(across) ? 'go' : 'other';
+    if(drag.axis==='other'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(along<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=along;
+  sheet.classList.add('dragging');
+  sheet.style.transform = side ? 'translateX(-'+along+'px)' : 'translateY('+along+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();   // distance OR flick
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='go' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  const ab=document.getElementById('about');
+  if(ab && ab.classList.contains('open')) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- city overview ---------- */
+const about=document.getElementById('about'), aboutBtn=document.getElementById('aboutBtn');
+function esc(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function rich(x){ // allow **bold** only
+  return esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+}
+function renderAbout(){
+  if(!CITY || !Object.keys(CITY).length){ aboutBtn.style.display='none'; return; }
+  document.getElementById('abTitle').textContent = CITY.name||'';
+  document.getElementById('abTagline').textContent = CITY.tagline||'';
+
+  const st=document.getElementById('abStats');
+  st.innerHTML=(CITY.stats||[]).map(s=>
+    '<div class="stat"><div class="k">'+esc(s[0])+'</div><div class="v">'+esc(s[1])+'</div></div>'
+  ).join('');
+  st.style.display=(CITY.stats||[]).length?'grid':'none';
+
+  document.getElementById('abSections').innerHTML=(CITY.sections||[]).map(s=>
+    '<h3>'+esc(s[0])+'</h3>'+String(s[1]).split('\n\n').map(par=>'<p>'+rich(par)+'</p>').join('')
+  ).join('');
+
+  const musts=CITY.musts||[];
+  document.getElementById('abMusts').innerHTML = musts.length
+    ? '<h3>Must see, do &amp; try</h3><ul class="musts">'
+      + musts.map(m=>'<li>'+rich(m)+'</li>').join('') + '</ul>'
+    : '';
+
+  const near=CITY.nearby||[];
+  document.getElementById('abNearby').innerHTML = near.length
+    ? '<h3>Nearby</h3><ul class="nearby">'
+      + near.map(n=>'<li>'+rich(n)+'</li>').join('') + '</ul>'
+    : '';
+
+  document.getElementById('abFoot').textContent = CITY.foot||'';
+}
+renderAbout();
+function toggleAbout(open){
+  about.classList.toggle('open',open);
+  about.setAttribute('aria-hidden',open?'false':'true');
+  aboutBtn.classList.toggle('active',open);
+  if(open) about.scrollTop=0;
+}
+aboutBtn.onclick=()=>toggleAbout(!about.classList.contains('open'));
+document.getElementById('aboutClose').onclick=()=>toggleAbout(false);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') toggleAbout(false); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+let wasSide=sideMode();
+window.addEventListener('resize',()=>{
+  const now=sideMode();
+  if(now!==wasSide){ wasSide=now; if(selected) panToPlace(selected); }
+});
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
