@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!-- city-guide-maps template v7 capabilities: swipe-dismiss,drag-handlers,click-away,escape-key,gallery,side-panel,must-see,overview,filters,fullscreen,geolocation -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Venice — Surrounds (Islands & Veneto Day Trips)</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{position:relative;width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .pin.must{border-color:#F2C14E;border-width:3px;
+    box-shadow:0 0 0 1.5px rgba(120,80,0,.55),0 2px 7px rgba(0,0,0,.45)}
+  .star-badge{position:absolute;top:-5px;right:-5px;width:12px;height:12px;
+    background:#F2C14E;border-radius:50%;border:1.5px solid #fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+    width:30px;height:30px;border:none;border-radius:50%;cursor:pointer;
+    background:rgba(0,0,0,.42);color:#fff;display:none;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);transition:background .15s ease}
+  .gal-nav:hover{background:rgba(0,0,0,.65)}
+  .gal-nav:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .gal-nav svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .gal-nav.prev{left:8px} .gal-nav.next{right:8px}
+  .gal-nav[disabled]{opacity:.3;cursor:default}
+  /* only for real pointers — touch users swipe */
+  @media (hover:hover) and (pointer:fine){
+    .gal:hover .gal-nav, .gal-nav:focus-visible{display:flex}
+  }
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  /* when there is no photo the grabber would sit on the text */
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---- city overview sheet ---- */
+  .about{position:absolute;inset:0;z-index:1400;background:var(--paper);
+    overflow-y:auto;transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.32,.72,.35,1);
+    -webkit-overflow-scrolling:touch}
+  .about.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.about{transition:none}}
+  .about-inner{max-width:640px;margin:0 auto;padding:18px 20px calc(40px + env(safe-area-inset-bottom))}
+  .about h2{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:3px}
+  .about .tagline{font-size:14.5px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+  .about-close{position:sticky;top:0;float:right;width:34px;height:34px;border:none;
+    border-radius:50%;background:#eef1f5;color:#5b6472;font-size:16px;cursor:pointer;
+    line-height:1;z-index:2;margin-left:10px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;
+    margin-bottom:20px}
+  .stat{background:#f6f4ef;border-radius:11px;padding:9px 11px}
+  .stat .k{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#8b8577;margin-bottom:2px}
+  .stat .v{font-size:14px;font-weight:700;line-height:1.25}
+  .about h3{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:20px 0 7px}
+  .about p{font-size:14.5px;line-height:1.6;color:#374050;margin-bottom:9px}
+  .musts{list-style:none;margin:2px 0 4px}
+  .musts li{position:relative;padding:7px 0 7px 27px;font-size:14.5px;line-height:1.5;
+    border-bottom:1px solid #f0ece4}
+  .musts li:last-child{border-bottom:none}
+  .musts li::before{content:"";position:absolute;left:5px;top:14px;width:9px;height:9px;
+    border-radius:50%;background:#F2C14E;box-shadow:0 0 0 2px rgba(242,193,78,.28)}
+  .musts b{font-weight:750}
+  .nearby li{padding:7px 0 7px 27px;font-size:14px;line-height:1.5;list-style:none;
+    position:relative;color:#374050}
+  .nearby li::before{content:"";position:absolute;left:6px;top:15px;width:7px;height:7px;
+    border-radius:50%;background:#9E9D24}
+  .about .foot{font-size:11.5px;color:#95a0ae;margin-top:22px;line-height:1.5;
+    border-top:1px solid var(--line);padding-top:13px}
+  /* ---- wide / landscape: the card becomes a left-hand panel ----
+     A full-width bottom sheet letterboxes photos badly once the window is wide. */
+  @media (min-width:720px){
+    .sheet{left:0;right:auto;top:0;bottom:0;width:390px;max-height:none;height:100%;
+      border-radius:0 20px 20px 0;box-shadow:8px 0 30px rgba(16,24,40,.22);
+      transform:translateX(-105%)}
+    .sheet.open{transform:translateX(0)}
+    .gal, .gal-track img{border-radius:0 20px 0 0}
+    .gal-track img{height:auto;aspect-ratio:3/2}
+    .grabber{top:0;bottom:0;left:auto;right:0;margin-left:0;width:24px;height:100%;
+      flex-direction:column}
+    .grabber::after{width:4px;height:38px}
+    .sheet:has(.gal.none) .sheet-body{padding-top:16px}
+    .sheet-body{padding-right:26px}
+    /* keep the filter panel clear of the card */
+    .panel{left:auto;right:70px}
+    .about-inner{padding-left:26px}
+  }
+  @media (min-width:720px) and (max-height:520px){
+    /* phone held sideways: shorter, so trim the photo further */
+    .gal-track img{aspect-ratio:2/1}
+  }
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Venice — Surrounds (Islands & Veneto Day Trips)</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="aboutBtn" title="About this city" aria-label="About this city">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Pin shapes: circle = sight, square = food. Gold ring = must-see. Companion to the Venice city map — use together for a 4-week stay. Not researched — local-language blogs: A dedicated local-language cheap-eats pass was run for Venice itself but not repeated for each of the 8 separate mainland/lagoon destinations on this map - that would need its own research pass per town. Food entries here are the single most-cited specialty per place (Gatto Nero in Burano, Le Beccherie in Treviso, Pedrocchi in Padua) rather than a full bacaro-style survey. Treat the food coverage on this map as a highlights layer, not exhaustive. Not researched — a critic guide (Michelin: No Michelin Bib Gourmand search was run specifically for Padua, Verona, Vicenza, Treviso or Chioggia; the Venice-wide Bib Gourmand search returned only out-of-scope Miranese/countryside results. Not researched — current closures: No dedicated closure check was run for the Padua/Verona/Vicenza/Treviso sights individually beyond what surfaced naturally in the review text pulled during place-data lookups (e.g. Torcello cathedral scaffolding noted by reviewers, flagged on that card).</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <button class="gal-nav prev" id="galPrev" aria-label="Previous photo">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="gal-nav next" id="galNext" aria-label="Next photo">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="about" id="about" role="dialog" aria-label="About this city" aria-hidden="true">
+  <div class="about-inner">
+    <button class="about-close" id="aboutClose" aria-label="Close">✕</button>
+    <h2 id="abTitle"></h2>
+    <p class="tagline" id="abTagline"></p>
+    <div class="stats" id="abStats"></div>
+    <div id="abSections"></div>
+    <div id="abMusts"></div>
+    <div id="abNearby"></div>
+    <p class="foot" id="abFoot"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"church": {"label": "Churches & chapels", "color": "#6A1B9A", "icon": "church"}, "landmark": {"label": "Icons & landmarks", "color": "#5D4037", "icon": "landmark"}, "theatre": {"label": "Theatres", "color": "#AD1457", "icon": "drama"}, "museum": {"label": "Museums", "color": "#1565C0", "icon": "palette"}, "district": {"label": "Squares, views & islands", "color": "#00897B", "icon": "footprints"}, "beach": {"label": "Beaches", "color": "#0277BD", "icon": "umbrella"}, "market": {"label": "Markets", "color": "#FB8C00", "icon": "shopping-basket"}, "splurge": {"label": "Sit-down restaurants (€€€)", "color": "#C2185B", "icon": "utensils", "shape": "food"}, "sweet": {"label": "Tiramisu & sweets", "color": "#8D5524", "icon": "cake-slice", "shape": "food"}, "cafe": {"label": "Historic cafés", "color": "#6D4C41", "icon": "coffee", "shape": "food"}, "stay": {"label": "Where to stay", "color": "#757575", "icon": "bed"}};
+const ICONS = {"bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "cake-slice": "<path d=\"M16 13H3\"/> <path d=\"M16 17H3\"/> <path d=\"m7.2 7.9-3.388 2.5A2 2 0 0 0 3 12.01V20a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-8.654c0-2-2.44-6.026-6.44-8.026a1 1 0 0 0-1.082.057L10.4 5.6\"/> <circle cx=\"9\" cy=\"7\" r=\"2\"/>", "church": "<path d=\"M10 9h4\"/> <path d=\"M12 7v5\"/> <path d=\"M14 21v-3a2 2 0 0 0-4 0v3\"/> <path d=\"m18 9 3.52 2.147a1 1 0 0 1 .48.854V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6.999a1 1 0 0 1 .48-.854L6 9\"/> <path d=\"M6 21V7a1 1 0 0 1 .376-.782l5-3.999a1 1 0 0 1 1.249.001l5 4A1 1 0 0 1 18 7v14\"/>", "coffee": "<path d=\"M10 2v2\"/> <path d=\"M14 2v2\"/> <path d=\"M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1\"/> <path d=\"M6 2v2\"/>", "drama": "<path d=\"M10 11h.01\"/> <path d=\"M14 6h.01\"/> <path d=\"M18 6h.01\"/> <path d=\"M6.5 13.1h.01\"/> <path d=\"M22 5c0 9-4 12-6 12s-6-3-6-12c0-2 2-3 6-3s6 1 6 3\"/> <path d=\"M17.4 9.9c-.8.8-2 .8-2.8 0\"/> <path d=\"M10.1 7.1C9 7.2 7.7 7.7 6 8.6c-3.5 2-4.7 3.9-3.7 5.6 4.5 7.8 9.5 8.4 11.2 7.4.9-.5 1.9-2.1 1.9-4.7\"/> <path d=\"M9.1 16.5c.3-1.1 1.4-1.7 2.4-1.4\"/>", "footprints": "<path d=\"M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z\"/> <path d=\"M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z\"/> <path d=\"M16 17h4\"/> <path d=\"M4 13h4\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "palette": "<path d=\"M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z\"/> <circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>", "shopping-basket": "<path d=\"m15 11-1 9\"/> <path d=\"m19 11-4-7\"/> <path d=\"M2 11h20\"/> <path d=\"m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6l1.7-7.4\"/> <path d=\"M4.5 15.5h15\"/> <path d=\"m5 11 4-7\"/> <path d=\"m9 11 1 9\"/>", "umbrella": "<path d=\"M12 13v7a2 2 0 0 0 4 0\"/> <path d=\"M12 2v2\"/> <path d=\"M20.992 13a1 1 0 0 0 .97-1.274 10.284 10.284 0 0 0-19.923 0A1 1 0 0 0 3 13z\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>"};
+const CITY  = {"name": "Venice — Surrounds", "tagline": "The lagoon islands and Veneto mainland within day-trip range of Venice: glassmaking and lace on the water, Giotto, Palladio and Roman Verona on land.", "stats": [["Scope", "Murano, Burano, Torcello, Lido, Chioggia + Padua, Verona, Vicenza, Treviso, Brenta Riviera"], ["Furthest point", "Verona, ~1h15 by train from Venezia Santa Lucia"], ["Nearest points", "Murano/Burano/Torcello, 20–45min by vaporetto from Fondamente Nove"], ["Best months", "May–June, September–October, same as Venice"], ["Budget/day per trip", "~€25–40 in transport + entries for a lagoon-islands day, ~€40–70 for a mainland city day"], ["Getting around", "ACTV vaporetto for the islands; Trenitalia/Italo regional trains for Padua/Verona/Vicenza/Treviso"]], "sections": [["History in five minutes", "Every place on this map has a reason it isn't simply Venice. Murano's glassmakers were forcibly relocated there in 1291 to keep furnace fires away from wooden Venice; Torcello was the lagoon's biggest settlement for centuries before malaria and silted channels emptied it out in Venice's favour; Padua, Verona and Vicenza were independent city-states absorbed into the Venetian mainland empire (the Terraferma) from the 1400s, which is why Palladio — Vicenza's architect — ended up designing villas along the Brenta for Venetian nobility cashing out of a declining maritime trade."], ["Culture and society", "The mainland cities keep a rhythm Venice itself has largely lost: Padua is a real university town with Europe's second-oldest university (1222) and a young, everyday energy; Verona and Vicenza are prosperous, workaday northern Italian cities that happen to be extraordinarily handsome, not stage sets for tourism. Treviso, walled and canalled but a fraction of Venice's visitor numbers, calls itself 'the city that smiles.'"], ["Economy, then and now", "Murano glass and Burano lace are both luxury export crafts dating to the 1300s–1500s that still support small workshops today, alongside a large volume of cheaper imported imitation sold in both islands' souvenir shops. Padua, Verona and Vicenza run on university research, light manufacturing and agriculture (Vicenza's Palladian villas were literally profitable farms with a grand facade); Chioggia remains a working Adriatic fishing port."], ["Iconic food & drink", "Treviso invented tiramisù at Le Beccherie around 1972 and grows the radicchio rosso that shows up on menus across the region every winter. Vicenza's baccalà alla vicentina (creamed salt cod, distinct from Venice's baccalà mantecato) and bigoli with duck ragù are inland Veneto's answer to the lagoon's seafood-heavy cooking. Treviso and the hills north of it are also the heart of Prosecco DOC production."], ["Unique to this map", "Nowhere else combines a working lagoon fishing/craft economy (Murano, Burano, Chioggia) with mainland Renaissance architecture (Palladio's Vicenza and the Brenta villas) and the single most important early-Renaissance fresco cycle in Italy (Giotto's Scrovegni Chapel) within a two-hour rail-and-boat radius of one city."]], "musts": ["**Murano Glass Museum** — ~€12", "**Burano's coloured houses** — FREE", "**Torcello Cathedral** — ~€5", "**Scrovegni Chapel, Padua** — ~€15, book ahead", "**Basilica of St Anthony, Padua** — FREE", "**Verona Arena** — ~€13", "**Basilica Palladiana, Vicenza** — ~€8", "**Le Beccherie, Treviso** — original tiramisù, ~€8–10"], "nearby": ["**Venice itself** is covered in the companion **Venice** map, built for the same trip.", "**Lake Garda** and the **Dolomites** are both reachable from Verona or Treviso if the trip runs long enough to extend past the Veneto plain."], "foot": "Prices indicative for 2026 and worth re-checking, especially the Scrovegni Chapel's booking fee and the Brenta villas' seasonal opening days, which change often. Sources: Wikivoyage, GPSmyCity and Viator day-trip structures, Le Beccherie / NPR on the tiramisu origin story, Findingtheuniverse.com and TrippersTerminal.com on Veneto basing strategy, and standard visitor-review signals cross-checked across each sight. Food coverage on this map is a highlights layer (the single most-cited specialty per stop) rather than an exhaustive bacaro-style survey — see the companion Venice map for that deeper food research."};
+const PLACES = [{"c": "museum", "n": "Murano Glass Museum", "zh": "Museo del Vetro", "must": true, "lat": 45.4565644, "lng": 12.3568711, "m": "4.1★ · ~€12 · 10am–6pm (Fri–Sat to 8pm)", "d": "A palace on Murano's Grand Canal tracing glassmaking from Roman times to the 20th century, anchored by an ornate 18th-century garden-shaped table service. The technical explanations of how colour and gilding are worked into molten glass make sense of what you'll then see demonstrated for free in any furnace showroom on the island.", "g": "https://maps.google.com/?cid=390122665608937243", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD1rsAvWISQ30pvzI9A0ku0Vi0PJF3fjyHFil7xD6LBLNQ_maZnbNEwNt0hOQFxN0cNmK8FmDI7hm94cTL98ugzixE1Nu-c0MWsgtAorHQVqgjsyd7RfVWnqMN2VGZP1bTWIRbqAINNH6ONHw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC7RPrwaYuYEuJP9Di4nk5kteoYMs7XGyOasE7tqLMigAr3up-AJi5jkmANh8QxfM6DyYIslr2qO5vM4pDyH23O5PO64ZRK2BFo8uJesSJy0DE3b_T4YEZilsAAQ2nnEwe2V9KJpFMbAX9lgA=s4800-w800-h600"], "a": ["Museo del Vetro (Murano)", "Pedro Machado"], "s": "Venice confined its glassmakers to Murano in 1291, officially as a fire-safety measure since furnaces kept burning down wooden Venice — but the enforced isolation also let the Republic guard the trade's secrets: for centuries glassmakers who left without permission could be sentenced to death, though few ever did.", "sl": "A trade secret guarded with a death sentence"}, {"c": "church", "n": "Basilica dei Santi Maria e Donato", "zh": "Murano's Byzantine church, founded 7th c.", "lat": 45.4574929, "lng": 12.357016, "m": "4.5★ · ~€3.50 cash only · 9am–5pm, Sun from 11:30am", "d": "Murano's oldest church, its apse mosaic of the Virgin on a plain gold ground rivalling anything in central Venice, and its 12th-century floor inlaid with mosaic animals now rippled from repeated flooding. Behind the altar hang what are said to be the rib bones of the dragon St Donatus slew — almost certainly whale bones, but nobody's taken them down to check.", "g": "https://maps.google.com/?cid=1937320241975494074", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAAAv5YTLIIHurVKKKyM8mbVkNvwOjmDkZfX0y5YNHw8pTN5yZKfHuY_OQ1t15Ehih7IOiPwW-wdv0kgKfdNs44uxSUkPRpgEG23ytGo3_3gKDP-c27cJHyCn0WVG-_yQxog38a_Skgfni7bg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAAGWciDpPxezoOIcPZ2Gr4UKuOphpqdX-IzP1KM4d5jVoGn9XVkWKysKkoNgDGyBG4pZNdqm1MIiiTgcGiFwCmob4qz9X44zF2iQsQE_O8hW_V7bMI56LAt_6s9Lz-OklUAJhYsKvmKkkMjkc=s4800-w800-h600"], "a": ["Fabrizio Polato", "Stefan Kraus"]}, {"c": "district", "n": "Burano's coloured houses", "zh": "Via/Corte Baldassare Galuppi & the back canals", "must": true, "lat": 45.483948, "lng": 12.418992, "m": "4.2★ · FREE · quietest before 10am or after 4pm", "d": "Fishermen's cottages painted in a fixed palette locals say dates back to a system so each family could spot their own house through lagoon fog — Burano's council still governs which exact shades any owner can use. The main canal is postcard-crowded by midday; duck one street back and it empties out fast.", "g": "https://maps.google.com/?cid=12123899942823828221", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBFtQ6FKM9uvsUH_JwvpaCfaowKbEiycwK49fqn4PANh4CMfWzAGIwwCDClDhUirfLGkTtpSPQv7NZJRvistWDrcrDJF-mmILEnFIWIgetoNQ37GyKaqylFH_GenzeaMdmGb-Jw_6mXZ8UG1o0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBS8yBvBfi7lpOA9vhd3lbafrnWK0k6hdC2e-DXjcJOaUMKPwsXz-QURfNdHxeqwR65Itnj95xV0G3gioxOeQeOTtQDA6fxIiUVN92drtKBaJTqsCa4Mh-CZ2jgYZwf9bBugiPVUlTnMXl9Pm0=s4800-w800-h600"], "a": ["Tariq Sooliman", "Klaus Trenkler"]}, {"c": "museum", "n": "Lace Museum", "zh": "Museo del Merletto", "lat": 45.4847423, "lng": 12.4187622, "m": "4.2★ · ~€6 · 10am–4/5pm, Closed Mon", "d": "Four small rooms in the old lace school tracing Burano needle-lace from the 16th century, when it rivalled anything made in Europe, to today's dwindling handful of practitioners — a few of whom still sit stitching in the museum itself. Genuine Burano lace is slow and expensive; most of what's sold in shop windows outside is machine-made elsewhere, so buy from a maker you've watched working if authenticity matters to you.", "g": "https://maps.google.com/?cid=7135357118626800042", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB83ZfkIVmP1ITSOxcSnSD_KJ2cLbK8cJrK1dYSerDlJjhVzW7pyhAyhUMI658yBOQ-94_HLz4-pAorfkAVGo7YDGDoUjqfvKi8OAsFxpD12NMzDekyIIHNfSxTvSVkXkJMPjWA8uDGsERhHQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCzuTak_C7s7auQ3ckSF94xHv_u9OBpCMqGGmrC5ceDv-uVPO7acIbnDuem2sNcQsLXYbXdiwVtRFlZZPQWcRo-9sfgpMC1ndHKpSCuM3-2_HUEhvYQas7OrWPrMkjzVwE4vQNKqQORJpyfYmQ=s4800-w800-h600"], "a": ["Museo del Merletto", "Paul Ciprian"]}, {"c": "landmark", "n": "Leaning bell tower", "zh": "Campanile di San Martino — Burano's own 'leaning tower'", "lat": 45.4840778, "lng": 12.4185335, "m": "4.4★ · view from outside FREE · not climbable", "d": "A 15th-century campanile that has been quietly tilting for centuries — noticeably more than Pisa's relative to its height, though far less famous. Best seen from the marble Terranova bridge a short walk away, which frames it against the canal.", "g": "https://maps.google.com/?cid=8996537171857139599", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBJLTUXH5-f9pCRoLV0lq-pLm31jMldsjtyfJ2IrWCtqL0OQbAMGFFTuNepaDV8FOFkLeqOQjx_CsFe1hU0BTCdV2vqXkpx-iXxPl9Ve1V6-TptSe32EdRoI0Xl-NY4ZpP8_Q4tOPbMwl6oAw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCl4swpvoFpm2Bv9vEfhJprkXxfIHVA6nXDWcK_GIyd3tjOzAn0rr7KMTq37I8P4U9cLEPCQgiDREuffcj0ikdyBZsnhzMu4smql0s_AAw7REpX1c-49uMtxN5G5tk42nhQXI3Lf0TlTSVlwWEW2PGkVg=s4800-w800-h600"], "a": ["Enrico Golin", "Chou Meizai (粗眉仔)"]}, {"c": "splurge", "n": "Trattoria Al Gatto Nero", "zh": "€€€ · Burano's best-known fish kitchen", "lat": 45.4847827, "lng": 12.4162062, "m": "4.4★ · mains ~€28–45, tasting menu available · CLOSED MONDAY · book ahead", "d": "A family-run fish restaurant one canal back from Burano's crowded main strip, doing risotto di gò (lagoon goby) and seafood spaghetti that regulars rate above anything in central Venice. Chef Ruggero sometimes comes out table-side at the end of the meal. Reserve — it fills with day-trippers by 1pm.", "g": "https://maps.google.com/?cid=14459927872838325592", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCmHD242CnKFhE28fMABQrW--e_iNjpmvA8itRQIawWbDtNt6w9JHxc--vowB2vQkldMzyiYmR2sMkfITsyloBmL4-rkfuCFvJpAp0Ek7UwyOPaYyzXnh9klLNyujZ4xAH_WQuCgWIrok3dCo_oCICM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCRuwogNV7UkcO7rHqnrKBwHmdtmtLQdwcjeUoVQjKwDcPYK76ZYGKXDCmAa2AAQjIeCjfE3NypiT-sAVI5NUK9Aosw80mwypKL2ClY6s3FyDLmJLm2_8j2B4ysWmKx6rdtSCZ4eq_Sexvrwr7u8edIJw=s4800-w800-h600"], "a": ["Véronique BENOIST", "Visionary Smurf"]}, {"c": "church", "n": "Torcello Cathedral", "zh": "Cattedrale di Santa Maria Assunta, founded 639", "must": true, "lat": 45.4983316, "lng": 12.4191009, "m": "4.4★ · ~€5, +~€4 campanile · 10:30am–5:30pm · part under scaffolding as of 2026, check ahead", "d": "The lagoon's oldest cathedral, founded in 639 when Torcello — now almost empty — was the region's main population centre. The apse mosaic of the Madonna on gold and a vast Last Judgment on the west wall are among the finest Byzantine works outside Ravenna. Climb the campanile for a view over reed beds where a city once stood. Reviewers in 2026 reported ongoing restoration scaffolding over part of the interior — check before a special trip.", "g": "https://maps.google.com/?cid=593899046629405329", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDKawOqkQM2qNY7HWYa_-UNKJvHPbU6xbE-6ZWgp3Uw6tJz8JMAjS6cLuMv19zPD4XtwK95pBQ_lX7oEYnLksdEytPMT_XeTPKq_1lXOG-kSKitGectMn085cMSkiUzo_mr5i-17OeoDQhHUQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAV_PkZoDJY3VWWdpo2MtjPvGMxoOdM-Imqbie38WMfYe3LD6K365uWVZN7aboTYgX6Pd8siNxrP_hUFi9Yku0dSbjDw78V02BdT3fkxdoo7lDrZcuGg_tRTMaDsXKng-f2nU66a35gMlIbFQ=s4800-w800-h600"], "a": ["Íñigo Martín", "Sergey Nar"], "s": "Torcello was the lagoon's most populous settlement for centuries before Venice itself, with a population estimated at 20,000 in the Middle Ages against fewer than 15 year-round residents today. Malaria and the silting of its channels emptied it out; Ernest Hemingway later used it as a quiet writing retreat, staying at Locanda Cipriani.", "sl": "Once bigger than Venice, now almost empty"}, {"c": "church", "n": "Church of Santa Fosca", "zh": "11th-century Byzantine church, Torcello", "lat": 45.4981856, "lng": 12.4186938, "m": "4.4★ · FREE · often paired with cathedral visit", "d": "A small brick Byzantine church next to the cathedral, built on a Greek-cross plan with a surrounding portico, its bare interior a deliberate contrast to the mosaics next door. Free to enter and usually quiet even when the cathedral has a queue.", "g": "https://maps.google.com/?cid=2137555402873923745", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBUVzEF70R5N1O9BCeJ8rIe902tDDwysCWrNeQlAj5Oe3tVQdZYzX58v0QNvCTVbMAku0-TuwKaioWgs4Ar-Ug6coCZsnYFwoqxMEH9ml9CBf_2REQOgNH0ysksxTJ2e7ri5mgQGGucoR1RE-EbJiGF=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAA1jXvcqeRwZznfbSOh5QOA1VDchmJ-x_YGeXU382QXMd8oXi33kb6GTPXFedZG2VU4TWfP7rK_fGNKhdg7JY3Vd_e4jWNPGcqG7wl-QXJDKE8VX-CNqmVymlg1-2AToX4TcXb-D2V03ljCw=s4800-w800-h600"], "a": ["Michael Offord", "Aurora Del Bandecca"]}, {"c": "splurge", "n": "Locanda Cipriani", "zh": "€€€€ · historic garden restaurant, Torcello", "lat": 45.4977944, "lng": 12.4179542, "m": "4.7★ · mains ~€35–55 · dress code enforced at dinner · book ahead", "d": "Opened 1934 by the founder of Harry's Bar, set in a garden facing the cathedral, and a longtime retreat for Hemingway, who wrote part of Across the River and Into the Trees here. Simple, well-executed Venetian cooking rather than fireworks; come for the garden and the history as much as the plate.", "g": "https://maps.google.com/?cid=10308804763773686373", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNymp82TkCVNQQec7H-pD5YOd4pMM8hwLnbQ0JHBrckPKHATgy--2l29DhdUpST73N-UwfyylkUa2qCD0dXUJ1p77ESZup1Vlsj-mchT26upbgV-2071mcK7RWIODGZUqBDTiJ2YAuxyxuC=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNjLj2VmDe-LA-t49XHa-q9hRegIogtK20QjWr63p1oGwe-HKFpx1x9F9Hq0Z7cQXTf1mbakdxORwdGSleSuEVb92iIujymwK7OLNDR6d05I32ei4r-wiqVqfoVq7wWK9nYkT0=s4800-w800-h600"], "a": ["Locanda Cipriani, Torcello", "Patrik Engström"]}, {"c": "beach", "n": "Lido beach", "zh": "Spiaggia Lungomare d'Annunzio", "lat": 45.4111086, "lng": 12.374321, "m": "4.3★ · public stretch FREE, umbrella+chair rental extra · sand gets very hot, bring sandals", "d": "Venice's barrier-island beach, a 20-minute vaporetto ride from San Zaccaria, and the closest thing to a normal Italian seaside resort within the comune. Thomas Mann set Death in Venice at the Hotel des Bains here. Free public stretches exist alongside paid beach clubs; the Lido is also the only part of Venice where you'll see cars and bikes, both banned in the historic centre.", "g": "https://maps.google.com/?cid=9292832048907054268", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAj89bo29CeZOSWUZIKSovPKN7xXlAMmjeePEFmsT8EHp9Isc62JjdWTgB4-Ch2Vf5ep9t9NQrRRG-59ZpoUJidYxtwUmqiMTQLQwuJFkfFSrYmX4N6Sim72VPxhaZZXzfDxYBkVtrtKfT0J4I=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCJJbFG3sv7VyeovWVpgnw4kpMIquontMdLZ387fKMuP-IPv6SS-BmAmk3yq583SM6sKuO8_6ogxsKq9nHm_cR4AN0O6huqBuCRMjOe4P08LDT0TXy9e6qZHizXMiIX90tu3R673CV9K1cs5DI=s4800-w800-h600"], "a": ["Giulio Giarola", "Malte Roerden"]}, {"c": "district", "n": "Corso del Popolo", "zh": "Chioggia's main fishbone-plan street", "lat": 45.2197875, "lng": 12.2789922, "m": "FREE · lively market mornings", "d": "A fishing port nicknamed 'little Venice' for its own network of canals, built on the same herringbone street plan and far less visited than Venice proper. The Corso runs the length of the old town between two canals, lined with cafés and the daily catch on ice outside fishmongers.", "g": "https://maps.google.com/?cid=9610891785494281519", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPnnEyoU6gi4olnydjX3t_XedCchOsInOn5zopD3tfBBIBn20EaoahbKFRlX7exWJsZtZqxZZbEDHXdMV0Qw1ORBgPPXVcUhyNNIPd2Uga1Mig0lb1hgMsPXZTo2x_gaOx29ouv=s4800-w720-h540", "https://lh3.googleusercontent.com/grass-cs/ACvplmPAVW0NpHVulreys7zeidpRJNDz7qY4OKD0jvtTOpm-FXqqUScq_3IFFhpRSo8bh3Wl2Xbk05fTSMKdcf4xtgx2HRMt_NTCqQtILcmLf_bJ9IrVzEuY3BoowxE3LcxrbXZE-F0Z=s4800-w800-h600"], "a": ["Giorgio Liviero", "Maurizio Corsi"]}, {"c": "market", "n": "Mercato del Pesce", "zh": "Chioggia's fish market", "lat": 45.2204009, "lng": 12.2798224, "m": "4.7★ · 7am–1pm · CLOSED MONDAY", "d": "A working fish market rather than a tourist attraction, unloading the Adriatic catch each morning — orata, branzino, mussels, lagoon oysters. Come before 11:30am; it winds down fast, and the fish festival some evenings turns part of the old town into communal outdoor dining on whatever came in that day.", "g": "https://maps.google.com/?cid=9216243238705625924", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCJg-qp9R5Y__K5gHDdQweozE5ChMevsHzPA5MeICZf0Ged-0P0lvRytvbVKk3LNQZSH-996v0D0VDDlTmCyNA0kTcGVS2IvS68qkL8ZsYMVWsesSG9-E81FEJvzJPvWMv8sF1GxV8yH_MsZNs=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCyP1hWWqVcAlSnl1dIkT_t6VmNsQY9sPWGmCAn1HsTDeF7SDBBGpMmfQBr50k0XEdYqnUJHvg09bzy6Og7q0nEglQVWLxi0Aipv-4Rqlh8DLgXmyMRQU9rK2KW18Ije0AfoJGegd23xUfmtg=s4800-w800-h600"], "a": ["Francesca Scarpari", "Luciano Pin"]}, {"c": "church", "n": "Scrovegni Chapel", "zh": "Giotto's frescoes, book ahead — 15-min timed entry", "must": true, "lat": 45.4118177, "lng": 11.8795357, "m": "4.8★ · ~€15 (+booking fee) · 9am–7/10pm · BOOK AT LEAST A DAY AHEAD — sells out", "d": "A single chapel Giotto covered floor to ceiling in 1305 with frescoes so naturalistic they're usually credited with starting the Renaissance in painting. Entry is a strict 15-minute timed slot after a mandatory introductory film — tickets must be booked in advance online, same-day walk-up is rarely possible. The blue, gold-starred ceiling alone is worth the planning.", "g": "https://maps.google.com/?cid=5438350403507203173", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBu8SDCkSyJ70Y1UeOGMwMWl0dhLR7OgMKN577WB4ne99ljHGBMCz42Oj9Clqaap1sGyPtHQzsWbqUJ3H4mZKQ_yA3OvtQ7gIBfrKOFYS7WazOCu-2TaBywkW9m46F-qumS-EaFs6QkY74JOQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCLpo4YMarPKL-Jp7Rb_tfu3SoDwjbASVisauejq58lio8fLfh_XgppRJ0geQOXgOQWMqJHB6fQZla6jRREOy0Vnd2k0wszjwXrANGJDRJ8MB5gEpnICLwuGFCJ0znVVFmaJxol6cQG5wb0vQ=s4800-w800-h600"], "a": ["Emanuele Giuliano", "Bidule Truc"]}, {"c": "church", "n": "Basilica of St Anthony", "zh": "Basilica di Sant'Antonio, free entry", "must": true, "lat": 45.4013941, "lng": 11.8807731, "m": "4.8★ · FREE · 6:15am–7:30pm", "d": "A domed pilgrimage basilica blending Romanesque, Gothic and Byzantine styles, built from 1232 to house the tomb of St Anthony — patron saint of lost things, and still visited by pilgrims leaving handwritten notes at his tomb. Donatello's bronze reliefs sit on the high altar; his equestrian statue of Gattamelata stands free outside, the first full-size bronze horse-and-rider cast since antiquity.", "g": "https://maps.google.com/?cid=18426844165047460081", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDqGX2LuhxzkEM1L5IiXa28eu5T4TgX7r5hr4iE2pep7LPJ5wnJL4fDgnfdFxCFgbzj8GuHfuldryWTVjelu-jZqTq9jTVScU1mZwPFR3T-X8CAZ3y9FGFe6LcnctUbkVJLdKargdtH45-Hbw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDE4D_8bgZwM8_F5JlT1UJbYmQBx6yUWyzA2GtqPkMUXUVqZprWEcLqFK147rdBzL5JTysu0wOU54JLYzZIOuVIPcAKLR49GU2KZGFXOVN3wyV5DtoMNcw_2QlOS_o7nWdD8NJ9EMdm5oE06g=s4800-w800-h600"], "a": ["Michael Rutz", "Devi Nasution"]}, {"c": "district", "n": "Prato della Valle", "zh": "one of Europe's largest squares", "lat": 45.3986186, "lng": 11.876217, "m": "FREE · lively evenings, market some mornings", "d": "An elliptical square of roughly 90,000m² built on drained marshland in 1775, its central island ringed by a canal and 78 statues of scholars connected to Padua's university — Europe's second oldest, where Galileo taught. Locals picnic and cycle across the grass; a produce market sets up on the square some mornings.", "g": "https://maps.google.com/?cid=7743181796696697063", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDzZt0zKCp5mGfeusaze_56leINb0Q2In2Gewa5ApHPmgH0zdHEibKQYCiqf7L7jlGij746rBC6gtRRW40dSrzCg95s37p-6usa2SlPS3KNeuxFpwMwiMcu7H0w3R5bLC7Qru2rBkuskgdfZ7oadskjJQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBAyhsgj7__WHbu0Gf8PWMLz6x3cYnqTqpvW8LKUPCPgZ3IJkwdUoE24A0C9DuJjsL0aK1eaYZtWCdatc8OtWZzqPd0JDyYGA5Xka7WCvihTTtg4Jls6z02P1-vVEaFon6BE7YNXhGUpUrhYA=s4800-w800-h600"], "a": ["Ivano Stipa", "Michael Xu"]}, {"c": "cafe", "n": "Caffè Pedrocchi", "zh": "€€ · Padua's grand café since 1831", "lat": 45.4077448, "lng": 11.877228, "m": "4.4★ · counter coffee ~€2, table service pricier · 8am–midnight", "d": "Padua's landmark neoclassical café, open continuously since 1831 and once a hub for student revolutionaries. Order the caffè alla Pedrocchi — espresso layered with mint cream — at the standing counter to skip the table-service surcharge; the green room can still be used without paying to sit.", "g": "https://maps.google.com/?cid=12905145665359821095", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDvKK2TzqePjKqOB9FbUq1P3JzlzKuvv1Pu-JefxgEJoZGBPkRHaWlc6srB0YhLf9dfsoNQ5xoOj2ivnzabsPgmtw15HMs1ZSIFnGeldgIJIxYjgl7z_hBD8GTv53pi6bmXwbmJ-tYTfsJi0w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAx0eErQFc674MjtqGFmUlbKj6_t3saVAMBMya56jdNtXeUiHDjfP0FIcP9RZl_s2nCtIafYqPwi1jA3g7m6IefmQfhmwU5f8ou_UQl5ivhSLU7pBskuAPe7-5cHQ7DbRhoXu0A84PKP_r3l70Z65zZ-w=s4800-w800-h600"], "a": ["Caffè Pedrocchi", "Anthony P"]}, {"c": "museum", "n": "Palazzo della Ragione", "zh": "medieval courthouse over the market", "lat": 45.4072512, "lng": 11.8752563, "m": "4.6★ · ~€8 · 9am–7pm, Closed Mon", "d": "One of the largest hanging medieval halls in the world, an 82m frescoed courtroom from 1306 suspended over Padua's still-working Piazza delle Erbe and Piazza della Frutta produce markets. The hall itself is fairly sparsely furnished for the ticket price — the market underneath and around it is free and arguably the better show.", "g": "https://maps.google.com/?cid=8283062001171017490", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDB4v5UpGXFo_h3W_1IuAU8PLLVoiimKc0TstRS_6Jdo0ponHt2Yo1rzyIOzt4w0xodEJFFwMG64g77NZNIsqSvoQnNVQRDE8_NAL0zPcCmlb7Wl1eUOb9axVgaikcVYxx4Fbjm8g6Xu-ajD40=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAUNTlBPNlN9-T9U8FC6XV48OkJe2znDHAqzCKulowYhQcs_GZvAeBGobyuAsATyVf3fIL5UrvWLEFaFviU0l6Q5yZ02BUYtzAEpRqGMuKhkxOglgTv7s4EK1eJZUOwp1ZCiCscZwnxezjLaw=s4800-w800-h600"], "a": ["Gianpaolo Pulcini", "Bressons Puddle"]}, {"c": "landmark", "n": "Verona Arena", "zh": "Roman amphitheatre, still in use", "must": true, "lat": 45.4389958, "lng": 10.9943574, "m": "4.7★ · ~€13 daytime, opera tickets separate & pricier · book cushion rental in advance for opera", "d": "A 1st-century Roman amphitheatre 50 years older than the Colosseum, still hosting summer opera to 15,000 people on its original stone tiers. By day it's a straightforward if impressive ruin visit; by night in July–August it's genuinely one of Europe's great live-performance experiences — book far ahead and bring or rent a cushion, the stone seating is unforgiving.", "g": "https://maps.google.com/?cid=10893438234845508597", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmP5MZnRMhV1YYzu9AoouFk6GrLPioKpcON43NhdaBJ2R4D5LHiOr_-3WAk8ZrlpeJvYEfvWediupKJ2mFq70HQge9iS62uf9qM1tPkkcENThf5rOLCFvpyI2KDuTWojSHjGE9ZOc7ABr867=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNHl9I7hdJ-V3Rz0bmzW0qjUbl9l4qP8cWbVg1_45Ls4BqZ2mnuRa4kMakGN4I0IXUl14TOzE--fhlL0qX0fzHQXaVN3YAQp8AwW-k7qqf3iu29BisEjbUmWlHbXoNaPZ_-Rk1S=s4800-w800-h600"], "a": ["Frank Schubert", "Petits Trésors Bcn"]}, {"c": "district", "n": "Casa di Giulietta", "zh": "Juliet's House — courtyard/balcony FREE, house ticketed", "lat": 45.4419488, "lng": 10.9986594, "m": "4.1★ · courtyard & balcony FREE · house museum ~€12 · very crowded, go early", "d": "A 13th-century house with a balcony added in the 1930s purely for the Romeo-and-Juliet legend, since Shakespeare's play predates any real connection to the building. The bronze Juliet statue in the courtyard is rubbed shiny for luck; the 4.1 rating reflects the crowds and queues rather than the modest sight itself — go at opening to actually enjoy it.", "g": "https://maps.google.com/?cid=813513705080237291", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNvTKrBT8j5MKeld_hjxwjYBsLWQwSHjCMEquY8Ihx1JsQyeFF8OkwZlImNHJlreah7ghP4WAf-8E69zHGMtBUKA0qIFiOlC9Ddckk5fi27--kKoREw8O4YtmwRfa9yc26NXXPG9PYt4q4=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPSYONcgDRqbpaOFaYBTUOlN3bSyKf1HLtyrk1DVuFCrDYNV-zX7vGts28y30jzliK_-Qv6hxydLSOEWSzznFBzj-I_umKkkKd7A5Y0GKmq9E5IssvZcrCyeOJvKrD8rEvefV-aVv6e4vES=s4800-w800-h600"], "a": ["Stefano Vigneri", "Mariacarla Ferreri"]}, {"c": "district", "n": "Piazza delle Erbe", "zh": "Verona's old Roman forum square", "lat": 45.4433477, "lng": 10.9969872, "m": "4.7★ · FREE · daily market stalls", "d": "Verona's former Roman forum, now a long square of frescoed facades, a Venetian column and lion, and a daily market of mixed produce and souvenir stalls. Busy and touristy by midday but genuinely handsome; connects directly to Piazza dei Signori and the Scaliger tombs.", "g": "https://maps.google.com/?cid=17540689017988865291", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNMBumDi_fjHewUM_Ht9kdYzj6RcIRGObpu-2tCH9Q8AMfmyoEw_HtY568FK50hEu5_tq76YMArkqIrqBU_GAGLicTfpz0eK_TZnA1gMG_qSg9M3Y-_69a5ymAEcnKnlfi-6bM8Iw=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmN1qSIfzaO7FRyvq4C7amgtTO3DCWxMX1c4bUzIACB7Tc150ukn17ErSXef8biHQEIXyxa_2y6GZH133uAWHli8zPt0Nx2ATH3nOitSH1iG_wOQtKcuX-ptn2j6ZYtI_24SXaC2=s4800-w800-h600"], "a": ["Muthuraja S", "Hiroyuki Hayafune"]}, {"c": "museum", "n": "Castelvecchio", "zh": "1354 riverside fortress museum", "lat": 45.4396401, "lng": 10.9882949, "m": "4.6★ · ~€9 · Closed Mon · 10am–6pm", "d": "A 14th-century Scaliger fortress on the Adige, converted into a museum by architect Carlo Scarpa in 1959–73 in a restoration widely studied for how honestly it lets raw concrete, steel and old stone sit side by side rather than disguising the repairs. The collection of medieval and Renaissance art (Pisanello, Bellini, Veronese) is strong, but the building itself is the real reason architecture visitors make the trip.", "g": "https://maps.google.com/?cid=8448149817079800998", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjASHWrKof1fJTfH_U8KUE82EFp6QCwOp5tZDQ0wpxqtLZtJsQE6MJdM4mjUyDLPGyfJx7IULf5aZFbQCa_XXHgT9cfcb_m32rsr6PTsUTEFl6RJwR-K7egq6yIaRPBuc7eqME6yUo9lVQyJZvk=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDYK-BxQeASUynqtAAQfM4u_CecJm6-KpWMnfwQ4U21B6wJAAveom9cjwM5JkBuqcb6q4vDhL41YqAJyJOgetV6g9YaFQwE6obz82wy7ycQ5AU2TXCx_XxyS11860pkJgYh5WeGyg8xUWLJ=s4800-w800-h600"], "a": ["Andrea Frison", "alex bellorio"]}, {"c": "landmark", "n": "Torre dei Lamberti", "zh": "Verona's tallest viewpoint", "lat": 45.4429688, "lng": 10.9977647, "m": "4.5★ · ~€8, +~€2 lift · 9:30am–9pm", "d": "An 84m tower over Piazza delle Erbe with a lift most of the way and stairs for the last stretch, giving the best rooftop panorama of Verona and the Adige bend. Far less of a queue than Verona's other big sights.", "g": "https://maps.google.com/?cid=1539611860846073150", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPPcsBZaFu5KlsjEGtqQZh2iCtSHmbdvZ9O2ZVtiisRtYjACT7E67o6pfRcjgWjg9lQDFK6D2PSzay_lirX402s-vXPFgnOrQJT2RpmwfCcfuD1yIevJD3kY654sRcb8Gl7mtPq6Q=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmO9E5dMMpzPEsi1Ih4pAVC-4dJhoSDkzVvvFAWSUrNdgSsZgQMfegQkf29u15xuSLWxMFTm-t_0UeIQKue6So7C5m9KcqOnKYAG9rVr9MNaH422EwZ_EQrB0c9JT8ThpVDqsPJMRg=s4800-w800-h600"], "a": ["Magdalene Lustig", "Adriano Campioni"]}, {"c": "landmark", "n": "Basilica Palladiana", "zh": "Palladio's civic masterwork", "must": true, "lat": 45.5469857, "lng": 11.5467202, "m": "4.7★ · ~€8, rooftop terrace access · Closed Mon · 10am–6pm", "d": "Andrea Palladio's first major public commission, wrapping a medieval Gothic hall he was hired to fix in 1546 with two tiers of white-marble loggias that made his career. Climb to the rooftop terrace for a view over the Piazza dei Signori and Vicenza's red-tiled roofline; the building doubles as an exhibition space so opening hours can shift around installs.", "g": "https://maps.google.com/?cid=14284964811640029141", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDzzsEhdAHpIFpCYXk8z-5S6j_l-KvSfKcN-qEisQJEGF0418W_WIDl2cCB_GKH0mXopnnrtIZ_nO7UXpoZGabRdLHzcZe7CQ36ijvAOt9tAErlBqoFEpFmh_axb3COxRmKKyXlwAs2-7JLxA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBTkVgmaiNrGvRlrYB4Mw2IWZRthApJyagwGBOmIHiMHa-xzWxcrhwzQiFLz3sKXfcaMibX8yBIJTxFsjGfQUQVYJkjTTSLOXHJqUwGtqd8IM0SltuVRRcHqR2wFFMJ89OhPU8UbFLcgQtmjMw=s4800-w800-h600"], "a": ["Roberto Cavaliere", "Muthuraja S"]}, {"c": "theatre", "n": "Teatro Olimpico", "zh": "oldest surviving indoor theatre in the world", "lat": 45.5501507, "lng": 11.5493211, "m": "4.8★ · ~€11, combined 'Card' tickets available · Closed Mon · 9am–5pm", "d": "Palladio's last work, finished after his death in 1580 by his student Scamozzi, who added a permanent wooden stage set of trompe-l'oeil streets receding into fake distance — a trick of forced perspective that still fools the eye. It remains the oldest surviving indoor theatre on Earth and occasionally hosts real performances on the original stage.", "g": "https://maps.google.com/?cid=9198684547601489496", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCa3-ssfkrLaYcwjgMy0JA5RJ_heGbkrwmQA1kYdBpF_Q1wbj5WIrM1jL5L7gGwJB0RNWrKyAGfX1d498wMTutQjEJsVkvAE-FbR6DBgCKVzSOCKJV5XaIxZYJGR6dLVbmPwzhcwNpY2P3T=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD4LVS9WjvNTlMQbiY8rVRaZrnko7zKr-NxkOKSlbVLUssOffVOO1OSzhWe8GxYhigTg8u8lj_cf-4_cf5X_8iWAu9UZJSqD9EWnxcwGEV01q6xHdg817OkCyEhX4S7Tfj0fYq2tugJL2bd18oAqOSSEQ=s4800-w800-h600"], "a": ["Teatro Olimpico", "stefano toselli"]}, {"c": "landmark", "n": "Villa Capra 'La Rotonda'", "zh": "Palladio's most copied design", "lat": 45.5315246, "lng": 11.5602699, "m": "4.6★ · ~€12 interior, gardens separate · Fri–Sun only 10am–1pm, 3–6pm", "d": "A perfectly symmetrical domed villa with four identical porticoed facades, finished after Palladio's death and endlessly copied since — most famously the influence is visible in the White House portico. Open only three days a week and half-days; the walkable path from central Vicenza takes about 40 minutes each way through the suburbs.", "g": "https://maps.google.com/?cid=7090915174120571253", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD0jOpY-18TYQZRG4seucKyBumwlybUEhyv42b49W_R-oCjwcnUs8EVlUd1wIpB9SKYK37EARf6g2k9bq8fZCRQ9jKjC3fOPHfMWdd5HBw_c1llkRgn3IkNiGsd0RNE6i-NgUu7tsXtYUsjgw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDMcOaZSk0Zfu9xt4pbGRNZkTZEtJ3pvRxEMV99PBTO3KvDQkOa_e9ahzbURBC9jL8OMHbdvItsLPI_UwNLNsAQ32hDpKAjd3lvljpd5eg4Yq4AVXae3jWfoWpN0Dp1du4Xvm5HEvVeiFVSdF2FWDUaXw=s4800-w800-h600"], "a": ["Villa La Rotonda", "Garam Mircea"]}, {"c": "sweet", "n": "Le Beccherie", "zh": "€€ · the restaurant that invented tiramisù", "must": true, "lat": 45.666394, "lng": 12.2465667, "m": "4.6★ · tiramisu ~€8–10, full menu also served · Closed Tue · 10am–7pm", "d": "Tiramisù was created here around 1972 by Ada Campeol and a kitchen colleague, and the restaurant still serves the original recipe — mascarpone, espresso-soaked ladyfingers, cocoa, no substitutions — in the square where it was invented. It's a full restaurant, not just a dessert counter, but most people come for the one dish.", "g": "https://maps.google.com/?cid=2637523271610122971", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAGvXLGJMVphpU3fQ4tQdZAr2CPTP0ne1A9peorNfHYiL06KRf-1YCxY_yuRlcoT9zXduY1obToPmhpJxt1hEoGtPDcRgKd9bHFnEcu7LjJ0XtmBltsSuSR1QcHC-H1ZqSTiDHj7wwVFKx3tD48iegkTw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCMtELn_CzkEY7EHGPHSKiB2WoMCRYphv8BiM0HFDkfRKHGxwC-xcUMPHPcbeNPmZ8bDP6XPnk-tykth1lEmJp3By0xeTLiMGd-YIInF4eILZQ2WvvsEwEdk8HsfI6fMBZyrgDHmQKHHrd6D4ejgRcVag=s4800-w800-h600"], "a": ["Alessandro Salvalaio (GIFT)", "Sara Albertazzi"], "s": "Legend credits Ada Campeol with inventing tiramisu in 1972 after the birth of her son, wanting a 'pick-me-up' (the dessert's literal translation). A rival claim says it began a decade earlier as an energy-boosting dessert served discreetly in Treviso's bordellos — a story the town has never quite managed to shake, or fully disprove.", "sl": "Invented for new mothers, or for brothels?"}, {"c": "market", "n": "Isola della Pescheria", "zh": "Treviso's river-island fish market", "lat": 45.6667623, "lng": 12.248296, "m": "4.7★ · market mornings · always-scenic", "d": "A small artificial island in the Cagnan Grande canal built specifically to house Treviso's fish market, ringed by water on every side. Come in the morning to see it working; any time of day it's one of the most photographed corners of the 'Little Venice of the Veneto'.", "g": "https://maps.google.com/?cid=10244684418242900026", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDcd9T-nz1ZmXeFbY9PjPZrAaK2_l6hv6qwmOzn7cg4zPPhQdflgkwm-YlKTJoSqquqrQFo8fpb01BuSjMixN4_DDc3tsHdbQYHVj_PKph0af9C0QphjdHGLavHo2JeeBEWv88P7z7BpsL2wXM_uwke=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDyfnnTdHy0uhJ6VyDh2b7JoHAntNQWE-NTA613ZK-l7ZlhrVYrv4k3HaV8bV0FhPfgJTt5c9nV2DHJ46zz2lpAKCyMaPnE1_46XE8GPHwZ5HgH9Xdlh6NqE6e6J4n4YmhgMWvKV6RzJt7eQg=s4800-w800-h600"], "a": ["Gabriele Scibona", "Ing. Rocco Abram"]}, {"c": "district", "n": "Piazza dei Signori", "zh": "Treviso's civic square", "lat": 45.6657348, "lng": 12.2455193, "m": "FREE", "d": "Treviso's civic heart, framed by the crenellated Palazzo dei Trecento and a medieval civic tower, with cafés spilling onto the square in the evening. A calm, half-timbered counterpoint to Venice an hour away — the whole old centre houses barely 3,000 people inside its walls.", "g": "https://maps.google.com/?cid=15478164372015086988", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBqys2_4GYXA_NY2CCB5rdPGcqOxxGrgp-kypGRZPTE0l6ocE4drNF_ccTztzNPAc5qtUqpNWItkl0Mq2UvPJ01CL0ssSC7ekqUqIj3osX_4ccxx_VwH96X0HSRqqB44Mzihc_0TlsYK1qJJw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCGzEEBzYOlDHA6q25S9gAcigpc1a2gKXynSnKq1nSJ5_EOBbvwUkR1tHABbxdBWDrIeBlW4GSa90nzS9kvtb1wz6TreluT5CQ86E30I1t4AotU8dvE_0n65g1nuYA3LlZtwF00fakxnInCFw=s4800-w800-h600"], "a": ["Franco Palazzi", "Cristina Sartori"]}, {"c": "landmark", "n": "Villa Pisani", "zh": "Napoleon's Brenta villa, Strà", "lat": 45.4083051, "lng": 12.0125488, "m": "4.4★ · ~€10 · 9am–8pm, Closed Mon · garden maze extra", "d": "The grandest of the Brenta Canal villas, 114 rooms built for the Pisani family to outshine every other Venetian dynasty, later owned by Napoleon and the scene of Hitler and Mussolini's first meeting in 1934. Tiepolo's ceiling fresco in the ballroom — Glory of the Pisani Family — is the highlight; the garden's boxwood maze is worth the extra ticket if it's open.", "g": "https://maps.google.com/?cid=13938008793211175174", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBNQSZ6hMaVYSfcHMrR7gXmZpTwSfqixWeJ2CY2XYGRT3f5CdrPJdp401iC748mHgrtSRW8fLhuWJFtU3tTEpnk3J20mxgye-F5Es3gJjUommqYPUlgR-EOSR1oaZEmWVHu7P7lz0v7kpGMv6o=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCn55-O5S3GlLqz7lprgo61bfUNjJodNdKDGoQVIueL7Ep7i36nZhas_WVPsNSaKeo7iT3gffswoWwZQsI_nEwoL7SRFkb5oyXAhDlWc2_5o3Fg3f8G9AEp5nLxAwEx7duUxQ5WRaKhjI6jwg=s4800-w800-h600"], "a": ["Tiziano Cristofoli", "Photoartist web"]}, {"c": "landmark", "n": "Villa Foscari", "zh": "'La Malcontenta' — Palladio on the water", "lat": 45.4367627, "lng": 12.2016441, "m": "4.4★ · ~€12 · Tue/Wed/Fri/Sat/Sun mornings + Tue/Wed/Fri/Sat/Sun afternoons", "d": "The only Palladio villa built directly on the Brenta river, finished around 1560 and nicknamed 'the unhappy one' after a legend of a Foscari wife exiled here for adultery — most historians think it's just folklore. Less visited than Villa Pisani and better for appreciating Palladio's actual architectural ideas without a crowd.", "g": "https://maps.google.com/?cid=5480981669956346686", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCHbNrg9WqzFU-T9RpSSVER0kJIQ8XLaP3gH3eP9U76DFf84AMWjqMAVUN0cxa7JYyB5BlrE1oZdiPc7k46BCCQXXFyLGHSsKTWJYs5yF_ZkHtuvkKdy0ztIXTcIr9WuagxCHNRzWtl9UiUdQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAqmXQ-rhEl-fVK-VyyHFj7W2-t9FGCREb3qgNgezQtrj5ovm8aUQzSTCz9DsJYKhu3rSshGlLFlNVUmvrPaNbV_-T83vbj7OdTVLjI9ETBoa3qch3Xlp3C7TIYOMM0IHP7PQ_kvpC6mVvizQ=s4800-w800-h600"], "a": ["Villa Foscari - La Malcontenta", "Gabriella Morozzi"]}, {"c": "stay", "n": "Padua", "zh": "stay here — cheaper, best rail hub for the mainland leg", "lat": 45.4064, "lng": 11.8768, "m": "Best for: value, flexibility across Verona/Vicenza/Venice day trips", "d": "Hotels run a fraction of Venice prices, the train station is a short walk from the centre, and Padua sits close enough to everything — Venice, Verona, Vicenza — that changing your plans mid-trip costs little. The default choice if the mainland is a big share of the itinerary.", "g": null, "nophoto": "district, not a business"}, {"c": "stay", "n": "Venice (for the whole trip)", "zh": "stay here — keep the lagoon base, day-trip out", "lat": 45.438, "lng": 12.327, "m": "Best for: keeping the early-morning and late-evening magic of Venice itself", "d": "Every mainland and island destination on this map works as a day trip from a Venice base — trains to Padua run roughly every 15–20 minutes, Verona and Vicenza are under 1.5 hours, and the lagoon islands are a vaporetto ride away. The tradeoff is Venice's higher accommodation prices; see the companion Venice map's sestiere-by-sestiere breakdown.", "g": null, "nophoto": "district, not a business"}, {"c": "stay", "n": "Treviso", "zh": "stay here — only if flying via Treviso airport", "lat": 45.6669, "lng": 12.2431, "m": "Best for: Prosecco Hills, Conegliano, budget flights into TSF", "d": "Makes little sense as a hub unless your flights land at Treviso Airport (marketed by budget airlines as 'Venice'), in which case it saves a transfer and gives easy access to the Prosecco Hills. For a Venice-plus-Veneto trip landing at Marco Polo, Padua is the more central choice.", "g": null, "nophoto": "district, not a business"}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+(pl.must?' must':'')+'" style="background:'
+         +CATS[pl.c].color+'">'+glyph(pl.c)+(pl.must?'<i class="star-badge"></i>':'')+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true,
+    zIndexOffset: pl.must?1000:0});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galPrev.style.visibility = pics.length>1?'':'hidden';
+  galNext.style.visibility = pics.length>1?'':'hidden';
+  galPrev.disabled=true; galNext.disabled=pics.length<2;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+  const multi=imgs.length>1;
+  galPrev.style.visibility = multi?'':'hidden';
+  galNext.style.visibility = multi?'':'hidden';
+  galPrev.disabled = i<=0;
+  galNext.disabled = i>=imgs.length-1;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+/* arrows, for mice and keyboards; touch users just swipe */
+const galPrev=document.getElementById('galPrev'), galNext=document.getElementById('galNext');
+function galScroll(dir){
+  const w=galTrack.clientWidth||1;
+  const i=Math.round(galTrack.scrollLeft/w)+dir;
+  const n=galTrack.querySelectorAll('img').length;
+  galTrack.scrollTo({left: Math.max(0,Math.min(n-1,i))*w, behavior:'smooth'});
+}
+galPrev.onclick=e=>{e.stopPropagation();galScroll(-1);};
+galNext.onclick=e=>{e.stopPropagation();galScroll(1);};
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng+"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  panToPlace(pl);
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+/* Wide screens show the card as a left-hand panel, so the gesture axis and the
+   map centring both have to change. Keep this threshold in sync with the CSS. */
+const SIDE_MIN_WIDTH = 720;
+function sideMode(){ return window.innerWidth >= SIDE_MIN_WIDTH; }
+
+function panToPlace(pl){
+  const ll = L.latLng(pl.wlat, pl.wlng);
+  if(!sideMode()){ map.panTo(ll,{animate:true}); return; }
+  // shift the centre left by half the panel so the pin sits in the visible half
+  const panelW = (document.querySelector('.sheet')||{}).offsetWidth || 390;
+  const pt = map.project(ll, map.getZoom()).subtract([panelW/2, 0]);
+  map.panTo(map.unproject(pt, map.getZoom()), {animate:true});
+}
+
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the card down to dismiss ----
+   Touch: drag anywhere in the card, but only when it is scrolled to the top, so
+   reading a long card still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    // In side mode the dismiss axis IS the gallery axis, so the gallery wins
+    // any gesture that starts on a photo.
+    if(sideMode() && e.target.closest && e.target.closest('.gal')) return;
+    // Vertical scroll only conflicts with the bottom sheet.
+    if(!sideMode() && sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'go':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  const side=sideMode();
+  // side panel slides out to the LEFT; bottom sheet slides DOWN
+  const along = side ? -dx : dy;      // movement toward dismissal
+  const across = side ? dy : dx;      // movement that belongs to the gallery
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(along)>Math.abs(across) ? 'go' : 'other';
+    if(drag.axis==='other'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(along<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=along;
+  sheet.classList.add('dragging');
+  sheet.style.transform = side ? 'translateX(-'+along+'px)' : 'translateY('+along+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();   // distance OR flick
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='go' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  const ab=document.getElementById('about');
+  if(ab && ab.classList.contains('open')) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- city overview ---------- */
+const about=document.getElementById('about'), aboutBtn=document.getElementById('aboutBtn');
+function esc(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function rich(x){ // allow **bold** only
+  return esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+}
+function renderAbout(){
+  if(!CITY || !Object.keys(CITY).length){ aboutBtn.style.display='none'; return; }
+  document.getElementById('abTitle').textContent = CITY.name||'';
+  document.getElementById('abTagline').textContent = CITY.tagline||'';
+
+  const st=document.getElementById('abStats');
+  st.innerHTML=(CITY.stats||[]).map(s=>
+    '<div class="stat"><div class="k">'+esc(s[0])+'</div><div class="v">'+esc(s[1])+'</div></div>'
+  ).join('');
+  st.style.display=(CITY.stats||[]).length?'grid':'none';
+
+  document.getElementById('abSections').innerHTML=(CITY.sections||[]).map(s=>
+    '<h3>'+esc(s[0])+'</h3>'+String(s[1]).split('\n\n').map(par=>'<p>'+rich(par)+'</p>').join('')
+  ).join('');
+
+  const musts=CITY.musts||[];
+  document.getElementById('abMusts').innerHTML = musts.length
+    ? '<h3>Must see, do &amp; try</h3><ul class="musts">'
+      + musts.map(m=>'<li>'+rich(m)+'</li>').join('') + '</ul>'
+    : '';
+
+  const near=CITY.nearby||[];
+  document.getElementById('abNearby').innerHTML = near.length
+    ? '<h3>Nearby</h3><ul class="nearby">'
+      + near.map(n=>'<li>'+rich(n)+'</li>').join('') + '</ul>'
+    : '';
+
+  document.getElementById('abFoot').textContent = CITY.foot||'';
+}
+renderAbout();
+function toggleAbout(open){
+  about.classList.toggle('open',open);
+  about.setAttribute('aria-hidden',open?'false':'true');
+  aboutBtn.classList.toggle('active',open);
+  if(open) about.scrollTop=0;
+}
+aboutBtn.onclick=()=>toggleAbout(!about.classList.contains('open'));
+document.getElementById('aboutClose').onclick=()=>toggleAbout(false);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') toggleAbout(false); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+let wasSide=sideMode();
+window.addEventListener('resize',()=>{
+  const now=sideMode();
+  if(now!==wasSide){ wasSide=now; if(selected) panToPlace(selected); }
+});
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
