@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!-- city-guide-maps template v7 capabilities: swipe-dismiss,drag-handlers,click-away,escape-key,gallery,side-panel,must-see,overview,filters,fullscreen,geolocation -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Siena — 3 Days: Where to Go & Eat</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{position:relative;width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .pin.must{border-color:#F2C14E;border-width:3px;
+    box-shadow:0 0 0 1.5px rgba(120,80,0,.55),0 2px 7px rgba(0,0,0,.45)}
+  .star-badge{position:absolute;top:-5px;right:-5px;width:12px;height:12px;
+    background:#F2C14E;border-radius:50%;border:1.5px solid #fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+    width:30px;height:30px;border:none;border-radius:50%;cursor:pointer;
+    background:rgba(0,0,0,.42);color:#fff;display:none;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);transition:background .15s ease}
+  .gal-nav:hover{background:rgba(0,0,0,.65)}
+  .gal-nav:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .gal-nav svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .gal-nav.prev{left:8px} .gal-nav.next{right:8px}
+  .gal-nav[disabled]{opacity:.3;cursor:default}
+  /* only for real pointers — touch users swipe */
+  @media (hover:hover) and (pointer:fine){
+    .gal:hover .gal-nav, .gal-nav:focus-visible{display:flex}
+  }
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  /* when there is no photo the grabber would sit on the text */
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---- city overview sheet ---- */
+  .about{position:absolute;inset:0;z-index:1400;background:var(--paper);
+    overflow-y:auto;transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.32,.72,.35,1);
+    -webkit-overflow-scrolling:touch}
+  .about.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.about{transition:none}}
+  .about-inner{max-width:640px;margin:0 auto;padding:18px 20px calc(40px + env(safe-area-inset-bottom))}
+  .about h2{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:3px}
+  .about .tagline{font-size:14.5px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+  .about-close{position:sticky;top:0;float:right;width:34px;height:34px;border:none;
+    border-radius:50%;background:#eef1f5;color:#5b6472;font-size:16px;cursor:pointer;
+    line-height:1;z-index:2;margin-left:10px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;
+    margin-bottom:20px}
+  .stat{background:#f6f4ef;border-radius:11px;padding:9px 11px}
+  .stat .k{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#8b8577;margin-bottom:2px}
+  .stat .v{font-size:14px;font-weight:700;line-height:1.25}
+  .about h3{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:20px 0 7px}
+  .about p{font-size:14.5px;line-height:1.6;color:#374050;margin-bottom:9px}
+  .musts{list-style:none;margin:2px 0 4px}
+  .musts li{position:relative;padding:7px 0 7px 27px;font-size:14.5px;line-height:1.5;
+    border-bottom:1px solid #f0ece4}
+  .musts li:last-child{border-bottom:none}
+  .musts li::before{content:"";position:absolute;left:5px;top:14px;width:9px;height:9px;
+    border-radius:50%;background:#F2C14E;box-shadow:0 0 0 2px rgba(242,193,78,.28)}
+  .musts b{font-weight:750}
+  .nearby li{padding:7px 0 7px 27px;font-size:14px;line-height:1.5;list-style:none;
+    position:relative;color:#374050}
+  .nearby li::before{content:"";position:absolute;left:6px;top:15px;width:7px;height:7px;
+    border-radius:50%;background:#9E9D24}
+  .about .foot{font-size:11.5px;color:#95a0ae;margin-top:22px;line-height:1.5;
+    border-top:1px solid var(--line);padding-top:13px}
+  /* ---- wide / landscape: the card becomes a left-hand panel ----
+     A full-width bottom sheet letterboxes photos badly once the window is wide. */
+  @media (min-width:720px){
+    .sheet{left:0;right:auto;top:0;bottom:0;width:390px;max-height:none;height:100%;
+      border-radius:0 20px 20px 0;box-shadow:8px 0 30px rgba(16,24,40,.22);
+      transform:translateX(-105%)}
+    .sheet.open{transform:translateX(0)}
+    .gal, .gal-track img{border-radius:0 20px 0 0}
+    .gal-track img{height:auto;aspect-ratio:3/2}
+    .grabber{top:0;bottom:0;left:auto;right:0;margin-left:0;width:24px;height:100%;
+      flex-direction:column}
+    .grabber::after{width:4px;height:38px}
+    .sheet:has(.gal.none) .sheet-body{padding-top:16px}
+    .sheet-body{padding-right:26px}
+    /* keep the filter panel clear of the card */
+    .panel{left:auto;right:70px}
+    .about-inner{padding-left:26px}
+  }
+  @media (min-width:720px) and (max-height:520px){
+    /* phone held sideways: shorter, so trim the photo further */
+    .gal-track img{aspect-ratio:2/1}
+  }
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Siena — 3 Days: Where to Go & Eat</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="aboutBtn" title="About this city" aria-label="About this city">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Circles = sights, squares = food, diamonds = wine. Gold ring = don't miss. DUOMO FLOOR UNCOVERED UNTIL 15 NOV 2026. Pinacoteca Nazionale CLOSED for rebuilding (left off the map; see Palazzo Chigi instead). Many osterie CLOSED SUNDAY; Permalico CLOSED WED; Buti CLOSED MON. The centre is a ZTL — no driving without a permit. Photos are traveller submissions via Google; not individually checked.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <button class="gal-nav prev" id="galPrev" aria-label="Previous photo">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="gal-nav next" id="galNext" aria-label="Next photo">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="about" id="about" role="dialog" aria-label="About this city" aria-hidden="true">
+  <div class="about-inner">
+    <button class="about-close" id="aboutClose" aria-label="Close">✕</button>
+    <h2 id="abTitle"></h2>
+    <p class="tagline" id="abTagline"></p>
+    <div class="stats" id="abStats"></div>
+    <div id="abSections"></div>
+    <div id="abMusts"></div>
+    <div id="abNearby"></div>
+    <p class="foot" id="abFoot"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"heritage": {"label": "Squares, palaces & views", "color": "#8D4A2F", "icon": "landmark"}, "church": {"label": "Churches & saints", "color": "#6A1B9A", "icon": "church"}, "museum": {"label": "Museums", "color": "#1565C0", "icon": "palette"}, "sweet": {"label": "Panforte, pastry & gelato", "color": "#6D4C41", "icon": "cake-slice", "shape": "food"}, "cheap": {"label": "Cheap eats (€)", "color": "#00ACC1", "icon": "utensils", "shape": "food"}, "mid": {"label": "Mid-range (€€)", "color": "#F9A825", "icon": "utensils", "shape": "food"}, "splurge": {"label": "Splurge (€€€)", "color": "#C2185B", "icon": "utensils-crossed", "shape": "food"}, "wine": {"label": "Wine bars", "color": "#37474F", "icon": "wine", "shape": "drink"}, "stay": {"label": "Where to stay (areas)", "color": "#546E7A", "icon": "bed"}};
+const ICONS = {"bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "cake-slice": "<path d=\"M16 13H3\"/> <path d=\"M16 17H3\"/> <path d=\"m7.2 7.9-3.388 2.5A2 2 0 0 0 3 12.01V20a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-8.654c0-2-2.44-6.026-6.44-8.026a1 1 0 0 0-1.082.057L10.4 5.6\"/> <circle cx=\"9\" cy=\"7\" r=\"2\"/>", "church": "<path d=\"M10 9h4\"/> <path d=\"M12 7v5\"/> <path d=\"M14 21v-3a2 2 0 0 0-4 0v3\"/> <path d=\"m18 9 3.52 2.147a1 1 0 0 1 .48.854V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6.999a1 1 0 0 1 .48-.854L6 9\"/> <path d=\"M6 21V7a1 1 0 0 1 .376-.782l5-3.999a1 1 0 0 1 1.249.001l5 4A1 1 0 0 1 18 7v14\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "palette": "<path d=\"M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z\"/> <circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "utensils-crossed": "<path d=\"m16 2-2.3 2.3a3 3 0 0 0 0 4.2l1.8 1.8a3 3 0 0 0 4.2 0L22 8\"/> <path d=\"M15 15 3.3 3.3a4.2 4.2 0 0 0 0 6l7.3 7.3c.7.7 2 .7 2.8 0L15 15Zm0 0 7 7\"/> <path d=\"m2.1 21.8 6.4-6.3\"/> <path d=\"m19 5-7 7\"/>", "wine": "<path d=\"M8 22h8\"/> <path d=\"M7 10h10\"/> <path d=\"M12 15v7\"/> <path d=\"M12 15a5 5 0 0 0 5-5c0-2-.5-4-2-8H9c-1.5 4-2 6-2 8a5 5 0 0 0 5 5Z\"/>"};
+const CITY  = {"name": "Siena", "tagline": "A hilltop city-state that lost its war with Florence in 1555 and, with it, the money to modernise — which is exactly why its 14th-century centre survives almost untouched.", "stats": [["Population", "~53,000"], ["UNESCO", "Historic centre, 1995"], ["Florence", "~1h15 by bus or train"], ["Train station", "below the walls — escalator up"], ["Contrade", "17 neighbourhoods, each with its own flag"], ["Palio", "2 July & 16 August"], ["Budget/day", "~€60 thrifty, ~€140 comfortable"], ["Stay", "3 days is right"], ["Best months", "Apr–Jun, Sep–Oct"], ["Duomo floor", "uncovered to 15 Nov 2026"]], "sections": [["History in five minutes", "Siena grew rich on the Via Francigena pilgrim road and on banking — Monte dei Paschi, founded 1472, is still headquartered here. For two centuries it fought Florence for Tuscany, and between 1287 and 1355 it was governed by the Council of Nine, a merchant oligarchy that commissioned the Campo, the Palazzo Pubblico and the Good Government frescoes.\n\nThen in 1348 the Black Death killed around half the population and froze the city mid-project — the Facciatone is a cathedral extension abandoned that year. After a long siege Siena fell to Florence and Spain in 1555; the Medici built the Fortezza to hold it down. With power and money gone, nobody rebuilt: that's why you're walking through the 1300s."], ["Culture and society", "Siena is divided into three **terzi** and seventeen **contrade** — neighbourhoods with their own church, museum, fountain, animal emblem and fierce loyalty. You'll see their flags on the walls and small plaques telling you when you cross a border. The contrade compete in the **Palio**, a bareback horse race round the Campo on 2 July and 16 August, and the rivalry runs all year. A Sienese is baptised into their contrada."], ["Economy, then and now", "Banking built the city and still shapes it: Monte dei Paschi was for centuries the main employer and patron, and its troubles after 2008 hit Siena hard. Today tourism, the University of Siena (founded 1240) and the University for Foreigners, plus the wine trade of the surrounding Chianti and Montalcino, pay the bills."], ["Iconic food & drink", "**Pici** — thick hand-rolled spaghetti, best all'aglione (garlicky tomato) or with ragù. **Crostini neri** — chicken-liver toasts. **Ribollita** and **pappa al pomodoro** — bread soups. **Cinta senese** — the local black-and-white-belted pig, as salumi. Sweets: **panforte** (dense spiced fruit-and-nut cake, dating to the Middle Ages) and **ricciarelli** (soft almond biscuits), both IGP-protected. **Ciaccino** is the student lunch. To drink: Chianti Classico from the north, Brunello from Montalcino to the south."], ["Unique to Siena", "The Duomo's 56-panel marble floor, normally hidden under boards, is uncovered this year until 15 November. Saint Catherine's head is on display in San Domenico. And the city gives you a free view most places charge for: stand on the terrace outside San Domenico and look across the valley at the Duomo."], ["Three days, one way to split them", "**Day 1 — the civic city.** Campo at 9am, tower ticket first, Museo Civico while you wait; ciaccino lunch; Santa Maria della Scala in the afternoon; dinner at Permalico or Grattacielo.\n\n**Day 2 — the Duomo.** Pre-booked slot for the cathedral, Libreria Piccolomini, then Museo dell'Opera and the Facciatone climb; gelato and Banchi di Sopra via Piazza Salimbeni; aperitivo at I Terzi; dinner at La Sosta di Violante.\n\n**Day 3 — Catherine's Siena.** San Domenico, down to the Santuario and Fontebranda, back up to the Fortezza ramparts (Wednesday market); Manganelli for panforte to take home; last dinner at Sotto le Fonti or Campo Cedro."]], "musts": ["**Piazza del Campo** — sit on the paving, not at a café (FREE)", "**Palazzo Pubblico & Torre del Mangia** — Good Government frescoes, then ~400 steps (~€15–20 combo)", "**Duomo** — marble floor uncovered until 15 Nov 2026 (OPA SI pass ~€13–16)", "**Facciatone** — climb the wall of the unfinished cathedral (on the OPA SI pass)", "**Santa Maria della Scala** — medieval hospital frescoes and tunnels (~€9)", "**San Domenico** — Catherine's head, and the best free view of the Duomo (FREE)"], "nearby": ["**Monteriggioni — ~30 min by bus.** A complete ring of walls and towers on a hill; Dante compared it to giants. Walk the ramparts.", "**San Gimignano — ~1h15 by bus (change in Poggibonsi).** The medieval towers town; go early or late to beat the coaches.", "**Montalcino & Pienza — by car or tour.** Brunello tastings and the Renaissance 'ideal city' in the Val d'Orcia.", "**Florence — ~1h15 by bus or train.** Buses drop you more centrally than the Siena train station."], "foot": "Prices indicative for 2026 and marked ~ where not confirmed; re-check before you go. Sources: GPSmyCity & Musement tour outlines, Italian food blogs (TryItaly, Hotel Minerva, Turismo Weekend, Pietrolley), Michelin Guide, Agrodolce & Palazzo Ravizza on panforte, Opera del Duomo & La Nazione on the floor uncovering, Corriere di Siena on the Pinacoteca closure. Place data & photos © Google and contributors."};
+const PLACES = [{"c": "heritage", "n": "Piazza del Campo", "zh": "Il Campo · the shell-shaped square", "must": true, "lat": 43.3184205, "lng": 11.3316911, "m": "4.8★ · FREE · 24h · Palio 2 July & 16 August", "d": "The sloping, fan-shaped square where the Palio is run: nine brick segments for the Council of Nine who governed from the palace at the bottom. Sit on the paving like the Sienese do rather than paying café prices on the rim. Fonte Gaia at the top is a 19th-century copy — the original Jacopo della Quercia panels are in Santa Maria della Scala.", "s": "Twice a year the Campo is packed with earth and becomes a racetrack. Ten of the seventeen contrade race bareback, three laps, about 90 seconds. Jockeys may whip rivals, and a riderless horse can still win — it's the horse, not the rider, that counts.", "sl": "The horse can win without its jockey", "g": "https://maps.google.com/?cid=5092226682825343578", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmM15bjomP2S3bDJApl5VyXogsVwgnXX9nC0nfUwuMd8HP9amhISVGBmhUy2gK8QoyRIjt0QpX-06yijCCcQvlOdQiI9MvW3AbAYOnZFkLAQU8Virfek6poGBU4cq6KzuuQYJmub4I5SId8S=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOJSwcby2Ok3WsL2pBgC28hn3bN8yOsEE9y4ppI5Cas4MEZxhkb2vs88iL-PH_pEbJivwVHBsfPpaoiox-j9_u5rEpts0KC6FG0MPKp7l9OYuj6xQ0C-tAGSyS9UEfjcx1qT-8PQw=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMH-m-bQb1AEFv0ZZYjUAqQVoe-tJlw_1TH95ZNlZft4kzQLEFHHW5fVnAugFyONhFgDbwWttrJl8CAH_e26CpWBHJ9ABvmbYkBsvx5ZQGsDYwE0oF6OMQzJ37OkyMZO-o5PrbY=s4800-w800-h600"], "a": ["Alessandro", "Davide Regondi", "Wam"]}, {"c": "museum", "n": "Palazzo Pubblico, Museo Civico & Torre del Mangia", "zh": "town hall · frescoes · 87m tower", "must": true, "lat": 43.3179909, "lng": 11.3320257, "m": "4.7★ · museum ~€10, combo with tower ~€15–20 · 10am–6pm daily", "d": "The medieval republic's town hall. Go for the Sala dei Nove, where Ambrogio Lorenzetti's Good and Bad Government frescoes (1338) show a thriving city beside a ruined one — the most political painting of the Middle Ages. The tower is roughly 400 narrow, low-ceilinged steps; tickets are sold only on the spot in timed groups, so buy yours first thing and see the museum while you wait.", "s": "The tower is named after its first bell-ringer, Giovanni di Balduccio, nicknamed 'Mangiaguadagni' — 'eat-the-profits' — because he spent every coin he earned on pleasure. The city put his nickname on its proudest building.", "sl": "Named after a spendthrift bell-ringer", "g": "https://maps.google.com/?cid=8579937925635841447", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMp6UrRTpie5rIIxqROzvp0rRrvp3zGoN_zYerScH5yLH3Td-2a1HhyTbj47-GUelUeLzOkT-e1EnXOzh_FTnfDnQc4N93bKWgNy7oAzQPKvEvODHI4sMqQyye0FpsTTdrsnmvBZQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMybZm8dLmHL5GZcGmjaRkV8Z9ZVX9tdSK0qQJq7-zrt8iZbks3LK_b4vyBxU7Q9PlOis3Sw6UppofX0kSEsJ6PnYS8JtOTOU3QWDoYHkGCR9KD8GCQnxqC0IaXNC29iS5S8y923P6lVeO4=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNoqSN8-fT0wjijcJuDfH6MgTu0GP55SlT8mr8Xo34OzhuTOf3_QOa7U09sw73h8f7LLBAaEjACFiwUnG1YjDEaLqphdpH9HhfuDqoSJpyJO57GguFl9CbJ01q7vcQgVDg5-ZVh=s4800-w800-h600"], "a": ["Tiago de Moraes Xausa", "Massimo Del Carlo", "Максим Жирик"]}, {"c": "church", "n": "Duomo (Siena Cathedral)", "zh": "Cattedrale di Santa Maria Assunta", "must": true, "lat": 43.3177019, "lng": 11.3289071, "m": "4.8★ · FLOOR UNCOVERED UNTIL 15 NOV 2026 · 10am–7pm · OPA SI pass ~€13–16", "d": "Black-and-white striped marble inside and out, Pisano's pulpit, a young Michelangelo's statues on the Piccolomini altar. The real reason to come now: the 56 marble floor panels are normally carpeted over and are uncovered until 15 November 2026. Buy the pass online with a time slot — the on-site ticket queue runs 15–20 minutes even in shoulder season. The Porta del Cielo roof walk is a separate, pricier ticket.", "g": "https://maps.google.com/?cid=5907906346753187397", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMGBHCmd2neMdyanAXnpSvfqqXTrNhdL-Bwz_wIuU8lhnGfPZiEpG-KRdrR28xhhctVfQj7ZqGGGxeZm_tsk_2QQmiDK2MVN7LvUJ35aaOvFNkmKUh987SUw4TwaXdr7uf5Qk-74GW0qLp2=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPwNXx0zqEIp09CQ6MqtR5jxT20TmZBiIxJ04kbnUltMRKMNzNs6et0Imb4Vvs7Pnb4x-DjRKxcRm7JNs3Wkf2cXMir80kYLuRaP1FL-yJkZSbvG8F3wSGRHbOwNSRJuugNYCL01A=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOfmwLFZCgH-3S6n6y7khjcdDVzc6ZeTu1JmH_Y0-NRaKI9WDCLbR3uMnwD2oofn0i1_BuoSUMyiullxG7yYVRBVP9YeEwYDIJdqQb9l2dTqd71f4hRHZchU7ZFgTPwkB0rrBCSSWou5RA=s4800-w800-h600"], "a": ["Martin Broguet", "Jim Mannoia", "Franco Ronconi"]}, {"c": "museum", "n": "Libreria Piccolomini", "zh": "inside the Duomo · Pinturicchio frescoes", "lat": 43.3178041, "lng": 11.3287098, "m": "4.9★ · on the OPA SI pass · 10:30am–5:30pm, SUN FROM 1:30PM", "d": "A room off the cathedral's left aisle, frescoed floor to ceiling by Pinturicchio with the life of Pope Pius II — the colours look painted last year. Choir books up to 700 years old sit in the cases. Easy to miss if you only buy the cathedral-only ticket, so check your pass includes it. Save it for last: it's the best room in the complex.", "g": "https://maps.google.com/?cid=13831033539677994741", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDP4HZ3lABh8RYYEU46k26hJ1XSB6EZs4grRoqxFnGVCMrAaP6tSYKIqglyOxNUkcSaoTKb78OSU6lqC_W4qdDtJq3Y7T4gmPNgM1ffLdXuKk0aXjnuMuZFmBf8_wFjgbFrjlZ8MtNE4CL9=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDLOT2m1MeYtRNNmmSbiJRWnr9RK3e0mGVvD8YsaWU_dbpWVimRh65zo1iIdRmDrbcAGZ6DJlaGm5KiMx7wYaTgShmregV8y5hyZGOT0t8mJd7dSCuMutR42s7nzRhDFhefwgZ7uf_kH8WJnIo=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCuEY_iyp2Yi9SV9fne5w5j9ZFCxXcXqmeckmJRQNk4TmUtAGOxoZH1yNOZgIYFJTUECq8JUrW8DKGUxm2r8wk-vZQei-Gb2ukUkr3-nGoANpk7HHJx8GjSckGxj_HSpUMA_oCjvPIMqiYHQg=s4800-w800-h600"], "a": ["Stephan Fink", "Davide", "Claudia D'Antonio"]}, {"c": "heritage", "n": "Facciatone & Museo dell'Opera", "zh": "the cathedral that never was", "must": true, "lat": 43.3173562, "lng": 11.3298802, "m": "4.4★ · on the OPA SI pass · 10am–5:30pm · QUEUE for the top", "d": "The museum holds Duccio's Maestà, the altarpiece Siena paraded through the streets in 1311. Then you climb the Facciatone — the free-standing wall of an abandoned cathedral extension — through a shoulder-width spiral stair to a ledge over the whole city. The queue for the top can run 30–60 minutes; go at opening or the last hour.", "s": "In the 1330s Siena began a new cathedral so vast the current Duomo would have become just its transept. In 1348 the Black Death killed perhaps half the city. Work never resumed. The wall you climb, and the empty nave you walk through to reach the museum, are that plan frozen in place.", "sl": "Stopped dead by the Black Death", "g": "https://maps.google.com/?cid=15719824742476057118", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAOxc3o4MjjQb_mj5V43JF-OUqg-k8lfRVjOlWtjSrENjU5CyraR4i6lQZrkYmCVnqDMaw1mnioz4wdDkjezG1iRtECXmUYAmicHEP3J2s7wHMHUHzqxxZDPhAAv8RZrb2kCl8y4qGkboEaPw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCssrU6dTTnUPI4D6RtK2wWn26tYLP9XC7oQmkznro1bjXK23OmLOoUcvCMWu4ptZFad_7SHGQOYOsQeoPLM1TDb6yK3ikph2KWomKtHj2UUqfWxQsZnFc9aFSynhp3LevfLqX4EFpbYgVx5DKQxWO6=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBag9ZT8Nw1SXj2FvY9yRfWM1Dt4fS6NQBlgyYC53KAOjSiQy92qMerDHKjNb8GjIl6w_fOvmCCva84ZPAqiX0xwlmG__HBoApWcDT7tCMU8sNiunZoyNUObFWUqxhy3xrakfzpJku5ZRbeGXA=s4800-w800-h600"], "a": ["Alan Deng", "Paul Kaufmann", "Marco Rossetti"]}, {"c": "museum", "n": "Santa Maria della Scala", "zh": "1,000-year-old hospital, now museum", "must": true, "lat": 43.3169445, "lng": 11.3287678, "m": "4.6★ · ~€9 · 10am–7pm · TUE & THU 3PM closed-wing tours (book)", "d": "One of Europe's oldest hospitals, working until 1990, opposite the Duomo. The Pellegrinaio ward is frescoed with medieval patients being washed, fed and treated — rare scenes of ordinary care. Below are the original Fonte Gaia panels and a warren of tunnels with the archaeological museum. Until end of October 2026 there are small-group Tuesday and Thursday 3pm visits into the never-opened wings; book ahead, max 10 people.", "g": "https://maps.google.com/?cid=8317551475153085221", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPCpXDzmCeOkrKYF5LOTy2DmnTEwK9Xp6MX87B_sT-G41NMNVwDIzoBuN8fRtuKoPObRDAE4eUzbSt8N0A0MtEns5noBmWm8Ksvngbn_g5g6UGzOP4YUWz4wz4qKEMGEic8GtrNfnRBCT7V=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmP14HjbtPnA2mkKxsSJfPPWW6Q25BiEb6R0iYQibPK8anqx05MkgwByPzt3VXChuQUmHhQstJAHPaKPnxQzpe1SVQ1kkYhqm2MjQ0DUC2PGI1P1kpjtJiF4HvG_L8ACkWm5H_4w=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPORl06ivklOYi8LLMZhdDbfp8iESHi2umGlO544NLBS3vYNdc2mqSORSv19tQmDW623dO0XHciZ5wxwBVkeyyzTVRkL637E1HUH8YIULeIdnWkthaVaGjd2EzP7HUyGN6-LYAyAQ=s4800-w800-h600"], "a": ["Complesso Museale Santa Maria della Scala", "Marc Jöhl", "Alberto S."]}, {"c": "museum", "n": "Palazzo Chigi Piccolomini alla Postierla", "zh": "stand-in for the closed Pinacoteca", "lat": 43.3167118, "lng": 11.328809, "m": "4.3★ · €4 · card only · THU–FRI 9am–7pm, MON & SUN MORNINGS · check hours", "d": "The Pinacoteca Nazionale — Siena's gold-ground painting gallery — has been shut since January 2026 for rebuilding and had not reopened as of mid-September. This palace next door is the national museum's temporary showcase: a few well-organised rooms, including the newly bought Rutilio Manetti 'Four Seasons'. Small, cheap, and the only way to see part of the collection right now. Google's hours for it look garbled; trust the museum site.", "g": "https://maps.google.com/?cid=16011108770964186644", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBm-cUdYVxnD7iogHaYyewCQawLP1E3RNPSds1EB6bUxPjEobX6RrixIOy5Et2WQG8T6n9yUD0Dd2uVtZRzrx_FiIpHP2Q0Gj99sNafyfuDjQcI0zrApfTXYN6r8aDJJH5lKwyEfm_B0Xfr7XOsLYvWKA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD0Z7bujrt-Q-1jeuEaR_sJA-c8SqP1qWTjFEQ0YJU63jcZToLrVnJh2ZagLHHvDCgaYeMN404ZI1Z4S_UziWkRBDzw6g4_OeCmurO3cD2CYd9IKXWwGkSO6ejYcu65X6Z8Wnf26hSmKHZXKnIKOOGhkA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAsRa1xniGXZorF0o-S8VOVF2zHIsRvbIA-iq8AR7PXTXYzH_Jdhzwabnko0oY3zQ_UfUX0bslVazbHyQFLFokY1JSqOcoU9iSCAMJ7c3M3jPmR54m91gYV1VDgzWwwByj6fvKPWyarwP8zbnDYEl6zIQ=s4800-w800-h600"], "a": ["Matteo Fantino", "Ricky Lorenz", "Palazzo Chigi alla Postierla"]}, {"c": "church", "n": "Basilica di San Domenico", "zh": "Basilica Cateriniana", "must": true, "lat": 43.3201297, "lng": 11.3264507, "m": "4.6★ · FREE · 7:30am–6:30pm, Sun from 8:45am · silence enforced", "d": "A vast, bare brick Dominican church on the opposite ridge from the Duomo — the view back across to the cathedral from the terrace outside is one of the best free ones in town. Inside, the chapel frescoed by Sodoma holds St Catherine's actual head in a gilded reliquary, and her thumb in a case nearby. Keep your voice down; guards will remind you.", "s": "Catherine died in Rome in 1380. Three years later her confessor quietly had her head removed and sent home. Legend says guards stopped the smugglers at the city gate, opened the bag, and found only rose petals — which turned back into a head once they reached Siena.", "sl": "The head that became rose petals", "g": "https://maps.google.com/?cid=10943661018772216606", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAETXAy8dFX6YIgHbAYZFsWEL3d_feAnCDkUms4KTEn2JtZKAHhj-hQ6kjRVRQzhvwsBRr7hcdAkOLCGgP-6ehQP7qkth0buWfvXElrnKq9I1r4nFYDTzdRgG3NoJqyBGZbgwGwq4MI6_ksXw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB7QtYu9MnItt_k6YtgmKorDZTbTKqDvRUk0kHKUqELYU0tSJ47mMAyJrXxZDHmDhB9io7dC8AuM5ArnvA0gXXnel6q3u7ocdwCO2MQH64cyCocBmSNrQSs27bdpjr-j0KSDkU-FnAp1lp8Mco=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDX7SkzGdnxM0hdCiPS-Fn2iwHts1qotjI9hnQqkvdgi1VaHtBT2YFKtYjMekjopAl7xR_9Bs7L5JCRvl2DHxxdBVk6QkahW3pvKAdFZWCVOWguWstdJuzyg1sJhDzyWY81QAm094zsYl-Klyy-CnL9cA=s4800-w800-h600"], "a": ["Basilica Cateriniana di San Domenico", "Ahmed Daoudi", "W W"]}, {"c": "church", "n": "Santuario Casa di Santa Caterina", "zh": "Catherine's family house", "lat": 43.3200373, "lng": 11.3288401, "m": "4.6★ · FREE · 9am–12:30pm & 3–5pm · CLOSED SUN", "d": "The dyer's house where Catherine was born in 1347, the 24th of 25 children, later wrapped in chapels and a loggia. Still a working place of prayer rather than a museum, so dress and behave accordingly. It's two minutes downhill from San Domenico and on the way to Fontebranda, so do the three together. Note the long lunch closure.", "g": "https://maps.google.com/?cid=2060803422576288986", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNBCx0SnWtZEft-G8t77JWADXKTS6s5xwLw9Hm-xcqPjhdVFhUh0NXzeJhJSGt1FWYjqFgFXkfVGKWAsSpOjWSbvRRKX3JOW3by293je3eOCxPrN9Va3HHNjp4yJid6CZYtPzwF=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNM1oOAi2VzReykAJVGFYE3nK_3cmdDnW0gN2rYuctVuza4FXgK-dD8BW0mSYwBYZRyxEJm-XCFDr8I6Nr_URqe4BgCIbDX8Cj1lZJVXHfZSjFwci3ColESS6CuFmzIHOPBmDhx=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOrnrdP-ocsrGCK-hwb0cBc9c9WIsd1PQE_2FjBTVA32AN03m6j0i07Ypo8G5_Tfqn7w3pF7kQuHvUxrCTlguKCSaO_D3G8OXKX_IV6X0X782yTV7wNWjj39k6g8Ley9W6UYxNTxw=s4800-w800-h600"], "a": ["Santuario - casa di Santa Caterina", "PO-I Wu", "Aleksandra"]}, {"c": "heritage", "n": "Fontebranda", "zh": "medieval fountain · Contrada dell'Oca", "lat": 43.3193161, "lng": 11.3276915, "m": "4.6★ · FREE · 24h · steep walk back up", "d": "A 13th-century triple-arched fountain-house at the bottom of the valley, fed by underground channels (the bottini) that brought water into this hilltop city. Dante name-checks it in the Inferno. It sits in the Goose contrada, the one that has won the Palio most often. The climb back up to the centre is steep — plan it as a downhill walk from San Domenico.", "g": "https://maps.google.com/?cid=4584819064256910971", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNUaf5rAhxDXzkiapzlDnCERSdSaouqNK4_l1oFh0AhU7U7_6N5S7-SqWV4TP5ckfolisFcnE-O_ENKGXX2Fy-0Qk2MtxGf_4mB7XHoHG1RizaN2LSI-O7LaUQVAxjl8kw6KY3dBWm_OF4=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPttnZt42WOPEFGQ92hV-9uTJme3Ejw6fSNg5H8KIEOUwtdOZuxo_-Sc5NAxbpJ9AfvXqtB6DroggYhR9ZjkBUoeIeZxMS_M5Yk_m8cptZBsF4iSuyhJxtHcPfeNed0_kBTf0rBGhd-_Hs=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNNU2MAinDEMxccU_o8Qc3WaHJaov11G8ZqDMgjRYffxxbKpLNYrktLndacCEd77IxTrLYpEfM4D6ooy1k83miXMMnzMEX6eLRW_c4slhOpuYfbaWlHYVhoBr2bARqVkOBxtZX8tQ3DDsNX=s4800-w800-h600"], "a": ["城所直樹", "Ahmet Volkan Paçacı", "Jakub Znamenáček"]}, {"c": "heritage", "n": "Piazza Salimbeni", "zh": "HQ of the world's oldest bank", "lat": 43.3211815, "lng": 11.3306526, "nophoto": "Google files it as a square with no photo card", "m": "FREE · 24h · on Banchi di Sopra", "d": "A small square framed by three palaces that are the headquarters of Monte dei Paschi di Siena, founded 1472 and the oldest surviving bank in the world. Walk it on your way along Banchi di Sopra — the Via Francigena pilgrim road — from the Campo to Porta Camollia. Two minutes, no ticket, and it explains how a hill town without a river got so rich.", "g": "https://www.google.com/maps/search/?api=1&query=Piazza+Salimbeni+Siena"}, {"c": "heritage", "n": "Fortezza Medicea", "zh": "the fortress that ended the republic", "lat": 43.322661, "lng": 11.3238335, "m": "4.5★ · FREE · 24h · WEDNESDAY MORNING MARKET", "d": "Built by the Medici after Florence conquered Siena in 1555, to keep the Sienese in rather than enemies out. Today the ramparts are a free, tree-lined walk with views across to San Domenico and the Duomo — where locals do their evening passeggiata. On Wednesday mornings the weekly market spreads round the walls: clothes, kitchenware and a few food stalls.", "g": "https://maps.google.com/?cid=12724861860681957181", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmOPO_h4IeGj9IdOmhDw3hxsmnNZO3xoAol2GyCl5YfbDtjBwKyvPNN5mGhSNHAOihoGcASiG9obO_hh7OjEYO2F8DCTd_sqCxMPZE70QgqkKZlu1u6p2e_jhpBlwIn4eYQrqY2F=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOXU_1TO9ji1dbkpjN-joZHM83_fg3xzhHmxu8jBRLRCn6KwMQewq0u9VhtiJ4DUWnWha-MbHkYZ7OnH1aJOv0kPDDlX1prsLr_hqYGbrOZahYOOwIxt9dMRZIDkHnC6_Epqx94oQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNzum70LnHQ9WoLxkGkumKe4UqTosqXkiQ7eQLxNAjkLOl_yum1TX51SN4gx6ewRzLKusvEE66ByzViBYHXkMaY1xdshnx1r7yN8JZmxn_0jpkaF72fMOaHKz1G9gQyaRT6Jytc=s4800-w800-h600"], "a": ["Krystyna Kramarczuk", "Iñigo Larrea", "Giovanni Leone"]}, {"c": "sweet", "n": "Antica Drogheria Manganelli", "zh": "€ · spice shop since 1879", "lat": 43.3175842, "lng": 11.3308538, "m": "4.7★ · 9:30am–7:30pm daily · ships abroad", "d": "The grocer's where the Sienese buy the spice mix to make panforte at home. Panforte (nero and bianco), ricciarelli, cavallucci, pici, oils and wine, in wooden cabinets that haven't changed much since 1879. Friendly, English spoken, and they'll ship a box home so you're not carrying it. The one place to buy edible souvenirs.", "g": "https://maps.google.com/?cid=302196064089004359", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmM79pSe8vH8r2KwILhepSvVkyPSG-JZWKytDrQYvfrispQ45nXlz0zDX6xGbzgyZYmWEV-h8OK1Dh9cOzH8XNXx6AGBxaSfw3sEtqG22DYO26uzQJMIyUIb57SN8OhD_LUIy02LqQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNV1P0UtyKDclFzMvn9ume35f5jmv9OodqtzhvMp8_K3ATmtqHUD1Km7y7PnYEXAupd_U1OYUQ7A7p7gtGsAfvl_mWJQhyDryNzjfU0pOZmKFeztYr5BLwPuaOwgXVyzP1H9ViU-A=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNJuaM_m7qXrk8e62bpix7yaz9L59KLnxsc1XTu4szMc4eMqx03uZ9ZmAzpKb2bFa9gWUY2XRvtvLjhIz5LmxgBbQ_DrMDBqMdfQEYeGnU7mffdY7i4pWWMQr6PsMLYaT_9agcKsknmXao3=s4800-w800-h600"], "a": ["Fernando Salvador", "Antica Drogheria Manganelli", "Noe Jad"]}, {"c": "sweet", "n": "Pasticceria Buti", "zh": "€ · home of the caramellato", "lat": 43.3281263, "lng": 11.3237792, "m": "4.6★ · CLOSED MON · 7am–7:30pm, Sun to 1pm", "d": "A local pastry bar just outside Porta Camollia, on the walk up from the station. Order the caramellato — puff pastry glazed with caramelised sugar and filled with Chantilly cream, which you won't find anywhere else — plus an espresso at the counter for a few euros. Panforte and ricciarelli too, and cheap panini. Cramped; stand, don't sit.", "g": "https://maps.google.com/?cid=406595548552507916", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmOwTrTJEtw128QXAegux6GKHJLcWcRkSsaqLhOqs0Amc6aD5M4QBQj2AikDd16nV9mR3iEKAbIlelHvM8cAb_AdLraVBzCXr6PvC4IASfuEwIDXJDWG1g9dzGI13m11nlzhHCVHzQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmP9D16WIlB_tPzhSrMeA0eiQxvxwPqpDH8i7sWZs21RecfFLyHtFtwURUhyAQM02lffBwp_Ch-6L6ZHPzzWiLEzRIgMXjhpgIUdwgbq3d1dJXHaRKk72hMFATGDAWvd2ptGzDg_xbObP1wF=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOxII_J1LbmdQCJkrQpxXioOy2rwDik49VrY_ctX89rDZCbguwqitToMFsYklBa-aC3M03WxRqJv3C9y91hjz9NUzr4v5GK5sZjNqV6d682pqyrpfWwO4h0UhHJTM6db6ib_qLtkxWBu6Y8=s4800-w800-h600"], "a": ["Pasticceria Buti", "GB", "Athena Lin"]}, {"c": "sweet", "n": "Pasticceria Nannini Conca d'Oro", "zh": "€ · Siena's historic café", "lat": 43.319614, "lng": 11.3314423, "m": "4.1★ · 7:30am–9pm daily · go early, stand at the bar", "d": "The Nannini family café on the main street (yes, Gianna Nannini's family). It's the classic place to try ricciarelli — soft almond biscuits under a snow of icing sugar — and panforte by the slice. The 4.1 is honest: reviews complain about crowding, flies near the pastries and brusque counter staff. Buy to take away, or come before 9am when it's locals only.", "g": "https://maps.google.com/?cid=5117595437409104247", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmOFOBob1azDnpuRKg-q2_f3WdB5mwxI36p1DaMsEQK1fSS9uH47UoyW9ffVQK3Wt3nGONJthmJ_9ghAuplfpWcPyo2ZfyobWEZXDQY7qhVlM5-yhYihqyFMaFsHY689hB4EdtxG=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmP6AvPVKDSDtwq9YCEeWkV5glP-KfKJt3KLI_r2SumkEDOxWUcox5WiLNL0qOAQNHA1AZ6B-rEZ_Kn9z2bBS9JcRrzLVwnNKjpl0kL0uTkb27gRELJ5kUnQJRgrc5TpThs2UbB0yrOnSslM=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOhrejiJa4BsmKPezQSevwyjxjNJkAFMQP-nOt5FG77CxA2AIqSxI3xlUXAHUQCm6OX6lihZXgZ0LA4Ka3lRWDHtpxEqIpfLp3x0PwKswHZ3tnBVHWbQ_9UCm2-dZGsU3zia6KDDn9GBAPo=s4800-w800-h600"], "a": ["Massimo Visconti", "Nata Saputra", "이윤경"]}, {"c": "sweet", "n": "Gelateria Kopakabana", "zh": "€ · gelato off the main drag", "lat": 43.321574, "lng": 11.3321655, "m": "4.5★ · noon–11pm daily", "d": "The gelato locals send you to instead of the Campo kiosks: big portions, fair prices, a few odd flavours (pretzel, for one) alongside pistachio and yogurt. Five minutes north of the Campo on Via dei Rossi, so it doubles as an excuse to walk a quieter street. Also sells 'baci' — chocolate-coated ice-cream lips — from the cake cabinet.", "g": "https://maps.google.com/?cid=16298857567680778715", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDIkFJlPSsKB8-7xYUDbZ9jR8tKZzOKGtHZNGjZuuGoscNitsufvb0X1609QTCRO2VQecBG_z3oYFKzcZQyv_Di7hEpcAXgLbK3Rv2r-ByrBohXqiySyDW9KxHYTvD7j-e2TT76z8dRJSo1Mg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAyz9TSXuTuoL8tCChnR9C3G5DEcTI29W-VHtgj7h6-ww_qjkDqK3m0AeVG-OBmvv9Sglmb1H6nNAwvXXXDu5m8R99I3Jdzh7suFXluBYkMRY0NASOxGY_PpFzPK7Y10c38aLCzaLuWpmGZWqE51i7uEA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDuCQp5_CZIrdWHibKlNp-6gclxZmpfTzORo1rvOC98u6AvMG_NuWNq-drHq8oydl8uYXgc3zCFHL5kBe7Ioeuk7sFzXAxaLzYBDD7-zTcBJWTFevGzN_M5NfFCeo5d5N1U-kMg6rSL2RtJRKIL_7y2Sw=s4800-w800-h600"], "a": ["Gelateria Kopakabana", "Ioannis Vangeloglou", "Bailey Fitzgerald"]}, {"c": "cheap", "n": "La Piccola Ciaccineria", "zh": "€ · ciaccino, Siena's stuffed flatbread", "lat": 43.3154922, "lng": 11.3304628, "m": "4.7★ · ~€9–10 for two slices · 10:30am–9:30pm daily", "d": "Ciaccino is the Sienese stuffed flatbread — don't call it focaccia — usually ham and cheese, eaten by students at lunch. Here it's baked to order with local pecorino, leeks and cured meats, and they'll do half-and-half. Take it to the steps outside. Near the Pinacoteca on Via San Pietro, a five-minute walk down from the Campo.", "g": "https://maps.google.com/?cid=12863869362284985001", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmN3nE76f2MsPM4BvTmAPyT4nOxkUW18vFfWSMefPYj9QUgws8oQRR3F4go48ohH0tcpq0-hE2qccEEmJ8D0RRlqvW5FL65IhoZQ7SxICfLMYCiNyA2OA0Q7ko1NiQNUMbW6GMc=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOzk7mrA6cKI1boNZqvl_ySM_cG_3dN1J5QhHlh-luEKH1rfrnUB73T_tdpprEimvpt6N3d7dq1DRcjjcfVMOtLEPROyE0FHMl9h7twlZroCsE6oCLOtnjVh5zPPmJY-vx1J9zWnPwe5_U=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMq0bUmWp36sj0qqV1m9HHzykm9P75Ko0rOiRlBNlgx6dz2MIJu5p7Q98u09LKZa6zzj6BftJ6Subd4_CD6di-8szrqvDoTuDt9BLTmSOfKGTOWRnbqjarXHvRERQ7UxjiBnUlnNxfwxOg=s4800-w800-h600"], "a": ["La Piccola Ciaccineria", "Batool Albeer", "Guilherme Costa"]}, {"c": "cheap", "n": "Osteria Permalico", "zh": "€–€€ · student osteria by the Campo", "lat": 43.3163417, "lng": 11.3301269, "m": "4.5★ · CLOSED WED · 12–3:15pm & 7–10:15pm · book for dinner", "d": "Named in three separate local blogs as the cheap, rustic place students use: brick vaults, communal tables, crostini neri (chicken-liver toasts), pici all'aglione and the house 'pici alla casa'. Walk-ins work at opening; evenings book out, so reserve in the afternoon. Skip the tripe unless you know you like it.", "g": "https://maps.google.com/?cid=18301682717436826571", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBiwHuya9K_kYoMBUDX3HQ_SWL4elL62tWkOSji9WPXLI-T8T8AN4tWGYMte3zW2-2gWW3Gj1dp-M1nyDWZ9fcpkTlVz9lBteogy4Gju8oXKCxOEITwhLyj97d9_1QLdjcQrEkK8UdAyuwPejYIpQbb=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC8JqaMYahYJi_l9NFWv87Oi-QM5BZfVfOCPCrz_reJbz9nJtvDFLqR6FjQRqXLk7l2d0R2l1K4o4H0_-xy8xBhv7OjATaQUrCob-ESnZgVOWWbmUZ-Q1xQrNxNArxYGKpaYpXQkbrrDiB9jIF5V6a06g=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDWU_50DRwvJLyFIWgU11dADiJPCLiYRGTProdFSfHG0T3BzObRj5fa2IjlWMgSqyp3pLo1_W6MlDcvwew0BhSZbhq-A3AXZqG4Ppl4YPHjR0ZUMUoZie0jYLSjquXmw-4fdva9jgQC_NIxnUKyoAyoGw=s4800-w800-h600"], "a": ["Ario Chen", "Antonio Annunziata", "Sara Desi"]}, {"c": "cheap", "n": "Osteria Il Grattacielo", "zh": "€ · tiny chalkboard osteria since 1840", "lat": 43.3202436, "lng": 11.3307086, "m": "4.3★ · 12–3:30pm & 7–10pm, SUN LUNCH ONLY · very few tables", "d": "'The Skyscraper' is a joke — it's one of the smallest dining rooms in the city, run by two men with a handwritten menu that changes daily. Pici all'aglione, fegatelli (spiced pork liver), ribollita, a cake with lemon custard for about €4. Arrive at opening or book. The 4.3 is mostly people who couldn't get a table.", "g": "https://maps.google.com/?cid=3542011508854677612", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmM4pGG1FQiJcUyLXGy_QEQlX6ldSKAv3wxumZ067bP9fsjdg-_hsz_-VIwcEVy4DKxMzQOMP2WYZV3Rg0HoKfHw8fqSk8rQ8VXtGo09shusN-G57yDJVhvJHitDd8m_v4kOi8kiyg=s4800-w720-h540", "https://lh3.googleusercontent.com/grass-cs/ACvplmOxZ48VkFD7hkYZaAQ6uoM3omx3L0tTp5rZ7XxwAIibeauYYhclFnFJ9ezcHP5f4D-t8ZtBx0pT3HLvzzO5qYh5v9lu6reqZZPloT4EpjY9RQGq9c_swabLVmekYXKjqFEdQ82mKgej-Ri9=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOWSD504LoyKtX8UBQ_Gv5rftdUG98WszN_yT9qtgIVGnjQnzWVlr1aGLDgjGnyDAGlyP8JDMOShFa6qT0w2F-pV7iU40TS3G6NwgHvJkj0k1hhyvW9b1J3MeO2sn0Af0IkEpSH4gcDPe0c=s4800-w800-h600"], "a": ["Osteria Il Grattacielo", "Lorenza Iacobuzio", "Marco Giordani"]}, {"c": "cheap", "n": "Osteria da Trombicche", "zh": "€–€€ · taglieri & open kitchen", "lat": 43.320307, "lng": 11.3302426, "m": "4.3★ · 12–2:30pm & 7–9:30pm · SUN LUNCH ONLY", "d": "Local bloggers file it under Cecco Angiolieri's line about life's three joys — love, drink and gambling — and it's the drinking they mean. Come for a tagliere of Tuscan salumi and pecorino with a glass of Chianti Classico, or watch them hand-roll the gnocchi you'll eat 15 minutes later. One reviewer notes the kitchen doesn't always start on the dot.", "g": "https://maps.google.com/?cid=6814969293754912892", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDqw7_QpDt1z95EaS3bf9PwKCr77ojoguAmRz2SRI_WTDnFhgT9bJGUa8_gse7t4dr0eonTl0-PqtVOct5HHtFMpL1JRJdU8lA4oWitj9B4-TOblpO_QLCEcenVA-7b9W72PY0144MGT2a1=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC6haB97SuIi2G8qlO8TMOx7KY2loJ6_PMqtsTOOys7yK2I-0LtZFGGPHPuyAZdwoY70nI89wvoYS49h0pIuDSCcxM3kskBY1N4H1nCrpSmlwMivBWZR_tDlV_3TokBk2nrHpzEbdLYpp9yvsg1RCkyNA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDfNdlBeTLe4Oy-h99IqgNFxAVvau6JapyN1tunSFvNAFawjJXDsqUPTHGE914-kDsMFzuukPf7V39xP50oLHZgI9n-EFQWKjQ83jxytXqv5pb1LeYJQdkDFY1E-A8AG_kaj7ctDbgNny-JAg=s4800-w800-h600"], "a": ["Osteria da Trombicche", "T Zhang", "Naama Peled"]}, {"c": "cheap", "n": "Osteria il Vinaio", "zh": "€–€€ · wine shop osteria by Porta Camollia", "lat": 43.3263113, "lng": 11.326415, "m": "4.5★ · CLOSED SUN · 10am–3pm & 6–10pm", "d": "A barrel-and-flask osteria at the top of Via Camollia, loved by locals and well away from the tour groups. Homemade pici al ragù or all'aglione, pappa al pomodoro, and house wine by the carafe. A hotel blog lists it on Via dei Rossi as 'Il Vinaio di Bobbe e Davide' — the current address is Via Camollia 138. Book ahead for dinner.", "g": "https://maps.google.com/?cid=4208664793460893993", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAYtD2I2LNSuIrgXOPgaxH445ocoyFFITiB1xJzACPtHv6Usc7UHRmotRvLFMKev0V1TxmNVCWiZtegtDj35Kmfm8D-_OCdtCcpEf2Ists-sjtqCetYSvSw8LpeZKg3N34fiTzIkaQEP1OC7Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCoslNctiw1u8ew3obKPZS9fnz2SBC4Z3eKGj4IdkhyV0OSh1ar96oT5yEKla0CZyT4jxr7dKrPKcPc0BzYRA6j3XWtWiyjfOcnfjAyqXzTbtPLBr-ed2tfFQVRTyeagopUFMfdvWXdwo_V5A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBZOUwQIAPjYEzf5xq1wRT_ZxOYpRCDxo3W0ybX7KAKk_Tk3A_HEzvCWPpVJBmUwvAxqSTQntbdTpKP0xwp0EmZ1GNVJMg6Bh3-XfWwY-X-HnL24eim1LD8eQMquxqzX2499r9q4D97pYPbL9cyqFVvTg=s4800-w800-h600"], "a": ["Matthew Harris", "Claudio Daccò", "Rafal"]}, {"c": "mid", "n": "Osteria del Gatto", "zh": "€€ · 14 tables, handwritten menu", "lat": 43.3137034, "lng": 11.3280898, "m": "4.4★ · CLOSED SUN · 12:30–3pm & 7:30–10pm · ~€25–35 pp", "d": "Down in the Contrada della Tartuca near Porta San Marco, a family place with around 14 tables and a menu that follows the market. Reviews rave about the service and whatever pasta is on that day (mackerel with bottarga if you see it); a couple report dry rabbit on an off night. Mostly locals. Book.", "g": "https://maps.google.com/?cid=12932011422920534772", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNJGaa3fo15YHXhZxRxrFD8Jh6JElfyVpFBZK_wkPhNySJoDIduKcUw-ru3K4yMuKGOz-gLEO21STV63TsS313B4D8rGiHmbclztiyb7hYOlFRld2MVFpyVcXUTfl3VEX3906tCRQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNsgzMpjOzTEOgSxZz6RtYjCmMVIFH7CtK_eKkZG1SBUSjpk79dCtPujwLyMuTbQu1CAEH_X-AM8Vq3BdLWL-VZc61xxRN0R1uc8GzjqBW2FdWeUW20KEc504JweaaAN64cfpWwTQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPDOxacNjLGdCKvLhvWoLiuH91JNhjxfp0sTByBUVcG1Ro27i_Zzlv6e6cuHK6-55meBV333hPuz2lXdGCxh-VnuOog7g7eiG-l5ydjZT9Zr4Uz7R-kNkRmyo4zJmf-ZbqcDu7iRnT1yuc=s4800-w800-h600"], "a": ["P", "Matteo Quatrida", "Marco Figura"]}, {"c": "mid", "n": "La Sosta di Violante", "zh": "€€ · Sienese, lightly updated", "lat": 43.3174485, "lng": 11.3363454, "m": "4.7★ · CLOSED SUN · 12:30–3pm & 7:15–10:30pm · book", "d": "On Via Pantaneto in the Contrada del Leocorno, a courtyard osteria doing Sienese food with a light modern hand: pici al ragù (reviewers say mix in a little of the onion jam from the fried-cheese starter), cacio e pepe risotto with local sausage, tagliata with crisp potatoes. Heated outdoor tables. Walk-ins sometimes get lucky at 7:15; don't count on it.", "g": "https://maps.google.com/?cid=3441682764594487177", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDGNpaq_glaGNECSrLcXwnpTr9MruKWGVms7_qMD_i7Qh4b_sPnb3SrlkDfLVTlFp-Fw2aFU600tfLUgV9pg-PsYlJnuQxF-v-72pVJPA509GUspWrXAbEh-63CnegiLycdAKYa-8dfAiTOfQ_QDEC8WA=s4800-w550-h405", "https://lh3.googleusercontent.com/place-photos/AG9NLjAVHNhDYn5_7PtxaR-qCTzBBhEH0euu6mLRqr53TDk5WUTRxi5_zGFyHNGssgs4cN20dZk7mpQYmWNgEFuF0ZhoIVzHPfOX6uO5673r1zKw9hAS2EyxDSIWXD-nZ-Kj1TOQz1zGhxnMxa2uIVKz1TiTKw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDo1HhW73cwdo4ZprLDenMnVOqc9oDbjmDxbojGW66yxSHJeVOUr15N2q1tAgNdu8g2Y-RAuWLlSNV36s1QEb8MRApsAzY4NI5Bou-CvDpzxoXCQW-TmNqJrRkBbck80V6Yg3A5lq9mtAuxm-vCKXLVXg=s4800-w447-h447"], "a": ["La Sosta di Violante", "Echo Lin", "Maurizio Miozzi (Mizio)"]}, {"c": "mid", "n": "Osteria Sotto le Fonti", "zh": "€€ · husband-and-wife, below Fontebranda", "lat": 43.3175875, "lng": 11.3243382, "m": "4.5★ · CLOSED SUN · 12:30–3pm & 7–9:30pm · +10% cover on bill", "d": "Just outside the walls below Fontebranda, run by a couple who make people come back twice in one trip. Known locally for its wine list and pappardelle al cinghiale; the bistecca is good value and the tiramisù has limoncello in it. Parking across the road if you're driving. Expect a 10% service charge on top of menu prices.", "g": "https://maps.google.com/?cid=14469657134181488488", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPPK5vDxLPyD8CNoo9gP7RCDTcdC4SrNUsTq7OcuBHoA6VLINV8DZmPgeabZXOBoNs7BdhiDu615m07qSiLlZFQ3A_ctcgp5CtG-FXna6zfIS2hzvKApI3xL7PXyQcFBy5WoSxn=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPyaUdob41N-WZDTAfq4rUv9d902Hq-11eXzZz2jqEpY4wTEZkNY58jPBr6VBiYTHxxWbELs6qukl_rtJsaeasitVDd2zEWo0fRCjQ-UoE_C-eOlO_-VcVfQnzJB79dU_9IhNv4CQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMo_Hrh0AK8LZZxnPi797wqd1OwAnAuhZ5cm3ZhkO3kvOcB-1EBjRIeZwe2q5tMu-lKzmGDx1tfukuwgsBJpHgc_pzowW7AIvElmHfVp__d_j3gfQSj7LEVAuvbdoPl2XLEFt0rvC2Hobw=s4800-w800-h600"], "a": ["Osteria Sotto le Fonti", "Osteria Sotto le Fonti", "Francesco Negretti"]}, {"c": "splurge", "n": "Osteria Le Logge", "zh": "€€€ · Michelin-selected · great cellar", "lat": 43.3184752, "lng": 11.3333542, "m": "4.2★ · Michelin Guide · CLOSED SUN · mains ~€30", "d": "A wood-panelled osteria a minute from the Campo, listed in the Michelin Guide, with one of the deepest Tuscan wine lists in town (Brunello back through the years). Cooking is refined Tuscan and there are tasting menus. The 4.2 reflects portions: several reviewers found ~€30 plates small. Come for the room and the cellar.", "g": "https://maps.google.com/?cid=14705857837803236105", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB0zi0zIirxfZRMIk1qR2Bh5MRYwrXtLrOpZAygKZI8GIRBV9f2soiGizrHcaz6iPGi9aHsTiVxkaSNHv8kdW9zXiHfz6PSvHXSTB2V_JPqRM3oK_qNT8aKHtiHFS-9rAAFxEIP7SJWJixteCygBtKx2A=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBEc-gzPI7QH1ZtqKDz_w7GZA3-Kaw0ipxSORsP2PGFTjsVOblWuTn-N7_biDpc13iYETPQLPD4noxY8JgCGXwQSrZgBgPOTCFIxTAQqpdkXnae_v318QGgCFNG0-jiaaiTJCY6fL9fVufxbz0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBb17NHt9ta41aH_i7WbDW-Y9j9kv3rK0a50RTFjxANprMljnlyzqynMh-oNieGP7JXbrJLcS_51oUF-O_PrqarwmPnXpG1HHyfa-vv2IvpvEcByTXuUOug7ohIGnMKAndlN8HboUOLGp1vHkyEfpQq9Q=s4800-w800-h600"], "a": ["Massimo Decimomeridio", "Bas Linssen", "Kurt Van Ruyskensvelde"]}, {"c": "splurge", "n": "Campo Cedro", "zh": "€€€ · Michelin-selected · Italian-Japanese", "lat": 43.3222289, "lng": 11.3305559, "m": "4.9★ · Michelin Guide · CLOSED MON, TUE DINNER ONLY · allow 3h", "d": "The antidote if you've had pici four nights running: a Michelin-listed kitchen crossing Italian and Japanese — shrimp tartare, sea-bream risotto, pork belly with tempura onions. The 7-course tasting menu runs 3+ hours, so don't book it before anything else. Most reviews are glowing; a few mention oversalting and slow service on big tables.", "g": "https://maps.google.com/?cid=16885009504493156368", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDKcSfgN16m4pIAdJkYnSgQQVrpDcpJnH1YEONVFdjYLvRrIR_mhVpMiKbhZtby1b0xa-nYz6pystsiL3nZGokHUFh8PNsBN2g-YT9FrNDdJujTt39dtlDYAKdQwKu-EghE9_yOApLdJZF9=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBtNZE7sKVIAIW5yI98_Gw65x834PptpG4OYa24rmNyK9Vvns2qp6z3E7n5gb9JNac6SlHkXRrxpiLPoZAxCP2d373JTv4wgG8we4ao7aNCfaqHW7zB8z7YfD0klifDzD-RPIrvalHseNkEyYRgJES0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAoCCoK1vkOI2B_gC-N71WcPGs-xivqPSdbrMP_RmuutPdyx_Gm0C2ZZ7JuuMJtg-SeW8FeymPvom0mnIR3nHCceH5tAHOh5pZmCikmCXCGCOLlpksApvTEd9F0ELbB_DJIBKccMkcJhuYDNXikJ4J-Ow=s4800-w800-h600"], "a": ["Campo Cedro", "Daniel Ritter", "Leonardo Franco"]}, {"c": "wine", "n": "Enoteca I Terzi", "zh": "€€–€€€ · wine bar where the three terzi meet", "lat": 43.3194026, "lng": 11.3307913, "m": "4.4★ · CLOSED SUN · 12:30–2:30pm & 7–10:30pm", "d": "Named for the three 'terzi' (thirds) that Siena is divided into, which meet near here. A long wine list by the glass, outdoor tables on a quiet lane just behind the Loggia della Mercanzia, and daily specials. Good for an aperitivo of Vernaccia or Chianti Classico with cheese before dinner elsewhere, or a full meal if you're settled in.", "g": "https://maps.google.com/?cid=11890368962010555361", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPh09sNuEj5yBjY_rs4TrQpH04lHNwJYeW9oMia1a6rft6CLvrxouOSMyy0LccWHJrbBZOMSJijy59OPFWE_uBwOP61iTXYSdvmbHedGaeRngpAz_9PW88dUixDUKB9JV0j22kW=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPXPKFknKXN7dJqvDhndfOvkilIEnNYiPVC5rdetinqFHm-8WZZkM6sluXfcmua_U9oMPV8s7UuCVG4W_NfbfmUtEmK6pOuzb92Wxm1TEYQp1KjjbhN-EOpP3N1rbGROjzHxnl0pw=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNg8RDQOXl0b9Yk7i7q9j3lsE0jLWa_ssuKuuPGWoXYmjxxcYVlbl1Ch3q23-HgT2bNOQd2nrGXaSz8q6VMao70Ugcgtk3KemxkEpY0lytBrCp0JMG4__WVCian1NNET-yjSTlIEJohSJQR=s4800-w800-h600"], "a": ["Enoteca I Terzi", "Enoteca I Terzi", "Michele Formica"]}, {"c": "stay", "n": "Stay: Terzo di Città (Duomo side)", "zh": "inside the walls · quiet · first choice", "lat": 43.315, "lng": 11.3272, "nophoto": "district, not a business", "m": "€€–€€€ · 5–10 min walk to everything · ZTL: tell hotel your plate", "d": "The southern third around the Duomo, Pian dei Mantellini and Via San Pietro. Medieval lanes, almost no through traffic and quiet at night, yet the Duomo, Campo and Santa Maria della Scala are a few minutes away. A couple of hotels here have their own parking — if you're driving in, send your number plate ahead or you'll get a ZTL camera fine."}, {"c": "stay", "n": "Stay: Camollia / San Prospero (outside ZTL)", "zh": "best if you have a car", "lat": 43.3252, "lng": 11.3228, "nophoto": "district, not a business", "m": "€–€€ · 10–15 min walk in · easy parking, near buses", "d": "Just outside or at the northern walls, around Porta Camollia and the Fortezza. Outside the restricted-traffic zone, so you can park without fines, it's close to the bus stops at Piazza Gramsci and the escalator up from the station, and it's cheaper. The trade-off is a slightly longer walk and less atmosphere after dark."}, {"c": "stay", "n": "Stay: Pantaneto / university side", "zh": "livelier, cheaper rooms", "lat": 43.3168, "lng": 11.3368, "nophoto": "district, not a business", "m": "€–€€ · 5–8 min walk to the Campo · noisier at night", "d": "Via Pantaneto and the streets toward the university: student bars, cheaper rooms and apartments, a real neighbourhood feel. Good if you want evenings out. Avoid the rooms directly on the Campo itself — you pay a premium to sleep over the late crowds, and during Palio weeks prices and noise both go through the roof."}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19,
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+(pl.must?' must':'')+'" style="background:'
+         +CATS[pl.c].color+'">'+glyph(pl.c)+(pl.must?'<i class="star-badge"></i>':'')+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true,
+    zIndexOffset: pl.must?1000:0});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galPrev.style.visibility = pics.length>1?'':'hidden';
+  galNext.style.visibility = pics.length>1?'':'hidden';
+  galPrev.disabled=true; galNext.disabled=pics.length<2;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+  const multi=imgs.length>1;
+  galPrev.style.visibility = multi?'':'hidden';
+  galNext.style.visibility = multi?'':'hidden';
+  galPrev.disabled = i<=0;
+  galNext.disabled = i>=imgs.length-1;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+/* arrows, for mice and keyboards; touch users just swipe */
+const galPrev=document.getElementById('galPrev'), galNext=document.getElementById('galNext');
+function galScroll(dir){
+  const w=galTrack.clientWidth||1;
+  const i=Math.round(galTrack.scrollLeft/w)+dir;
+  const n=galTrack.querySelectorAll('img').length;
+  galTrack.scrollTo({left: Math.max(0,Math.min(n-1,i))*w, behavior:'smooth'});
+}
+galPrev.onclick=e=>{e.stopPropagation();galScroll(-1);};
+galNext.onclick=e=>{e.stopPropagation();galScroll(1);};
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng+"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  panToPlace(pl);
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+/* Wide screens show the card as a left-hand panel, so the gesture axis and the
+   map centring both have to change. Keep this threshold in sync with the CSS. */
+const SIDE_MIN_WIDTH = 720;
+function sideMode(){ return window.innerWidth >= SIDE_MIN_WIDTH; }
+
+function panToPlace(pl){
+  const ll = L.latLng(pl.wlat, pl.wlng);
+  if(!sideMode()){ map.panTo(ll,{animate:true}); return; }
+  // shift the centre left by half the panel so the pin sits in the visible half
+  const panelW = (document.querySelector('.sheet')||{}).offsetWidth || 390;
+  const pt = map.project(ll, map.getZoom()).subtract([panelW/2, 0]);
+  map.panTo(map.unproject(pt, map.getZoom()), {animate:true});
+}
+
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the card down to dismiss ----
+   Touch: drag anywhere in the card, but only when it is scrolled to the top, so
+   reading a long card still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    // In side mode the dismiss axis IS the gallery axis, so the gallery wins
+    // any gesture that starts on a photo.
+    if(sideMode() && e.target.closest && e.target.closest('.gal')) return;
+    // Vertical scroll only conflicts with the bottom sheet.
+    if(!sideMode() && sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'go':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  const side=sideMode();
+  // side panel slides out to the LEFT; bottom sheet slides DOWN
+  const along = side ? -dx : dy;      // movement toward dismissal
+  const across = side ? dy : dx;      // movement that belongs to the gallery
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(along)>Math.abs(across) ? 'go' : 'other';
+    if(drag.axis==='other'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(along<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=along;
+  sheet.classList.add('dragging');
+  sheet.style.transform = side ? 'translateX(-'+along+'px)' : 'translateY('+along+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();   // distance OR flick
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='go' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  const ab=document.getElementById('about');
+  if(ab && ab.classList.contains('open')) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- city overview ---------- */
+const about=document.getElementById('about'), aboutBtn=document.getElementById('aboutBtn');
+function esc(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function rich(x){ // allow **bold** only
+  return esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+}
+function renderAbout(){
+  if(!CITY || !Object.keys(CITY).length){ aboutBtn.style.display='none'; return; }
+  document.getElementById('abTitle').textContent = CITY.name||'';
+  document.getElementById('abTagline').textContent = CITY.tagline||'';
+
+  const st=document.getElementById('abStats');
+  st.innerHTML=(CITY.stats||[]).map(s=>
+    '<div class="stat"><div class="k">'+esc(s[0])+'</div><div class="v">'+esc(s[1])+'</div></div>'
+  ).join('');
+  st.style.display=(CITY.stats||[]).length?'grid':'none';
+
+  document.getElementById('abSections').innerHTML=(CITY.sections||[]).map(s=>
+    '<h3>'+esc(s[0])+'</h3>'+String(s[1]).split('\n\n').map(par=>'<p>'+rich(par)+'</p>').join('')
+  ).join('');
+
+  const musts=CITY.musts||[];
+  document.getElementById('abMusts').innerHTML = musts.length
+    ? '<h3>Must see, do &amp; try</h3><ul class="musts">'
+      + musts.map(m=>'<li>'+rich(m)+'</li>').join('') + '</ul>'
+    : '';
+
+  const near=CITY.nearby||[];
+  document.getElementById('abNearby').innerHTML = near.length
+    ? '<h3>Nearby</h3><ul class="nearby">'
+      + near.map(n=>'<li>'+rich(n)+'</li>').join('') + '</ul>'
+    : '';
+
+  document.getElementById('abFoot').textContent = CITY.foot||'';
+}
+renderAbout();
+function toggleAbout(open){
+  about.classList.toggle('open',open);
+  about.setAttribute('aria-hidden',open?'false':'true');
+  aboutBtn.classList.toggle('active',open);
+  if(open) about.scrollTop=0;
+}
+aboutBtn.onclick=()=>toggleAbout(!about.classList.contains('open'));
+document.getElementById('aboutClose').onclick=()=>toggleAbout(false);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') toggleAbout(false); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+let wasSide=sideMode();
+window.addEventListener('resize',()=>{
+  const now=sideMode();
+  if(now!==wasSide){ wasSide=now; if(selected) panToPlace(selected); }
+});
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
