@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!-- city-guide-maps template v7 capabilities: swipe-dismiss,drag-handlers,click-away,escape-key,gallery,side-panel,must-see,overview,filters,fullscreen,geolocation -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Parma — 3 days: sights, salumi & trattorie</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{position:relative;width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .pin.must{border-color:#F2C14E;border-width:3px;
+    box-shadow:0 0 0 1.5px rgba(120,80,0,.55),0 2px 7px rgba(0,0,0,.45)}
+  .star-badge{position:absolute;top:-5px;right:-5px;width:12px;height:12px;
+    background:#F2C14E;border-radius:50%;border:1.5px solid #fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+    width:30px;height:30px;border:none;border-radius:50%;cursor:pointer;
+    background:rgba(0,0,0,.42);color:#fff;display:none;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);transition:background .15s ease}
+  .gal-nav:hover{background:rgba(0,0,0,.65)}
+  .gal-nav:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .gal-nav svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .gal-nav.prev{left:8px} .gal-nav.next{right:8px}
+  .gal-nav[disabled]{opacity:.3;cursor:default}
+  /* only for real pointers — touch users swipe */
+  @media (hover:hover) and (pointer:fine){
+    .gal:hover .gal-nav, .gal-nav:focus-visible{display:flex}
+  }
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  /* when there is no photo the grabber would sit on the text */
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---- city overview sheet ---- */
+  .about{position:absolute;inset:0;z-index:1400;background:var(--paper);
+    overflow-y:auto;transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.32,.72,.35,1);
+    -webkit-overflow-scrolling:touch}
+  .about.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.about{transition:none}}
+  .about-inner{max-width:640px;margin:0 auto;padding:18px 20px calc(40px + env(safe-area-inset-bottom))}
+  .about h2{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:3px}
+  .about .tagline{font-size:14.5px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+  .about-close{position:sticky;top:0;float:right;width:34px;height:34px;border:none;
+    border-radius:50%;background:#eef1f5;color:#5b6472;font-size:16px;cursor:pointer;
+    line-height:1;z-index:2;margin-left:10px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;
+    margin-bottom:20px}
+  .stat{background:#f6f4ef;border-radius:11px;padding:9px 11px}
+  .stat .k{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#8b8577;margin-bottom:2px}
+  .stat .v{font-size:14px;font-weight:700;line-height:1.25}
+  .about h3{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:20px 0 7px}
+  .about p{font-size:14.5px;line-height:1.6;color:#374050;margin-bottom:9px}
+  .musts{list-style:none;margin:2px 0 4px}
+  .musts li{position:relative;padding:7px 0 7px 27px;font-size:14.5px;line-height:1.5;
+    border-bottom:1px solid #f0ece4}
+  .musts li:last-child{border-bottom:none}
+  .musts li::before{content:"";position:absolute;left:5px;top:14px;width:9px;height:9px;
+    border-radius:50%;background:#F2C14E;box-shadow:0 0 0 2px rgba(242,193,78,.28)}
+  .musts b{font-weight:750}
+  .nearby li{padding:7px 0 7px 27px;font-size:14px;line-height:1.5;list-style:none;
+    position:relative;color:#374050}
+  .nearby li::before{content:"";position:absolute;left:6px;top:15px;width:7px;height:7px;
+    border-radius:50%;background:#9E9D24}
+  .about .foot{font-size:11.5px;color:#95a0ae;margin-top:22px;line-height:1.5;
+    border-top:1px solid var(--line);padding-top:13px}
+  /* ---- wide / landscape: the card becomes a left-hand panel ----
+     A full-width bottom sheet letterboxes photos badly once the window is wide. */
+  @media (min-width:720px){
+    .sheet{left:0;right:auto;top:0;bottom:0;width:390px;max-height:none;height:100%;
+      border-radius:0 20px 20px 0;box-shadow:8px 0 30px rgba(16,24,40,.22);
+      transform:translateX(-105%)}
+    .sheet.open{transform:translateX(0)}
+    .gal, .gal-track img{border-radius:0 20px 0 0}
+    .gal-track img{height:auto;aspect-ratio:3/2}
+    .grabber{top:0;bottom:0;left:auto;right:0;margin-left:0;width:24px;height:100%;
+      flex-direction:column}
+    .grabber::after{width:4px;height:38px}
+    .sheet:has(.gal.none) .sheet-body{padding-top:16px}
+    .sheet-body{padding-right:26px}
+    /* keep the filter panel clear of the card */
+    .panel{left:auto;right:70px}
+    .about-inner{padding-left:26px}
+  }
+  @media (min-width:720px) and (max-height:520px){
+    /* phone held sideways: shorter, so trim the photo further */
+    .gal-track img{aspect-ratio:2/1}
+  }
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Parma — 3 days: sights, salumi & trattorie</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="aboutBtn" title="About this city" aria-label="About this city">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Circles = sights · squares = food · diamonds = wine. MONDAY is a bad day here: Pilotta, Teatro Regio, Glauco Lombardi, Spezieria and Toscanini's house are shut, as are Pepèn and Pagani. Suggested days: Day 1 Duomo quarter; Day 2 Pilotta + Oltretorrente (not a Monday); Day 3 Regio, Lombardi, Brisla. Camera di San Paolo (Correggio) is closed for restoration until spring 2027. Photos are Google traveller uploads, not checked by eye.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <button class="gal-nav prev" id="galPrev" aria-label="Previous photo">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="gal-nav next" id="galNext" aria-label="Next photo">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="about" id="about" role="dialog" aria-label="About this city" aria-hidden="true">
+  <div class="about-inner">
+    <button class="about-close" id="aboutClose" aria-label="Close">✕</button>
+    <h2 id="abTitle"></h2>
+    <p class="tagline" id="abTagline"></p>
+    <div class="stats" id="abStats"></div>
+    <div id="abSections"></div>
+    <div id="abMusts"></div>
+    <div id="abNearby"></div>
+    <p class="foot" id="abFoot"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"church": {"label": "Churches & frescoes", "color": "#6A1B9A", "icon": "church"}, "theatre": {"label": "Theatres & music", "color": "#283593", "icon": "drama"}, "museum": {"label": "Museums", "color": "#1565C0", "icon": "palette"}, "heritage": {"label": "Landmarks & ruins", "color": "#5D4037", "icon": "landmark"}, "park": {"label": "Parks", "color": "#2E7D32", "icon": "trees"}, "deli": {"label": "Salumerie (ham & cheese)", "color": "#8D6E63", "icon": "ham", "shape": "food"}, "sweet": {"label": "Pastry & gelato", "color": "#EC407A", "icon": "cake-slice", "shape": "food"}, "cheap": {"label": "Cheap eats (€)", "color": "#00ACC1", "icon": "utensils", "shape": "food"}, "mid": {"label": "Trattorie (€€)", "color": "#F9A825", "icon": "utensils", "shape": "food"}, "splurge": {"label": "Splurge (€€€€)", "color": "#C2185B", "icon": "utensils", "shape": "food"}, "wine": {"label": "Wine bars", "color": "#4E342E", "icon": "wine", "shape": "drink"}, "stay": {"label": "Where to stay", "color": "#546E7A", "icon": "bed"}};
+const ICONS = {"bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "cake-slice": "<path d=\"M16 13H3\"/> <path d=\"M16 17H3\"/> <path d=\"m7.2 7.9-3.388 2.5A2 2 0 0 0 3 12.01V20a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-8.654c0-2-2.44-6.026-6.44-8.026a1 1 0 0 0-1.082.057L10.4 5.6\"/> <circle cx=\"9\" cy=\"7\" r=\"2\"/>", "church": "<path d=\"M10 9h4\"/> <path d=\"M12 7v5\"/> <path d=\"M14 21v-3a2 2 0 0 0-4 0v3\"/> <path d=\"m18 9 3.52 2.147a1 1 0 0 1 .48.854V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6.999a1 1 0 0 1 .48-.854L6 9\"/> <path d=\"M6 21V7a1 1 0 0 1 .376-.782l5-3.999a1 1 0 0 1 1.249.001l5 4A1 1 0 0 1 18 7v14\"/>", "drama": "<path d=\"M10 11h.01\"/> <path d=\"M14 6h.01\"/> <path d=\"M18 6h.01\"/> <path d=\"M6.5 13.1h.01\"/> <path d=\"M22 5c0 9-4 12-6 12s-6-3-6-12c0-2 2-3 6-3s6 1 6 3\"/> <path d=\"M17.4 9.9c-.8.8-2 .8-2.8 0\"/> <path d=\"M10.1 7.1C9 7.2 7.7 7.7 6 8.6c-3.5 2-4.7 3.9-3.7 5.6 4.5 7.8 9.5 8.4 11.2 7.4.9-.5 1.9-2.1 1.9-4.7\"/> <path d=\"M9.1 16.5c.3-1.1 1.4-1.7 2.4-1.4\"/>", "ham": "<path d=\"M13.144 21.144A7.274 10.445 45 1 0 2.856 10.856\"/> <path d=\"M13.144 21.144A7.274 4.365 45 0 0 2.856 10.856a7.274 4.365 45 0 0 10.288 10.288\"/> <path d=\"M16.565 10.435 18.6 8.4a2.501 2.501 0 1 0 1.65-4.65 2.5 2.5 0 1 0-4.66 1.66l-2.024 2.025\"/> <path d=\"m8.5 16.5-1-1\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "palette": "<path d=\"M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z\"/> <circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>", "trees": "<path d=\"M10 10v.2A3 3 0 0 1 8.9 16H5a3 3 0 0 1-1-5.8V10a3 3 0 0 1 6 0Z\"/> <path d=\"M7 16v6\"/> <path d=\"M13 19v3\"/> <path d=\"M12 19h8.3a1 1 0 0 0 .7-1.7L18 14h.3a1 1 0 0 0 .7-1.7L16 9h.2a1 1 0 0 0 .8-1.7L13 3l-1.4 1.5\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "wine": "<path d=\"M8 22h8\"/> <path d=\"M7 10h10\"/> <path d=\"M12 15v7\"/> <path d=\"M12 15a5 5 0 0 0 5-5c0-2-.5-4-2-8H9c-1.5 4-2 6-2 8a5 5 0 0 0 5 5Z\"/>"};
+const CITY  = {"name": "Parma", "tagline": "A ducal capital of 200,000 that ate its way to fame: three Correggio masterpieces, a wooden Baroque theatre, and the ham, cheese and pasta the rest of the world imitates.", "stats": [["Population", "~197,000 (2023)"], ["Founded", "Roman colony, 183 BC"], ["Duchy", "Farnese then Bourbon capital, 1545–1859"], ["Bologna", "~1h by train"], ["Milan", "~45 min–1h15 by train"], ["Airport", "Bologna BLQ is the practical one; Parma PMF is tiny (bus 6)"], ["UNESCO", "Creative City of Gastronomy since 2015"], ["Stay", "2–3 days"], ["Best months", "Apr–Jun, Sep–Oct (Festival Verdi)"], ["Budget/day", "~€70 thrifty, ~€160 comfortable (excl. room)"], ["Closed day", "MONDAY: most museums shut"]], "sections": [["History in five minutes", "Parma began as a Roman colony on the Via Emilia in 183 BC; Piazza Garibaldi sits on its forum. The decisive moment came in 1545, when Pope Paul III, a Farnese, carved out a duchy for his son. The Farnese needed a capital that looked the part, which is why a mid-sized town has a palace complex the size of the Pilotta, a Baroque theatre, and a ducal park.\n\nWhen the Farnese died out, the Bourbons brought French taste (you'll feel it in the food and the garden); after Napoleon fell, his widow Marie Louise ruled from 1816 to 1847 and built the opera house. The Oltretorrente, the poor quarter across the river, kept a rebellious streak: in 1922 it barricaded its streets against Fascist squads. Allied bombs in 1944 hit the Pilotta and Teatro Farnese hard; much of what you see was rebuilt."], ["Culture and society", "This is a university city since the 11th century and an opera city to its core: Verdi was born in the province, Toscanini in the Oltretorrente, and the Teatro Regio's top gallery still boos. The Renaissance painters who matter here are Correggio (three domes and ceilings in one town) and Parmigianino, born here in 1503. Parma is prosperous, bike-heavy, and less touristed than Bologna or Verona, which is most of its charm."], ["Economy, then and now", "The Food Valley pays the bills: Barilla and Parmalat are Parma companies, the city hosts the European Food Safety Authority (EFSA) since 2002, and the countryside makes the hams and cheeses sold worldwide. The Fiere di Parma hosts Cibus, the big food trade fair, when hotel prices spike."], ["Iconic food & drink", "**Prosciutto di Parma** (DOP: pork and salt only, 12+ months). **Culatello di Zibello** (DOP), the prized inner cut, cured in the foggy Po lowlands. **Parmigiano Reggiano** (DOP), tasted at 24, 30, 36 months. **Torta fritta**, fried dough puffs eaten with salumi. **Tortelli d'erbetta** with chard and ricotta, and **anolini in brodo**, small stuffed pasta in broth, a winter dish. **Horse** (pesto di cavallo, tartare, roast) is a genuine local habit. Drink dry **Lambrusco** and **Malvasia** from the Colli di Parma."], ["Unique to Parma", "Correggio's two domes a two-minute walk apart, so you can see how he escalated. A theatre built entirely of wood whose stalls were once flooded for a mock sea battle. The loggionisti at the Regio. And Parma violets, Marie Louise's flower, which turn up in perfumes and, at Brisla, in the panna cotta."]], "musts": ["**Duomo**: Correggio's Assumption dome (FREE)", "**Battistero**: pink marble, 13th-century frescoes (~€12 with Diocesan Museum)", "**San Giovanni Evangelista**: Correggio's first dome (FREE)", "**Pilotta & Teatro Farnese**: wooden Baroque theatre + Galleria Nazionale (~€12)", "**Santa Maria della Steccata**: Parmigianino's vault (FREE)", "**Teatro Regio**: tour ~€7, or an opera if you can", "**Pepèn**: a spaccaballe standing at the counter (~€6)"], "nearby": ["**Castello di Torrechiara**: a massive 15th-century castle about 16km south, among the Langhirano ham hills; included in the Pilotta combined ticket.", "**A Parmigiano dairy**: cheese is made in the early morning, so tours start early and need booking; the tourist office on Piazza Garibaldi arranges them.", "**The Bassa (Zibello, Busseto)**: culatello country and Verdi's birthplace, on the Po plain; best by car.", "**Bologna**: about 1 hour by train."], "foot": "Prices indicative for 2026 and worth re-checking. Camera di San Paolo is CLOSED for restoration from 31 Aug 2026 until spring 2027, so it's not on the map. Sources: Wikivoyage, Scatti di Gusto, ParmaToday, Michelin Guide Italia 2026, Gazzetta di Parma, ParmaDaily, complessopilotta.it, Google Places. Photos are traveller submissions via Google."};
+const PLACES = [{"c": "church", "n": "Duomo (Cathedral)", "zh": "Day 1 · Romanesque, 12th c.", "lat": 44.8033834, "lng": 10.3308864, "must": true, "m": "4.7★ · FREE · daily 7:45am–7:20pm", "d": "Romanesque outside, painted floor to ceiling inside, and crowned by Correggio's Assumption (1526–30), the dome that taught the Baroque how to paint heaven. From the door the nave vault hides it: walk right up to the steps below the crossing, then look up. Mass times are no time for gawping.", "s": "A cathedral priest in the 18th century looked up at the tangle of bare limbs swirling round the Virgin and grumbled that it was a 'stew of frogs' legs'. The jibe stuck, and Dickens later piled on. Look again: the chaos is the point. Correggio painted the moment of being pulled upward, and every Baroque ceiling in Rome owes him for it.", "sl": "Why a priest called it 'frog-leg stew'", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMlsBuvTQdYs5O9QszvCyC7rzhijjXJu7i39-fY5tNYWXZlg-JqSQoQz-UBWezYKcp686RXdnafHN61HfBwkDPfVBR9nOcQKgX8WK3W3Fnbax6VMVAq7VA5BxFA99aHH-5A5hSO=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNlZ5GKme9OTkGask-k4nbdXNTNMj8hL-Q1ZBwg6fHgw61x4_GjcleOjMI35_2aaTx2gjCJjLnyvfGAhu6Vua7XdKa2Vmdt31UuOfqDkkZ40m32vAipZDUIgnM7npZAwlkwrL5PpGgDLm_r=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPen3wLsqseQDGw6SfNRmiMaVfcEPv_QmZGqLODppqVjkedvop3yo1GQ2VfSsNP6AFvt3qGt1BHd3e7HVYQPJALME_CBfXM--tqpIkB3jRJvPFahODp97zRcq0yMObv7mjuUJI=s4800-w800-h600"], "a": ["Baio Man", "Matteo Bertoncini", "Kai Amelung"], "g": "https://maps.google.com/?cid=2841573275082614793"}, {"c": "church", "n": "Battistero (Baptistery)", "zh": "Day 1 · pink Verona marble", "lat": 44.8031324, "lng": 10.330411, "must": true, "m": "4.5★ · ~€12 incl. Diocesan Museum · 10am–6pm daily", "d": "Benedetto Antelami's octagonal baptistery in pink Verona marble, begun 1196, which shifts colour as the sun moves; the late-afternoon glow is when to photograph it. Buy tickets at the Diocesan Museum across the square, not at the door. Inside: 16 sides, 13th-century frescoes top to bottom, and carved months and zodiac signs. Photos now allowed.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMn4K0i_cTPvctHEg5SxrwUwi-TuTz7vIr2Xj8ioTsQ-IMKfmUiohjHZxd_NLa3feyjIHe0itvMYxB3qYtR0HgpXpXY3jdG-MkccMZ_0fj9Gmv38I3Q4ZR-7FqKsF70OJTRFbhP=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMws4cKrvct0O5KHDVDXIoq3Bwa8FB2npTfhp1Sjkn46C96AgupgYVzxAt5Q0_E8JCuOP1mLtmaMfxzwLdXr1-vgPuYxvFXNUdbf7oZgAVPZM_2uXrpX0PIK0JLWVDuAy4GFiekCUki6xSs=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmN8oSXoeA3hYexIZVTyuh0QNv8tvXzDygvap5KRoYXDULD7HOYo2mNDjiGChKsG4_IELY14JJ4EmIPgIpTTbIw_-9uhBcEgUAinrjfeEOLGJEv68BDBdctwRINGzuDGIeU8oz5B4A=s4800-w800-h600"], "a": ["Maria Favini", "antonino biondo", "Mohini Schirinzi"], "g": "https://maps.google.com/?cid=14881172171343736419"}, {"c": "church", "n": "San Giovanni Evangelista", "zh": "Day 1 · Correggio's first dome", "lat": 44.8029338, "lng": 10.3322047, "must": true, "m": "4.6★ · FREE (donation) · 8:30am–12pm, 4–8pm · CLOSED MIDDAY", "d": "Directly behind the Duomo and easy to skip, which would be a mistake: this is where Correggio rehearsed, painting Christ plunging out of the dome over the apostles (1520–24) before he did the cathedral. The monastery's library and cloisters keep their own shorter hours; reviewers found the library open mornings only.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmO3ib-adXfpAN46BSMzZel786P4cUXujgBK1kojE7r5-7CmP_pqggbhG6DwqtMaromcR6IVb7PF_K5PiYkReotlG8YJq9zweHJm0dmYyHnHEDj1qXDSAypxJjqq-D_5nS3lvsd6juLrGfAT=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmN_nloLiEz6bDqXs_XaptoCk4ABWdswGha6IJqvnUUEanS9IZofc_yAhfI0AhwLtryaVRsR3_HvLocSIKPiWEGkDauEQfsAOQdueIQ5dJnN4hWXzj8HwCiPF8pxODNorzScg5pV=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOuVvsihVtwkkvUWxAtsM9iFFKceBg7EDvgcsGs2M5v3gb8e6r1Wxe2-JQkf8kbavVLDkqwa745sgshA6XgB_1lVkRD6aFDXL1atppXBXK_utvkBOC2O0u8hqm3RzKNgWCKjXY=s4800-w800-h600"], "a": ["serena beatini", "Leo", "Валентин Михайлов"], "g": "https://maps.google.com/?cid=11429119777340880844"}, {"c": "museum", "n": "Antica Spezieria di San Giovanni", "zh": "Day 1 · the monks' pharmacy", "lat": 44.8033803, "lng": 10.3320757, "m": "4.3★ · ~€5 · Tue–Sat 10am–1pm, 3–7pm · Sun pm only · CLOSED MON", "d": "The Benedictines' apothecary, run by monks for centuries: wooden cabinets, jars and mortars in eight restored rooms. Small, 30 minutes. Reviewers grumble about having to register personal details for a €5 ticket and the thin English labelling, so read up first. Included in the Pilotta combined ticket.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD-DyRW3R9MZR26nUg2ziRtdu1eA6i1T0Ru8zJKG1nglph9v2jCl8tPnssElHwelm0jfuzsfBnqZ6Jv6vuVZ4jzVeDcpsgskcM2OVNhLRWLXl2Mtmzf6VY1lzuoeLjwmjDIJ1xjlWAF6JR9VeA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAGn5CMtIbhpACfcM5DBTaZ139P84OQDoIo5vnbNEEErP-v7QBe5_18qzT0gmMM_kmg7ejs0dkvS6pL7xzX2kQ_lZZnN1hgyVWx6BQBCeFA5mDrFHwJ9r1kidp8AqyFZshlNbYUgDIFIhsPwVQRCI47=s4800-w800-h600"], "a": ["Antica Spezieria di San Giovanni Evangelista", "Alberto T."], "g": "https://maps.google.com/?cid=15999585210296560245"}, {"c": "theatre", "n": "Pilotta: Teatro Farnese & Galleria Nazionale", "zh": "Day 2 · Farnese palace complex", "lat": 44.8049173, "lng": 10.3260085, "must": true, "m": "4.9★ · ~€12 · Tue–Sun 9am–7pm, last entry 6pm · CLOSED MON", "d": "The hulking brick Farnese palace holds a wooden Baroque theatre with a horseshoe cavea for thousands, then the Galleria Nazionale behind it: Correggio, Parmigianino, and a Head of a Woman attributed to Leonardo. Allow 2–3 hours and go early. The theatre was almost destroyed in the 1944 bombing; what you see is a faithful rebuild.", "s": "Duke Ranuccio I built it in wood and painted plaster to dazzle a Medici grand duke passing through on his way to Milan. It was finally inaugurated in 1628 for a Farnese–Medici wedding, and for the show they flooded the stalls and staged a naval battle. Then it was used only a handful of times. Bombs in 1944 nearly finished it off.", "sl": "They flooded the stalls for a sea battle", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmO0kP5l3xAq6qIwoUJFQbr2ug7QnfgzQjhhwPKY7PDMJH612XbDytxhx4pnoeVi8tYe_8tW7zgxlJdsqehUBMXb0ZfRLRNqTvFUSnR5IXXu0Msn8lNmVIEhh5CYqjratcYx9wMMVQ=s4800-w720-h511", "https://lh3.googleusercontent.com/grass-cs/ACvplmMTo84SSGjflxyDsnVp6Vk3-SyWmHRUAfSRK10Ni6KlG9KSn7UK1v1BEP2RCQ5Pbr_29Ab1-TGtFXg51xSAuAhSPX5fm7LvutxDta8IMJQgYNGrOhecT7iCKdkdfl9TcflY0LF0=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPJmNMjUbO6p0MUKgP6Dov30-hPWLPwrUEZxaVSTFwbUmlZ_m_1uWISqYX4TLH02yWHsTJ4YSkK39A0oFvWY-qyiALY8iATZz1ALZ5Tmi42stpjq-Fu65_xJgLbO1wxTo5YiXEOOA=s4800-w800-h600"], "a": ["SISCU", "Oksana", "Martial Rufener"], "g": "https://maps.google.com/?cid=11154443818207305228"}, {"c": "church", "n": "Santa Maria della Steccata", "zh": "Day 1 · Parmigianino's vault", "lat": 44.8026241, "lng": 10.3274512, "must": true, "m": "4.6★ · FREE · 7:30am–12pm, 3–6:30pm", "d": "Greek-cross Renaissance church a minute from Piazza Garibaldi. Look up at the arch in front of the apse: the vase-bearing maidens between the copper coffers are Parmigianino's. The name comes from the fence (steccato) put up to hold back the crowds venerating the Madonna inside. Closed over lunch like everything else.", "s": "Parmigianino signed up in 1531 to fresco the vault within a year. Eight years and two extensions later, still unfinished and apparently lost in alchemy, he was arrested for breach of contract. Released, he fled to Casalmaggiore, just over the duchy's border, and died there in 1540 aged 37. The maidens you see are as far as he got.", "sl": "The painter they threw in jail", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC5Dv5TsIgPpjAPCJ3d4oqBe1kLz4rgZtlb8ZpV4xRCyWvO_8CQGtf9z2ijF4pn8ywqcsHGEerFeuKlRsx39E3jXjteccK6Aw8FSQRYenmlvyAYQcLN_lTBOqH93CDOgwWB2KrP6DskjPIIWms=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC5ClVuDNagwqQaxH7eCNyB9lkZ50MhumSlseAo0L7rEpi4JpzxK7tIJC_VOIA9sqBJNvWed98rTZrvrmvRI1H32iO-3Qe_rsfr1d9SnMIU2LlUITlhCIaksM1ofrLnwFrxvKSpbIHrSQKXZbM=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBhTmGFdAeXeDESlNM1Rcl5QTdP9fRxnbekq3UIDa02r1bh9oPxW-kVbJxR8_LhqBdgeuU8uknscrURtzbc1OTld4ZShE-pxWRTBW0nLB5365v04YzT7ZA_UvgeoXFkGPfBefw8J-cfW7WN2A=s4800-w800-h600"], "a": ["Benjamin Nicolson", "Peter DePasquale", "Kai Amelung"], "g": "https://maps.google.com/?cid=5771193165674403487"}, {"c": "theatre", "n": "Teatro Regio", "zh": "Day 3 · Verdi's opera house", "lat": 44.8031676, "lng": 10.327228, "must": true, "m": "4.7★ · tours ~€7 · Tue–Sat 9:30am–1pm, 2:30–5:30pm · CLOSED MON", "d": "Marie Louise's 1829 opera house: red velvet, gold, and a loggione (top gallery) whose regulars are famous for booing singers who fall short in Verdi. The guided tour is short; one reviewer caught a 30-minute English tour at 3pm for €7, so ask at the box office. Festival Verdi runs late September–October: book opera tickets months ahead.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD8gn6TtLtwvONqx1F5unTcOOhJh__k1Jd7pJV388ZQwmkjI-3kBX8WcXfUfNSOBxdEJtoYbSGijU2oAadwY4Rj1SrKMQUlMXWMh602ewPukCK23w4K3yfm2rI_RqSm5sKoICV8cWWgDtAbQA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDCjccqLg3ttVbBkF1h0yU7Zm-sNw0_jciAJQEj_Ww3HBQioK_SEBqpGRzYqe0aka2WEEo7zHbTpsbWAS5uODh7wT2SdDQfwX8uYutOQGMMDsaJbZnTvGqsbDa6JGWSITgxKgHlDJ9xtsCbsds=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD2dnK3c1FSUE6_4a3_LAgzFunVkenL_27p27jLXssWAel4-E7FHFTsgpi0mUodvPyzxw8DusorGuIVo9t-kc8WKtigGBos0QCUHwU6HAC-dglx8TyM_KLTIIHpqIarTLQVEoLsNeXnoHhM4A=s4800-w800-h600"], "a": ["Teatro Regio", "Anna Foria", "Susana Carpente"], "g": "https://maps.google.com/?cid=11029882002014242249"}, {"c": "heritage", "n": "Piazza Garibaldi & Palazzo del Governatore", "zh": "Day 1 · the Roman forum", "lat": 44.8019237, "lng": 10.3279427, "m": "4.5★ · FREE · square always open", "d": "The square sits on the forum of the Roman colony founded in 183 BC, where the Via Emilia crossed the town. The yellow palace's 1760s facade carries a big sundial-clock with time zones painted on. It's the meeting point for the free-standing city tours, and the natural place to orient yourself on day one. Cafés here charge for the view.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBMC1LYeYRiGYfEq1PiB0-tJA_pFxqMTsI8ecXYZcHwScaIGv_KRr7YSggTU7iHscBbrJhEE_WSPZ7sUHc38bMR8MSab-Fieco25CT-o7SeREqFW8Ukk2ggUv-_-7XursrJrXDIVMmiDxSsYg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCrHYZgqQ1czn89QWJJcE4jtRbrbL8yMngvIld4gD_kC-wmR8vO3a6BU6NLCsIxZNvSdqkezHXkMHH_k0De3VEd4vCelBn5UrbDZJ-9XQBP8cRrXj8PJjR3qMXq-m6U1bo_6lPm3o52XB7P8J6ifzTeUg=s4800-w800-h600"], "a": ["Daniele Ferretti", "sergio garau"], "g": "https://maps.google.com/?cid=13221087830482549897"}, {"c": "heritage", "n": "Ponte Romano (underground)", "zh": "Day 2 · Roman bridge under the street", "lat": 44.8022584, "lng": 10.3246021, "m": "4.5★ · FREE · underpass, open access", "d": "The arches of the Roman bridge that carried the Via Emilia over the river survive below street level, now in a pedestrian underpass off Strada Mazzini with panels and reconstructions. Ten minutes, free, and proof the river once ran here. Reviewers note it can be grubby; there's a bar down there doing cheap aperitivo.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCX6EcCszNAY0FVXbdtFgv3sLJlTu0SAgX5yog9N1xE_jkAMqtM6kLYyKEWuiqijXRlsNcZkG-McusXf4rRPo1NWrrPLINfca-uCbsPvyUUvhSjaGUpmjhL51kaDk68iNVeOaRVqaqUPJX7=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDdOJ13uuRpCmip5fcCAEO7velWBgJ6oTyqLUPZO2dkIaXhVWXjVPXZ5S1_mySNgVUyBNQPdgBCpW_vljGGX65oF0pcL1HWPHa0BpoI9LjHGNvg35ilDWI54H2jy3bTvFGfQ_H4433zSbgZ4AI=s4800-w800-h600"], "a": ["Daniel R.M- Nutricionista", "Finn Barfod"], "g": "https://maps.google.com/?cid=12882792751602871117"}, {"c": "heritage", "n": "Ospedale Vecchio", "zh": "Day 2 · Oltretorrente", "lat": 44.8037546, "lng": 10.3187029, "m": "4.5★ · exhibitions vary · CLOSED TUE · Fri–Sat to 9:30pm", "d": "Parma's hospital from the Middle Ages into the 20th century: a vast cross-shaped ward hall (the crociera) on the pilgrim road to Rome, recently restored and now hosting exhibitions (Brian Eno's light-and-sound show was the recent draw) plus the city archives. Check what's on; the building alone justifies the walk into Oltretorrente.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCu0-WYu5-weKEShYrpm6E93tcxGodB5QsMlMnaFnq3RDn_ElSu_GAlsxYRIbMChM_dzWAFhjoUTMgjPuZIeB5WE7-JSCQJa_98RQu6CC0l3ZN0z2yp1mxcV1_WYDkjrIu1eK0ppwQDtX96sg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAq34xURi_AvgbH5z2XKGIAzutYrrz-5NWqoY-MdZsr9QRKesblV8zxiTfiU_WHfkHiw0XfwjbfDiTCWQph_9cZHZFoViiLOJWy6DIlUmG-V3nSnJ15aJZ2fMk7wCFxxakNbdokFjYT6eLq5w=s4800-w800-h600"], "a": ["Giovanni Valente", "Vlado ST"], "g": "https://maps.google.com/?cid=4022175291103597454"}, {"c": "theatre", "n": "Casa natale di Toscanini", "zh": "Day 2 · the conductor's birthplace", "lat": 44.8042142, "lng": 10.3224306, "m": "4.6★ · FREE · Wed–Sun 10am–6pm · CLOSED MON–TUE", "d": "The modest Oltretorrente house where Arturo Toscanini was born in 1867, filled with photos, batons and letters. Watch the film first; reviewers say the labels assume you already know his life, and there's little English. Worth it for music people, skippable otherwise. It's two minutes from the Parco Ducale gate.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNZrplz6ATA8Qca-C0sMqlEbNtKfuNH410Toj3nd1uDOVthrnuvtW6TNfh_k2DA1a8tPob_4hWAh1i7LoEUXUT7OP7FzXyRwAPgfgUyIrkSiKpplXzqqgtlR4rX0PXoGsbOJJATIud3uCs=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMVzgelAv7JDMRYsLaNFlrr1DDSfo33_ANsU-KciaMKiILaTcibDWp4gHyOdul5PYrA34zAYXhFYWLJyt5g9M7iAPxF1DrZuQehA15GZGJE8hJqIl4s6-sjR-YMu2xHE_MzcAk=s4800-w800-h600"], "a": ["Alessio Cavallone", "Museo Casa Natale Arturo Toscanini"], "g": "https://maps.google.com/?cid=11359401591839730106"}, {"c": "park", "n": "Parco Ducale", "zh": "Day 2 · the Farnese garden", "lat": 44.806151, "lng": 10.3197907, "m": "4.4★ · FREE · 6am–midnight (Apr–Oct)", "d": "The dukes' 16th-century garden, remodelled French-style in the 1700s: gravel avenues, a fish pond with turtles and the Trianon fountain, and the ducal palace (now Carabinieri HQ, closed). This is where Parma jogs, walks dogs and does homework. Bring a panino from Pepèn and sit by the pond. Some fountains were dry for works per recent reviews.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMDFOMr2e1cHastrgaJmOtohEfcZuwzErUiQ5V7ZKxvQCIsyxfsf-RhJdedxeft4wBbaGZZsYxwhh_fYyAmKXJNm1_dgO8VdNRvu88Pl7zxSk2gMjy6q4gvYqPES5uI-xlGVQv5=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOv2GVX64QX9rSc5TQ04O-W3CR32--M5OlWWH67D8Xmz2kVEkiWhtGmBY1552IBe5DREssRcYITGZgU6qYIMwh2lEd8q9Vrhqlq6ETQrvOwlgBqiqjHZTokoy3JyMWtwTjl8tZX=s4800-w800-h600"], "a": ["Patrick Roy", "Ejup Lila"], "g": "https://maps.google.com/?cid=15618101920667335376"}, {"c": "museum", "n": "Museo Glauco Lombardi", "zh": "Day 3 · Napoleon's widow", "lat": 44.8037716, "lng": 10.3279568, "m": "4.6★ · ~€6 · Tue–Sat 9:30am–4pm · Sun to 7pm · CLOSED MON", "d": "Marie Louise of Austria, Napoleon's second wife, ruled Parma from 1816 to 1847 and the city still adores her. This small museum holds her jewellery, letters, portraits and Canova sculptures in her former palace. Ask for the English iPad at the desk; the printed handout doesn't cover the walls. Her favourite violets turn up in Parma perfume and sweets.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNuaHZVAkNKBhjB9V0BBlr6837jRBQSLdoDT3drx1DL1LPtMvwZIqFTwS-R2K4A9Jwae2tGCECBcYzlwr-fEONWAS_Ztk35eVHVKKqCYvXqMScEAGlZABjuNKEp8vf1v1ihkfXjgg=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNQUOt0D3hBkQBSp22aVo4EA_TJtMPC6qjV_2CpLQsoqJVNBAyKH-pM7LylF0tZsMZymCPcJBPF4kxR3LWoY61aA6KzuJZJBa-sn3P1tSUdCpcG-tztsRoulC3xxoQKBf8JUe8dUQN19MtI=s4800-w800-h600"], "a": ["Fondazione Museo Glauco Lombardi", "Fondazione Museo Glauco Lombardi"], "g": "https://maps.google.com/?cid=3356953983916320875"}, {"c": "cheap", "n": "Pepèn", "zh": "€ · panini since 1955", "lat": 44.8013918, "lng": 10.32904, "must": true, "m": "4.7★ · ~€5–8 · Tue–Sat from 9:30am · CLOSED SUN–MON · Thu–Fri lunch only", "d": "A standing-room sandwich counter that has fed students and office workers since 1955. Order the spaccaballe, spicy roast in a crusty roll; horse (cavallo) is the other local classic. No tables, a few stools, a fast-moving queue of locals. Come before 12:30 or after 2. The number-one pick on Scatti di Gusto's value list.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMoYK3C6as6dja7G6YUxB1uL45_VQFIXlzfdxf4aXdyCBCk3nvepd_0Ch9XBekeeef6_taLQN9s_fM-afoUtidjilraO1D-Lborbbq35HraCNIb8YndYqqCApb0AKGUXfXkV48m_Q=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNb2b58NV3XAk29X7fTCs6t6kYS_D2vFl7Zg-RRDVDkzPlcOGp0i7cDtPBTXiLK2hYkFyMmO0KaVNAyc1o34ZR_0-xjqx0k7Qtw2sPyqbN4dIekL8Ox2iuG9gj2T6u-xgHQj0I8=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmO1Uxhm1SHdubmEwX3q7xsoyGDxyUESPgYubgIBGfpzWcZKm__arKmkiT1zwg6MGasdj_-VKk2uqaeDbmuOPxlNJ4Qw7IjAurHxg72eRVn7jiZq5-PQfFQQuAw2-7A4tt1tlxhyHqN-ds8=s4800-w800-h600"], "a": ["Michelle B", "Giuseppe Ricchiuti", "Bungabunga"], "g": "https://maps.google.com/?cid=15570857301258147670"}, {"c": "cheap", "n": "Osteria dello Zingaro", "zh": "€–€€ · horse three ways", "lat": 44.8024041, "lng": 10.3325933, "m": "4.4★ · ~€25–30 · lunch & dinner · CLOSED SUN", "d": "Small osteria 50m from the Duomo that locals rate for its horse: a tris of roast beef, tartare and pesto di cavallo. Start with 24-month prosciutto, the best some reviewers had in Italy. House wine is cheap and good. Service gets swamped at peak; book for dinner, or walk in at noon after the Baptistery.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD11HyM8_Ci_TcAfntMjo2XlsJnyo8CxijiijWhU-rhpqZgUtcPsJw1ctLrXQdiuOqJE0UpKCxQ70WeSNyIKm0jwsE9nteveFq0i65f-G53YeezXKudMOdgUVUka0JZQYqS3liIDsqIcp0=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAkdpbGHWET5JNcYzizpQOiQ2w83Hkqx5KIc7L9B_xMP7Ka5LKe-UPGVKiqqquNehYS9TgXh0kKitSWxqBNTGatteUHXtW6ML5Kv1anLBSLzpHkEEmppB6BAMZMke_FdjWT5gw0JF2Jg5spjYyr7bP7=s4800-w800-h600"], "a": ["Osteria Dello Zingaro", "Luca Bernini"], "g": "https://maps.google.com/?cid=7191129606617145902"}, {"c": "sweet", "n": "Antica Pasticceria Pagani", "zh": "€ · since 1856", "lat": 44.8014799, "lng": 10.3297963, "m": "4.3★ · coffee + pastry ~€3 · CLOSED MON–TUE · Thu & Sun mornings only", "d": "Parma's oldest pastry shop, now in its fifth generation. Breakfast here instead of your hotel: a cannoncino filled with zabaione, or meringue with cream. Tiny room, a few tables outside. Some items are takeaway only, oddly. Note the two closing days before planning breakfast around it.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAfUY9Q9NtPFLFlO9GnHDf5g04wwQk6LFfoGCiJ7pxD1ww9HnzRoKLozksNWChsPKgMjczjwrAXOTdSPKyW5j9HL1mbTracd0bQz9UmlwYfPODIQx5GNVRo6wQnhzwmuFvSoeBJNaRyJ5k594EhMNxB=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB-zJbgx9EXU0ZmCFT-6DNFkmMx9laouPCO2ak_CSqMaI3J6CagmdikfA1qaFCFdLA0kkXw0z2JNC7eH0BcURq1wS2s0gjBk4taKFlDgzpaRcVlVGABTGOnWp4x8CEEBnFTaV_ov_BKmu9qXNE=s4800-w800-h600"], "a": ["Juliana Modon", "Enzo Prenotto"], "g": "https://maps.google.com/?cid=10010397520571587313"}, {"c": "sweet", "n": "Ciacco", "zh": "€ · Tre Coni gelato", "lat": 44.8020774, "lng": 10.3276976, "m": "4.5★ · cones from ~€3 · daily, to 10:30–11pm", "d": "Gambero Rosso Tre Coni gelato on Piazza della Steccata, with odd flavours alongside the classics and a good vegan range. They'll let you taste before choosing. Judge it by the pistachio. One critical reviewer found the flavours too subtle; most found them the best of their trip. Open late, so it works after dinner.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPM7x98jpK4h1xTNgWE_vS2jnEMuxc-6IleYc4aTPR_I00UxIZoOwu9--QMYdO32UCeJJoHAlM1Ezdb9BAapSP0VRrGfwJ0aJrSty8kYUuGGKJQ5NcF9MBjAW6IO5pLobGBPlfn=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmM2JATHHPgqQokLAfOY4GjpjdMQke6gSAmbYTStKrWfO-yQSqrHYDOobtvbo_SbpNV4sI-0oezfRrQn5zrtJQGKBJdOUOCkXDB_yqjI1PsbBqQwxJn3YfUsHYdlthWtXJBYO6XU7eVjuLU=s4800-w800-h600"], "a": ["Ciacco", "David Addo"], "g": "https://maps.google.com/?cid=18184782849091321268"}, {"c": "deli", "n": "Salumeria Garibaldi", "zh": "€–€€ · historic salumeria", "lat": 44.8075109, "lng": 10.329379, "m": "4.6★ · priced by weight · Mon–Sat 8am–8pm · CLOSED SUN", "d": "The historic deli at the station end of Strada Garibaldi, and the place to taste the three DOPs side by side: prosciutto di Parma, culatello di Zibello and Parmigiano Reggiano at different ages. About a dozen seats for a tasting board and a plate of pasta at lunch. A good stop on the walk in from the station.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPOPQQphNNy_prWzNKYYRt65J32OG9hp3bh8KVPZ8BeOgaTb7t7NUof4u9YDUK3OeUqOsQKcUm5qO3sf4rvtjGslsAEzdE9PmdjChyO8mUo2LOTNMi5hD4FNkSWt6GYBL2nLow=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOWaW8IvJhMYFZdFTIr5-RmOpu-K33DnGYccgdo3TgbhdDzKoc64HkSbXNngq4XclpynCvJ-Pc23_xE_g2K9hKeJe-cSXiHSyvKfhuJjILX5Z4Wk7rkV_k9nT1V8cXzsN3Dfp_p5oyAB2Qe=s4800-w800-h600"], "a": ["Wan-man", "hirosenami"], "g": "https://maps.google.com/?cid=18202580320319983604"}, {"c": "deli", "n": "Antica Salumeria Rastelli", "zh": "€ · stand-up tasting", "lat": 44.8003645, "lng": 10.3338604, "m": "4.7★ · tasting plate + glass · Mon–Sat 9am–7:30pm · Sun 10am–1pm", "d": "Smaller and friendlier than Garibaldi: father and son run it, the son is training as a sommelier, and they'll walk you through ham ages and let you try balsamic from 3 to 30 years. Order a tasting plate and eat it at one of two high tables. Good for vacuum-packed souvenirs. Five minutes from the Duomo quarter.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNSHFGGIGPpMjVlEpwCF5kXa65P_nt-0x-BBP71QPO1nz6YWstVy7EaKpl3j2ZRkNP5T9FsjtbuftY3DH20sV2faheC_OV-4hiioft_qpK47c19yPq_9zc8vB-8-IzCc-w1JGXul5cDguvC=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNTpk78m51xz2lHtDd25X1TsxOD9svAiEjgSW633pjoAaptWa_lEdmqHEVYviz0Jp6-sQ09h2LlZPV4BLtXQjU2b8Gb1uQyKAAg8SaWSVgBhjBKX5DaSv8UN28E1QQY17zkLJmR=s4800-w800-h600"], "a": ["Gian Domenico Silvestrone", "Antica Salumeria Alimentaria Rastelli"], "g": "https://maps.google.com/?cid=14583778668966311222"}, {"c": "mid", "n": "Trattoria del Tribunale", "zh": "€€ · tortelli tasting", "lat": 44.7995559, "lng": 10.3270972, "m": "4.4★ · mains under ~€20 · daily lunch & dinner", "d": "Tucked in a quiet alley and long recommended (Wikivoyage cites Slow Food), with a degustazione of three tortelli and pork cheeks in balsamic. But recent reviews split sharply: some call it a tourist trap with reheated food, others the real thing. Order the tortelli and torta fritta and you'll be fine. Don't confuse it with a similarly named place on the main street.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmOhBr1ni2ySFCmHau74poMee7PCMsVi-UogigiwZUkURCCBIPERlquoims-VAkxDMtSNerKKVZD9LkMol5QkoMP_cRSZFcVsfccqlfOqVV1wKLk3kGCtPPsPBuLenh6NVffcKukAMKEuAVH=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPlJz06EkNFdufwj3GV-QB45EHRv8TEdnKUZF3Djm96uzePkHckRKVwaU3rQZLzT_f5bKbfhio2slDcEUtsvm0xEYTG5lMkScexul3PcgkHiTvp1pWQEdI5myJcOAoKhh2graRwfwAXyZSs=s4800-w800-h600"], "a": ["Lorenzo Volo", "JP Saff"], "g": "https://maps.google.com/?cid=10982795034203337825"}, {"c": "mid", "n": "Trattoria Corrieri", "zh": "€€ · open all day", "lat": 44.801303, "lng": 10.325234, "m": "4.5★ · tortelli ~€10–12 · daily noon–midnight", "d": "Big, busy, checked tablecloths, and open straight through the afternoon, which makes it the fallback when every other kitchen has shut. Order the tris of tortelli (pumpkin, radicchio, spinach-and-ricotta) and torta fritta with salumi. Over 9,000 reviews says tourists found it long ago; arrive by 7pm or queue. Service can be brisk.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBpQobyX-ddYOiONt0mj5J8rFdT14Zvl7BJIiUQ41L1lJQUC_JP5JfUNDVZcIE529ky57-17mhdPAUIOqwEnpHXO25UOFf7dl7RTknX8FOW7tNo4h5jGBujxExgy0Wu-sLNlajceTB-uaY0DZ0=s4800-w800-h578", "https://lh3.googleusercontent.com/place-photos/AG9NLjBS9X4jBnJso_znidstP5MtMnALQUMh5RHUqVZ6xZadm4ttcnPmKu2dFfgDvTOFDpPriEbGmiN8KqQgQRLXysjbFz3Aj84wOyORCyHWeu6AbAIJtrLHRnDdzACpQT7E9oQJ5jrnozh-wxmWRKoWsZro=s4800-w800-h600"], "a": ["Trattoria Corrieri Parma", "Maurizio Carraro"], "g": "https://maps.google.com/?cid=1826173874880100269"}, {"c": "mid", "n": "Gallo d'Oro", "zh": "€€ · old-Parma dishes", "lat": 44.80071, "lng": 10.328309, "m": "4.5★ · ~€30–40 pp · daily noon–11:45pm", "d": "Off Via Farini, with a slicer by the door and a closed terrace. Try the local oddities here: rooster, horse, and anolini in brodo in the cold months. Staff happily explain the different hams. Queues form at lunch and it runs all day, so book on weekends or aim for 2:30pm.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDPa5locHwq3ms_f70pcUoiK_dZghbV257HNfYvINANM1BiOT9mM2Js9WvrHv00W-B5ia3WeRYLdylmAVzQ7pR_sFq4K5PhQXSttZ7EWK_nfaBvWVEDX18INn5tTTGK8STSWf7Ca_lQYYVMpHKGx71YoQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDnW5CaUo4qnjgshTARNAOC6iLWsijOe2rkKcmNm5B6-Ln14qRbeCO0u_ErXFCqi0N5QfUG9jARak6OII5wEGn-9oz2T1M-gzySIndx9e2XJvfc2cThrTz-9CmEVNisH3D074-ZAlaELhvMyfK4nFhU=s4800-w800-h600"], "a": ["Ristorante Gallo d'Oro Parma", "Irene S. Levine"], "g": "https://maps.google.com/?cid=17117228043905592009"}, {"c": "mid", "n": "Croce di Malta", "zh": "€€ · modern-traditional", "lat": 44.800518, "lng": 10.326696, "m": "4.3★ · ~€35–45 · CLOSED SUN · Mon dinner only", "d": "The trattoria for when you've had your fill of tortelli: a short, seasonal menu that plays with tradition (spaghetti with bread, butter and anchovies; spaghettoni with duck and kimchi). Outdoor tables in summer. Staff steer the wine list well. A good Day 2 dinner after an Oltretorrente afternoon.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmOqUs5Se6iXCUjb5f2A8WaO9mBAGiBmWib6MSPdzJLVSUWDfSZzSE0oMk2eDgqRf59_cltEbcR1-JDHnKnxYKYJgDTONWaSBitNG5J4Is7yAOnoaOglu4uvTXif3ZeiXaD5AHBklBtcjkCI=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPDMa-0VztzjibwpkAFDoaxRynuMMXrngsmyAdibpT7jrR8r-rN_xRzYGBLsDsVEbS9PsrT-Poaore5eHyZC5UjpnziC75yG05SFKSt2OFNRIdFOXJZ2FIT2zjxxpDIHK2HAp8WfXfmdXk_=s4800-w800-h600"], "a": ["Croce di Malta", "Simonnot Quentin"], "g": "https://maps.google.com/?cid=2097368636104225887"}, {"c": "mid", "n": "Brisla Trattoria", "zh": "€€€ · Michelin Bib Gourmand 2026", "lat": 44.7979344, "lng": 10.3267183, "m": "4.6★ · 2026 Bib Gourmand · CLOSED MON–TUE · Wed dinner only", "d": "Parma's newest Bib Gourmand, a few steps from the Teatro Regio end of Via Farini. Short menu; Michelin singles out the culatello, tagliolini and rabbit alla cacciatora, reviewers the bomba di riso with pigeon and a panna cotta with caramelised violets. Small room: book, and ask for the bar seats facing the kitchen.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmOkqaLneZOKVUlJt51yGWw4FVdmXK-dgCVmN4o3hv6QrCoQJUGd1ffKpqZqx6HyjASAsLMojVgDUYWYA0-5vTDJMzhtkaEnWyevN1FgvXOb9s6KvWmGh9-J__-ZzmpX8ZtO6A8=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNwH5f4GmGLE50YUoPA15ELSQec9zepsGc6b-ZkfM5RwAj33-mmE-kUFrFBWO4K1vOs4TrC-7It87ovr93E274rjgH594LutGGdEocvkTX600sTSf1LGr1cP26nXjNSGfyXTmQ_0fyzMYje=s4800-w800-h600"], "a": ["Brisla Trattoria", "Po.88"], "g": "https://maps.google.com/?cid=16062729352192793688"}, {"c": "mid", "n": "Trattoria Ai Due Platani", "zh": "€€€ · worth the taxi · Coloreto", "lat": 44.768842, "lng": 10.379983, "m": "4.6★ · ~€35–45 · CLOSED TUE–WED · book weeks ahead", "d": "About 6km southeast of the centre, and for years at the top of locals' lists for value. Salumi from small producers, tortelli (the cherry version is ~€12), and a 1964 Carpigiani machine churning gelato at the table (~€7). Taxi both ways, and ask them to call one after dinner. One reviewer found service offhand; most leave raving.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAzxxtU-tbMq5dvUm3xggSI0-YWifxAwUZGLLSylWB2rUuTy9fq8pjk5t8xZb4wFrz2reJIU9a6hPOKEym84a5V-GgowOIYR-W6lSaQFlTtSoTgbOB3AjRiK1xJEiFe5d6CBa9RGaetC1c2nw8=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAMzjM8Z55epF1VBT7x-_K85jux_tdSMGfcgajJcDtERlXTocN3rKPGxyP--WCLRHp7Xog0IvYb0hvvWCb5A_VgvoGtb0yX0SgAQ-5oy4Kgh6VchE5rVBapCF5EJSU9QWUgVmliNXRFnhM6xTiGUqCL=s4800-w800-h600"], "a": ["JohnTsikoudakis", "matteo Iori"], "g": "https://maps.google.com/?cid=17759915644878103765"}, {"c": "splurge", "n": "Inkiostro", "zh": "€€€€ · 1 Michelin star", "lat": 44.8276036, "lng": 10.3367038, "m": "4.5★ · tasting menus well over €100 · CLOSED SUN–MON", "d": "Parma's Michelin-starred table, north of the centre on Via San Leonardo (taxi). Chef Salvatore Morello's tasting menus lean French with Japanese touches rather than Parma classics; one diner walked out expecting Italian and was charged a €200 no-show fee. So read the menu first, and note the cancellation policy.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmOyac0V5im1nUWTY5-C9z9emusSOs7JJGUN5U-7icQC1lEIwki9YAL3IoInFcg8tq_9Rv9ss_w9-5xfb7qb9hp0JI-hIK4Rm2UXDTdHduGtPIvIQi-NjLOznHG90oxUNefJ9M5M-w=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPQOFy9lklGvs9yCyY2yoGEdRiWnMGLQxq2GJVX2e5p3PX3lnHQoFZJ3zbLnLVRiU_PIpM2kQ_RaEtYb4MBpxoZiByMxVz_wAWwZ1vG1yqp0MpkFlh-75RqEauUVWRTFOqWGb07aFqsvNdm=s4800-w800-h600"], "a": ["Ristorante Inkiostro - Parma", "giuseppe naimo"], "g": "https://maps.google.com/?cid=10292840349458438517"}, {"c": "wine", "n": "Enoteca Tabarro", "zh": "natural wine & culatello", "lat": 44.8008333, "lng": 10.3277778, "m": "4.6★ · glasses ~€6–10 · from 6pm · CLOSED TUE", "d": "The wine bar sommeliers and winemakers go to: ~25 by the glass, some 600 bottles, natural wines and new-wave Lambrusco, and a board of culatello and prosciutto cut by knife. Small; tables fill fast after 7pm, so go at 6 or book. Ask the staff to pick for you. Not the place for a spritz.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBYEsDnZR94Ji_NB1qhlFtUcV1afFZWcsmkmPTXv02JbYpApbt-I5A1g_BWtnPElXhfJRv5Aqv9jxS1oriyOGVsfT7iDipnWjiHl5_VMXUlKQG6RGnLpNGyeEOAv2WNoVx7GeJM_3wOQ0dGs9BnWBx3xQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAS86-xDw7nY_k4z_fh1oHyW63ElzlnkTOpK2FlAx8a8HGG-UJwH4zXAZysBY9punDFkSxuimvhMEn4SptaMfqHPRFY92KQPiJEB1m6fBMk4iBLqmiiOxqInN5E8PikZwFt_eub4uwSLXWtns0=s4800-w800-h600"], "a": ["Silvia Ros", "Roberta Muir"], "g": "https://maps.google.com/?cid=8225389165392038913"}, {"c": "wine", "n": "Enoteca Fontana", "zh": "€ · panini & cheap glasses", "lat": 44.7999846, "lng": 10.3278874, "m": "4.3★ · glass from ~€3, panino + glass ~€7+ · hours vary, check", "d": "Old-school enoteca on Via Farini, the aperitivo street, where the young crowd has met for years. Cheap glasses of Malvasia and Lambrusco, grilled panini with good salumi, and a nonna in the kitchen. Loud and crowded at 7pm, which is the point. Google lists no hours; ring ahead or just walk by.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB3lnVhpbUWWm5lyOFqo-9uYqCZkP05pj8JIDgLoIRU3-9x6s6LYw4KlVRed7xI0wAuAE8y7vgJSTDGDBmzVNHWRFZw2WdLZKjD0sETqy35Ag2Yw4w1kT6syMufIi0q2f00VKkhsGjr_MTRFQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBhLW5DWHvDv4LY6DaVon57UnnW5_gXAlLBCajt0LVh57fgJb7WdMvKbr4wO4vskSWEzCRRGMNsMffifOGUyOaS0qYxCtqMCSnUy2IzYZkXNMMsK4-wHJJWcMSvxLAmDEMT1bwe7eFsXP2JZh7gS48BZQ=s4800-w800-h600"], "a": ["Andrea Di Betta", "Martine Coudert"], "g": "https://maps.google.com/?cid=8539694390937595543"}, {"c": "wine", "n": "La Piricucca", "zh": "natural wine · Lambrusco", "lat": 44.8025739, "lng": 10.3257174, "m": "4.7★ · ~€6–8 a glass · from 6:45pm · CLOSED SUN", "d": "A narrow natural-wine bar near the Pilotta, with a host who talks you through small local producers and a simple meat-and-cheese board. A good spot to try proper Lambrusco (dry, dark, fizzy) rather than the sweet export stuff. A few outside tables in summer.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMEJrbzAMZO9Hr0LjwEbjN7EokaQWkYUxrAlOc4a4Arp-k_0MDmQMXzj5wHk7iTH7cgdvFtEXfkRZjCDjund22ZmFai27VhqM9YOLOwvz3JiNdNrRURk5N1PYJ7wh3McTXUDfl5qQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMxK185FwO-84rQdGO03gm89vog5JR4eQ4EvywUS5Glfv6i9aSZUEsDy40qotfc3U7l8pAmm8yohAI8UDKz9VUvv7bpIHmdLQbCRtm-Sd8lXZxXdg4Tqcn11t6sMIZe9ALzvtyv=s4800-w800-h600"], "a": ["Giorgio De Lisi", "Carlo M. Fossaluzza"], "g": "https://maps.google.com/?cid=8790441074033393560"}, {"c": "stay", "n": "Stay: Centro Storico (Duomo side)", "zh": "best for a first visit", "lat": 44.8028, "lng": 10.3305, "nophoto": "district, not a business", "m": "walk everywhere · pricier · quiet at night", "d": "The lanes between Piazza Duomo and Strada della Repubblica put everything on this map within 10 minutes' walk, and the pedestrian zone keeps it quiet after dinner. The most expensive option; historic palazzo rooms often lack lifts. First-timers should stay here."}, {"c": "stay", "n": "Stay: Oltretorrente", "zh": "local, cheaper, trattoria land", "lat": 44.803, "lng": 10.3205, "nophoto": "district, not a business", "m": "10 min to Piazza Garibaldi · B&Bs · good value", "d": "Across the river: the old working-class quarter, with small B&Bs, the Parco Ducale on the doorstep and family trattorie that cost less than the centre. Livelier and more lived-in, 10 minutes over the bridges to the Duomo. Best for return visitors and anyone who prefers neighbourhood to monuments."}, {"c": "stay", "n": "Stay: Cittadella", "zh": "green, modern hotels", "lat": 44.7928, "lng": 10.3318, "nophoto": "district, not a business", "m": "15 min walk in · buses · quieter", "d": "South of the centre around the pentagonal Farnese fortress, now a park. Modern hotels, easy parking and jogging, but 15 minutes' walk to the sights and quiet at night. Good if you're driving. Avoid the blocks right by the station: convenient for early trains, but charmless."}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19, subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+(pl.must?' must':'')+'" style="background:'
+         +CATS[pl.c].color+'">'+glyph(pl.c)+(pl.must?'<i class="star-badge"></i>':'')+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true,
+    zIndexOffset: pl.must?1000:0});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galPrev.style.visibility = pics.length>1?'':'hidden';
+  galNext.style.visibility = pics.length>1?'':'hidden';
+  galPrev.disabled=true; galNext.disabled=pics.length<2;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+  const multi=imgs.length>1;
+  galPrev.style.visibility = multi?'':'hidden';
+  galNext.style.visibility = multi?'':'hidden';
+  galPrev.disabled = i<=0;
+  galNext.disabled = i>=imgs.length-1;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+/* arrows, for mice and keyboards; touch users just swipe */
+const galPrev=document.getElementById('galPrev'), galNext=document.getElementById('galNext');
+function galScroll(dir){
+  const w=galTrack.clientWidth||1;
+  const i=Math.round(galTrack.scrollLeft/w)+dir;
+  const n=galTrack.querySelectorAll('img').length;
+  galTrack.scrollTo({left: Math.max(0,Math.min(n-1,i))*w, behavior:'smooth'});
+}
+galPrev.onclick=e=>{e.stopPropagation();galScroll(-1);};
+galNext.onclick=e=>{e.stopPropagation();galScroll(1);};
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng+"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  panToPlace(pl);
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+/* Wide screens show the card as a left-hand panel, so the gesture axis and the
+   map centring both have to change. Keep this threshold in sync with the CSS. */
+const SIDE_MIN_WIDTH = 720;
+function sideMode(){ return window.innerWidth >= SIDE_MIN_WIDTH; }
+
+function panToPlace(pl){
+  const ll = L.latLng(pl.wlat, pl.wlng);
+  if(!sideMode()){ map.panTo(ll,{animate:true}); return; }
+  // shift the centre left by half the panel so the pin sits in the visible half
+  const panelW = (document.querySelector('.sheet')||{}).offsetWidth || 390;
+  const pt = map.project(ll, map.getZoom()).subtract([panelW/2, 0]);
+  map.panTo(map.unproject(pt, map.getZoom()), {animate:true});
+}
+
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the card down to dismiss ----
+   Touch: drag anywhere in the card, but only when it is scrolled to the top, so
+   reading a long card still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    // In side mode the dismiss axis IS the gallery axis, so the gallery wins
+    // any gesture that starts on a photo.
+    if(sideMode() && e.target.closest && e.target.closest('.gal')) return;
+    // Vertical scroll only conflicts with the bottom sheet.
+    if(!sideMode() && sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'go':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  const side=sideMode();
+  // side panel slides out to the LEFT; bottom sheet slides DOWN
+  const along = side ? -dx : dy;      // movement toward dismissal
+  const across = side ? dy : dx;      // movement that belongs to the gallery
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(along)>Math.abs(across) ? 'go' : 'other';
+    if(drag.axis==='other'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(along<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=along;
+  sheet.classList.add('dragging');
+  sheet.style.transform = side ? 'translateX(-'+along+'px)' : 'translateY('+along+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();   // distance OR flick
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='go' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  const ab=document.getElementById('about');
+  if(ab && ab.classList.contains('open')) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- city overview ---------- */
+const about=document.getElementById('about'), aboutBtn=document.getElementById('aboutBtn');
+function esc(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function rich(x){ // allow **bold** only
+  return esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+}
+function renderAbout(){
+  if(!CITY || !Object.keys(CITY).length){ aboutBtn.style.display='none'; return; }
+  document.getElementById('abTitle').textContent = CITY.name||'';
+  document.getElementById('abTagline').textContent = CITY.tagline||'';
+
+  const st=document.getElementById('abStats');
+  st.innerHTML=(CITY.stats||[]).map(s=>
+    '<div class="stat"><div class="k">'+esc(s[0])+'</div><div class="v">'+esc(s[1])+'</div></div>'
+  ).join('');
+  st.style.display=(CITY.stats||[]).length?'grid':'none';
+
+  document.getElementById('abSections').innerHTML=(CITY.sections||[]).map(s=>
+    '<h3>'+esc(s[0])+'</h3>'+String(s[1]).split('\n\n').map(par=>'<p>'+rich(par)+'</p>').join('')
+  ).join('');
+
+  const musts=CITY.musts||[];
+  document.getElementById('abMusts').innerHTML = musts.length
+    ? '<h3>Must see, do &amp; try</h3><ul class="musts">'
+      + musts.map(m=>'<li>'+rich(m)+'</li>').join('') + '</ul>'
+    : '';
+
+  const near=CITY.nearby||[];
+  document.getElementById('abNearby').innerHTML = near.length
+    ? '<h3>Nearby</h3><ul class="nearby">'
+      + near.map(n=>'<li>'+rich(n)+'</li>').join('') + '</ul>'
+    : '';
+
+  document.getElementById('abFoot').textContent = CITY.foot||'';
+}
+renderAbout();
+function toggleAbout(open){
+  about.classList.toggle('open',open);
+  about.setAttribute('aria-hidden',open?'false':'true');
+  aboutBtn.classList.toggle('active',open);
+  if(open) about.scrollTop=0;
+}
+aboutBtn.onclick=()=>toggleAbout(!about.classList.contains('open'));
+document.getElementById('aboutClose').onclick=()=>toggleAbout(false);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') toggleAbout(false); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+let wasSide=sideMode();
+window.addEventListener('resize',()=>{
+  const now=sideMode();
+  if(now!==wasSide){ wasSide=now; if(selected) panToPlace(selected); }
+});
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
