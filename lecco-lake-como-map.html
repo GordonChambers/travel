@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!-- city-guide-maps template v7 capabilities: swipe-dismiss,drag-handlers,click-away,escape-key,gallery,side-panel,must-see,overview,filters,fullscreen,geolocation -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lecco & Lake Como — Where to Go & Eat</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{position:relative;width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .pin.must{border-color:#F2C14E;border-width:3px;
+    box-shadow:0 0 0 1.5px rgba(120,80,0,.55),0 2px 7px rgba(0,0,0,.45)}
+  .star-badge{position:absolute;top:-5px;right:-5px;width:12px;height:12px;
+    background:#F2C14E;border-radius:50%;border:1.5px solid #fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+    width:30px;height:30px;border:none;border-radius:50%;cursor:pointer;
+    background:rgba(0,0,0,.42);color:#fff;display:none;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);transition:background .15s ease}
+  .gal-nav:hover{background:rgba(0,0,0,.65)}
+  .gal-nav:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .gal-nav svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .gal-nav.prev{left:8px} .gal-nav.next{right:8px}
+  .gal-nav[disabled]{opacity:.3;cursor:default}
+  /* only for real pointers — touch users swipe */
+  @media (hover:hover) and (pointer:fine){
+    .gal:hover .gal-nav, .gal-nav:focus-visible{display:flex}
+  }
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  /* when there is no photo the grabber would sit on the text */
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---- city overview sheet ---- */
+  .about{position:absolute;inset:0;z-index:1400;background:var(--paper);
+    overflow-y:auto;transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.32,.72,.35,1);
+    -webkit-overflow-scrolling:touch}
+  .about.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.about{transition:none}}
+  .about-inner{max-width:640px;margin:0 auto;padding:18px 20px calc(40px + env(safe-area-inset-bottom))}
+  .about h2{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:3px}
+  .about .tagline{font-size:14.5px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+  .about-close{position:sticky;top:0;float:right;width:34px;height:34px;border:none;
+    border-radius:50%;background:#eef1f5;color:#5b6472;font-size:16px;cursor:pointer;
+    line-height:1;z-index:2;margin-left:10px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;
+    margin-bottom:20px}
+  .stat{background:#f6f4ef;border-radius:11px;padding:9px 11px}
+  .stat .k{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#8b8577;margin-bottom:2px}
+  .stat .v{font-size:14px;font-weight:700;line-height:1.25}
+  .about h3{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:20px 0 7px}
+  .about p{font-size:14.5px;line-height:1.6;color:#374050;margin-bottom:9px}
+  .musts{list-style:none;margin:2px 0 4px}
+  .musts li{position:relative;padding:7px 0 7px 27px;font-size:14.5px;line-height:1.5;
+    border-bottom:1px solid #f0ece4}
+  .musts li:last-child{border-bottom:none}
+  .musts li::before{content:"";position:absolute;left:5px;top:14px;width:9px;height:9px;
+    border-radius:50%;background:#F2C14E;box-shadow:0 0 0 2px rgba(242,193,78,.28)}
+  .musts b{font-weight:750}
+  .nearby li{padding:7px 0 7px 27px;font-size:14px;line-height:1.5;list-style:none;
+    position:relative;color:#374050}
+  .nearby li::before{content:"";position:absolute;left:6px;top:15px;width:7px;height:7px;
+    border-radius:50%;background:#9E9D24}
+  .about .foot{font-size:11.5px;color:#95a0ae;margin-top:22px;line-height:1.5;
+    border-top:1px solid var(--line);padding-top:13px}
+  /* ---- wide / landscape: the card becomes a left-hand panel ----
+     A full-width bottom sheet letterboxes photos badly once the window is wide. */
+  @media (min-width:720px){
+    .sheet{left:0;right:auto;top:0;bottom:0;width:390px;max-height:none;height:100%;
+      border-radius:0 20px 20px 0;box-shadow:8px 0 30px rgba(16,24,40,.22);
+      transform:translateX(-105%)}
+    .sheet.open{transform:translateX(0)}
+    .gal, .gal-track img{border-radius:0 20px 0 0}
+    .gal-track img{height:auto;aspect-ratio:3/2}
+    .grabber{top:0;bottom:0;left:auto;right:0;margin-left:0;width:24px;height:100%;
+      flex-direction:column}
+    .grabber::after{width:4px;height:38px}
+    .sheet:has(.gal.none) .sheet-body{padding-top:16px}
+    .sheet-body{padding-right:26px}
+    /* keep the filter panel clear of the card */
+    .panel{left:auto;right:70px}
+    .about-inner{padding-left:26px}
+  }
+  @media (min-width:720px) and (max-height:520px){
+    /* phone held sideways: shorter, so trim the photo further */
+    .gal-track img{aspect-ratio:2/1}
+  }
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Lecco & Lake Como — Where to Go & Eat</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="aboutBtn" title="About this city" aria-label="About this city">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Pin shapes: circle = sight · rounded square = food · diamond = bar. Gold ring = my short list. Closing days are in CAPS. Dated for early October 2026: Villa Melzi closes at the end of October; the Fiumelatte dries up around 7 Oct; the Faro Voltiano (Brunate) is shut for restoration; Villa Olmo's interior reopening is unconfirmed.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <button class="gal-nav prev" id="galPrev" aria-label="Previous photo">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="gal-nav next" id="galNext" aria-label="Next photo">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="about" id="about" role="dialog" aria-label="About this city" aria-hidden="true">
+  <div class="about-inner">
+    <button class="about-close" id="aboutClose" aria-label="Close">✕</button>
+    <h2 id="abTitle"></h2>
+    <p class="tagline" id="abTagline"></p>
+    <div class="stats" id="abStats"></div>
+    <div id="abSections"></div>
+    <div id="abMusts"></div>
+    <div id="abNearby"></div>
+    <p class="foot" id="abFoot"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"heritage": {"label": "Castles & old quarters", "color": "#5D4037", "icon": "castle"}, "church": {"label": "Churches & sacred sites", "color": "#7E57C2", "icon": "church"}, "museum": {"label": "Museums", "color": "#039BE5", "icon": "landmark"}, "villa": {"label": "Villas & gardens", "color": "#2E7D32", "icon": "flower-2"}, "nature": {"label": "Gorges, trails & viewpoints", "color": "#7CB342", "icon": "mountain"}, "cheap": {"label": "Cheap eats (€)", "color": "#00ACC1", "icon": "utensils", "shape": "food"}, "mid": {"label": "Mid-range (€€)", "color": "#F9A825", "icon": "utensils", "shape": "food"}, "splurge": {"label": "Splurge (€€€)", "color": "#C2185B", "icon": "utensils", "shape": "food"}, "sweet": {"label": "Bakeries & gelato (€)", "color": "#FF7043", "icon": "croissant", "shape": "food"}, "wine": {"label": "Wine & cocktail bars", "color": "#880E4F", "icon": "wine", "shape": "drink"}, "beer": {"label": "Breweries & beer pubs", "color": "#37474F", "icon": "beer", "shape": "drink"}, "stay": {"label": "Where to base yourself", "color": "#3949AB", "icon": "bed"}};
+const ICONS = {"bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "beer": "<path d=\"M17 11h1a3 3 0 0 1 0 6h-1\"/> <path d=\"M9 12v6\"/> <path d=\"M13 12v6\"/> <path d=\"M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 0 1 0-5c.78 0 1.57.5 2.5.5S9.44 2 11 2s2 1.5 3 1.5 1.72-.5 2.5-.5a2.5 2.5 0 0 1 0 5c-.78 0-1.5-.5-2.5-.5Z\"/> <path d=\"M5 8v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8\"/>", "castle": "<path d=\"M10 5V3\"/> <path d=\"M14 5V3\"/> <path d=\"M15 21v-3a3 3 0 0 0-6 0v3\"/> <path d=\"M18 3v8\"/> <path d=\"M18 5H6\"/> <path d=\"M22 11H2\"/> <path d=\"M22 9v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9\"/> <path d=\"M6 3v8\"/>", "church": "<path d=\"M10 9h4\"/> <path d=\"M12 7v5\"/> <path d=\"M14 21v-3a2 2 0 0 0-4 0v3\"/> <path d=\"m18 9 3.52 2.147a1 1 0 0 1 .48.854V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6.999a1 1 0 0 1 .48-.854L6 9\"/> <path d=\"M6 21V7a1 1 0 0 1 .376-.782l5-3.999a1 1 0 0 1 1.249.001l5 4A1 1 0 0 1 18 7v14\"/>", "croissant": "<path d=\"M10.2 18H4.774a1.5 1.5 0 0 1-1.352-.97 11 11 0 0 1 .132-6.487\"/> <path d=\"M18 10.2V4.774a1.5 1.5 0 0 0-.97-1.352 11 11 0 0 0-6.486.132\"/> <path d=\"M18 5a4 3 0 0 1 4 3 2 2 0 0 1-2 2 10 10 0 0 0-5.139 1.42\"/> <path d=\"M5 18a3 4 0 0 0 3 4 2 2 0 0 0 2-2 10 10 0 0 1 1.42-5.14\"/> <path d=\"M8.709 2.554a10 10 0 0 0-6.155 6.155 1.5 1.5 0 0 0 .676 1.626l9.807 5.42a2 2 0 0 0 2.718-2.718l-5.42-9.807a1.5 1.5 0 0 0-1.626-.676\"/>", "flower-2": "<path d=\"M12 5a3 3 0 1 1 3 3m-3-3a3 3 0 1 0-3 3m3-3v1M9 8a3 3 0 1 0 3 3M9 8h1m5 0a3 3 0 1 1-3 3m3-3h-1m-2 3v-1\"/> <circle cx=\"12\" cy=\"8\" r=\"2\"/> <path d=\"M12 10v12\"/> <path d=\"M12 22c4.2 0 7-1.667 7-5-4.2 0-7 1.667-7 5Z\"/> <path d=\"M12 22c-4.2 0-7-1.667-7-5 4.2 0 7 1.667 7 5Z\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "mountain": "<path d=\"m8 3 4 8 5-5 5 15H2L8 3z\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "wine": "<path d=\"M8 22h8\"/> <path d=\"M7 10h10\"/> <path d=\"M12 15v7\"/> <path d=\"M12 15a5 5 0 0 0 5-5c0-2-.5-4-2-8H9c-1.5 4-2 6-2 8a5 5 0 0 0 5 5Z\"/>"};
+const CITY  = {"name": "Lecco & Lake Como", "tagline": "An upside-down Y of deep water: Lecco on the quiet south-east arm, Como on the south-west, Bellagio on the point between. Two weeks is enough to do the villas, the gorges and the ferry-hopping and still eat where people live.", "stats": [["The lake", "46 km long · Italy's third-largest · three arms (Como, Lecco, Colico)"], ["Lecco", "Pop. ~48,000 · ~40 min by train from Milan"], ["Como", "Milan in ~30–60 min by train (depends on the service)"], ["Boats", "Navigazione Laghi serves ~38 towns · car ferries link Menaggio, Varenna, Bellagio, Cadenabbia"], ["Villa season", "Carlotta Mar–Nov · Melzi 21 Mar–31 Oct · Balbianello CLOSED Mon & Wed"], ["Budget/day", "~€45 thrifty, ~€110 comfortable (my estimate from card prices; excludes beds)"], ["Best months", "April–October for villas and full ferry timetables. Early October = last chance for Villa Melzi and the Fiumelatte"], ["Language", "English is common in the villa towns; less so in Lecco's local places (reviewers)"]], "sections": [["History in five minutes", "The lake is a corridor: the passes north are why Como and Milan fought a ten-year war from 1118 over who held the road. Milan took Como in 1127; when Emperor Frederick Barbarossa reached Italy in 1158, Como allied with him to settle scores — which is why Isola Comacina, which had backed Milan, was razed in 1169 and never recovered.\n\nAfter that the shores were fishing villages — Pescarenico is one — and later a place for the rich to build. Balbianello dates from the early 1700s. Lecco sat at the south-east tip as the gateway toward Milan, and its 14th-century Visconti bridge and tower are still the town's spine. Manzoni set The Betrothed here, which is why Lecco keeps naming things after the book."], ["Culture and society", "Lecco's identity is mountains and Manzoni. The Torre Viscontea houses the story of Lecco's climbers and the Palazzo delle Paure has hosted a mountaineering exhibition; the city usually runs an October–November season of events called 'Lecco città dei Promessi Sposi'.\n\nOn the villa shore the economy is visitors: Villa del Balbianello was the most-visited property of FAI, Italy's National Trust, in 2019, with 135,000 people. But the boats are not just for tourists — residents use them year round to commute. In summer the calendar fills: the San Giovanni fireworks and boat procession to Isola Comacina in late June, the missoltino festival at Mezzegra in September."], ["Economy, then and now", "Fishing and salting the agone fish (missoltini) fed the shore villages. The warm west shore has grown olives since Roman times, Como is known for silk, and Valsassina behind Lecco is dairy country for cheese and honey. Moto Guzzi has built motorcycles at Mandello for over a century and still does. Today the money is visitors — villas, ferries, hotels — plus, around Lecco, outdoor sport."], ["Iconic food & drink", "**Missoltini** are agone from the lake, caught in early summer, salted, sun-dried and pressed in a tin with bay leaves; grill them with oil and vinegar on toasted polenta. **Risotto with perch fillets** (fried in butter and sage) is the Lario's official dish; around Lecco it comes as *riso in cagnone*.\n\nDesserts to hunt: **miascia** (a cake of stale bread, milk, fruit and pine nuts), **Nuvola di Como**, the Easter **resta**, **pan de mej** and **Nocciolini di Canzo** biscuits. Valsassina cheeses and chestnut honey are worth buying; wines come from the Alto Lario and Brianza slopes."], ["Unique to the lake", "The **Fiumelatte** — a river just 250 m long that vanishes each October. The **Isola Comacina** — the only island on the lake, cursed by a bishop. The **car-ferry loop** between Cadenabbia, Menaggio, Bellagio and Varenna. The **Como–Brunate funicular**, running since 1894. And the **Moto Guzzi museum**, free, in a village that has built bikes for a century."]], "musts": ["**Pescarenico, Lecco** — Manzoni's fishermen's quarter on the Adda — free", "**Orrido di Bellano** — gorge walkway in the middle of town — ~€7", "**Castello di Vezio, Varenna** — the best view on the lake — ~€7", "**Duomo di Como** — free (donation); Google lists Sundays closed to visitors", "**Funicolare Como–Brunate** — ~€7.20 return; go before 10:30", "**Villa del Balbianello** — ~€13 park / ~€24 villa tour; closed Mon & Wed; book", "**Villa Carlotta, Tremezzo** — ~€17.50; March–November", "**Giardini di Villa Melzi, Bellagio** — ~€10; season ends 31 Oct"], "nearby": ["**Milan — ~40 min by train from Lecco.** Easy day trip, or a first/last night.", "**Rail from Lecco to Colico and Tirano.** The Milan–Tirano line runs along the east shore with lake views between Lecco and Colico; trains run hourly.", "**Bergamo.** A reviewer calls Lecco a good base for Bergamo, Milan and Verona day trips."], "foot": "Prices indicative for autumn 2026 and mostly taken from visitor reports — re-check before you book. Hours from Google Maps on 2 October 2026. Sources: Michelin Guide selection near Bellagio, Gambero Rosso, in-lombardia.it, Navigazione Laghi, Wikipedia, FAI, local ferry and town sites. Photos are traveller submissions from Google Maps, credited on each card; I could not view them."};
+const PLACES = [{"c": "heritage", "n": "Campanile di San Nicolò — “il Matitone”", "zh": "Lecco · 96 m bell tower", "lat": 45.85698, "lng": 9.38913, "m": "4.7★ · BOOK ONLINE · guided climb only · Italian (English audio on Spotify)", "d": "Lecco's compass: the 96 m campanile you can see from anywhere in town, 380 steps up to a view straight down onto the lake and the town. You cannot just turn up — it is a volunteer-run guided climb on booked slots, and one reviewer says tours run only occasionally, so check the booking site before you plan around it. Tour is in Italian (English audio guide on Spotify); the last stretch is a vertical ladder. The basilica next door is free to enter.", "g": "https://maps.google.com/?cid=7615227403475780738", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNF9LtNwhN7-h33XZBOUnqLBSeo7Xo6kYJljY37TCYGslaKoBlWHH9BjxZ5lBJ58LbcBm1e8wg4-OKxY8uDbKtZ4DieL8oDa8iYSliiKqEuFVnOqMEKXw3IA0HLaqNfbXfSAoI-=s4800-w620-h457", "https://lh3.googleusercontent.com/grass-cs/ACvplmPi6X4XGHLYK-OKLTIg3Gekvu1kvhiVyt6sDHiTHHjDfP5wiilhPpXcbk3ef7XOUuus2_9JzMNr1HEjav6qlmMcwqBXkP2NE2dDiz-_EYuwpDz1Nyp6QX7kXnrhB-3Nj5ncrKjcky8uUDIi=s4800-w800-h600"], "a": ["Campanile San Nicolò Lecco", "Dimitri Piccinini"]}, {"c": "museum", "n": "Torre Viscontea", "zh": "Lecco · mountaineering museum", "lat": 45.854313, "lng": 9.389553, "m": "4.1★ · CLOSED MON–WED · Thu 10–1 · Fri–Sat 2–6 · Sun 10–6 · often only open for exhibitions", "d": "The 14th-century tower on Piazza XX Settembre — reportedly all that is left of Lecco's old fortress walls — and home to the mountaineering museum, which tells the story of Lecco's climbers around the world. Reality check: reviewers report turning up at opening time and finding it shut, and the city itself says it opens on request or for exhibitions. Go for the temporary shows; otherwise the square around it is the pleasant part.", "g": "https://maps.google.com/?cid=13230958855493642532", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCpgfWnzfwIcqXnJungnfHNBUYDz7GO3QujnnoKgBYQjhdQefB8MC2lJkyX4zTakKe_or49o10uBoV10gAOzFof25cjbRERjDT2L3UWSQ6ChMvqJF3rH0PmyPqe1RZLZ4UVYXXIraVyZi1zj-U=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDg3U5zInJzqDw8faFx2ylgPSICiIZ-0GSpXgGcEPwo1sgG2sQz7GuYo7jZjOjcKS0sTj9zLcF-0O0LDnLIhKNYIOIFusg28rdDXiR3eRfrcUA1zEb518Xb8-jBO2SZf3h7IwvgIYo0iEeNKYw7HP_n=s4800-w800-h600"], "a": ["Google Maps contributors", "Google Maps contributors"]}, {"c": "museum", "n": "Villa Manzoni", "zh": "Lecco · Manzoni museum", "lat": 45.852764, "lng": 9.399135, "m": "4.1★ · ~€5 · CLOSED MONDAYS · Tue 10–2 · Wed–Sun 10–6", "d": "The Manzoni family villa, now a museum of the writer whose novel The Betrothed is set around Lecco: manuscripts, first editions and a small cinema screening an old film adaptation. It is a good rainy-day stop, and reviewers say children love the mammoth at the entrance. Reviewers note it feels dated and a bit empty, and it assumes you know who Manzoni is — read the Pescarenico card first.", "g": "https://maps.google.com/?cid=5921825325155393353", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPvBHXMlnPvYi5poqMMZZ6AS6bp4h4OTm98F73hK8A0ZR-fMN_hYwfz6OtPvH5hvs6P-oaBhpPxsojxvB0NfrcGeUIWuHc-EewXrkJZL7sol6y5yc616TQ65g2AP9hBdoN6ZRdttw=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPyJErSzVpERPDM9SvspS8hyTduWM9nqCtKD1Bjcbq6JJx0zg9s9QijTLhJ3zxAKwq8HU_ComXAw-qQmxul5I0pyJu8X-MPhkct6qZl7OLPRhtUVOgQFci4Y6NeUtyG4wgHrdzwHA=s4800-w800-h600"], "a": ["Temporosa C", "Roberto Vettore"]}, {"c": "heritage", "n": "Pescarenico — Santi Materno e Lucia", "zh": "Lecco · the fishermen's quarter", "lat": 45.845557, "lng": 9.400116, "must": true, "m": "4.4★ · FREE · church hours not published — mornings are safest", "d": "Pescarenico is the one Lecco district Manzoni names outright in The Betrothed — a fishermen's village on the Adda where Fra Cristoforo's convent stands. The Franciscan church (consecrated 1600) holds an altarpiece by Cerano and wax scenes from the New Testament. Walk the river here, then eat at the waterfront — but see the Il Barcaiolo card before you choose where.", "g": "https://maps.google.com/?cid=17437160051489765420", "s": "Manzoni opens The Betrothed with a description of exactly this stretch of the lake — its bays and gulfs, the two mountains guarding it, and the serrated ridge. Lecco has never stopped being a set for the book: the districts of Acquate and Olate are rivals for the site of Lucia's house, and a restaurant in the hills still trades on the legend.", "sl": "Two districts both claim to be Lucia's house", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBvDE04mGTwt9i8G_OfEbl0GyRluvJ3LTGx5_tJBdXcfMc6NBxOC0zinaBjeG6NgSN3c0JwJjaWkSi_x4VHZVfJedTDTtIqMBdPv_-NGvQy5BcMVi5LpcWV1n4LXaQ7SLg_reaNhNKqxk3DKYIwAGaEsg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBGOXo5I4b0QE1Baw9hTNbVGnzeWvldM_iucrbhbIZUD1tOO4yvTQdjx8oi9sCXW68HfdrAQuKmJ_h51D2qg1XyoIDFklqfMhdVZsDHvUcILiBQ3vFMGpqksXouZhboGF5HKgj6WsuVt887=s4800-w800-h600"], "a": ["Iana Morozova", "enrico corna"]}, {"c": "mid", "n": "Antica Osteria Casa di Lucia", "zh": "€€ · missoltini, perch risotto · Lecco hills", "lat": 45.861771, "lng": 9.4105, "m": "4.5★ · BOOK AHEAD · parking is awful — walk the last stretch · hours not published", "d": "A trattoria in an old house (a reviewer notes original details from the 1200s) that legend says was Manzoni's Lucia's home, picked by Gambero Rosso for its lake cooking. Order the missoltino starter (sun-dried lake agone) and then risotto with perch fillets; the fireplace room is for cold evenings, the pergola for summer. Reviewers consistently praise the wine list — ask for a recommendation. Perch risotto in Lecco generally runs ~€14–18.", "g": "https://maps.google.com/?cid=9777364501408833575", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmOxJLYo0xMFOxxfXqpBV1lzbJgYNhQmiiyONelWimxtldeKK5BZI2S7lVYVFm1ckF6N0RStYOg--jGynDQbqOhxCc6djlMtSOuhVdn9jPEeJzI14PSJFGUrkf9HcJR71pvdu_Tv=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMrB0FfCEVTSvb0j3JlHxSWxdVVpKuIwYcU0gcJrGZz-6uYC04-ctOkg6_teH23pR8Lu_H0hnh3efwa9M-JmtB0NEFTwpSL3FMCYVl04Hsng3H6Hmas_y2ccPBMTn-z7seL0Q-7Rw=s4800-w800-h600"], "a": ["Antica Osteria Casa Di Lucia", "Viviana Tamassia"]}, {"c": "mid", "n": "Il Barcaiolo", "zh": "€€ · lake fish · Pescarenico waterfront", "lat": 45.843162, "lng": 9.399135, "m": "3.9★ (1,800+ reviews) · Gambero Rosso lists it, Google reviewers don't agree · terrace closes in cold weather", "d": "On the Adda at Pescarenico, listed by Gambero Rosso among Lecco's missoltini restaurants — and rated only 3.9 by diners, who report frozen fish, sides charged above the menu price, and slow service. Take both on board: the position is the draw. Come for a drink on the terrace, book if you want to eat, and if it's a cold evening the inside has no lake view. Dinner at Casa di Lucia is the safer bet.", "g": "https://maps.google.com/?cid=17420556083639298295", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA_JYOgFv2gUBJ5UElYIXlH20qf0HDIT33XKsdr4S7ji-hZ0n8-XU63xxoJeSGcUHSj7kzbJtWRybZfa0hGRohzOI1_zFBbDAac65DQjEEkXQUdYW37Ntk3e8z6PCv42NMAnKZBGWkJ0w3BBQ=s4800-w720-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCBtSE8g5_zQ33GcEkUGySWRhV1GNC4Vilp-XH38qncQyIy7Obh3I3B4jKPlCc9iacMNsWy45MDfOudN6ajdq1P-y2Z00bELg2lX0Mac74s7HIdVIbysppsxLuN6FDvgvSpN_hRm4HUbEnuiA=s4800-w800-h600"], "a": ["Barcaiolo Lecco", "Barcaiolo Lecco"]}, {"c": "mid", "n": "Filet Osteria — salumeria & restaurant", "zh": "€€ · salumi, cheese, set lunch menu · Corso Matteotti", "lat": 45.86011, "lng": 9.397856, "m": "4.5★ · CLOSED MONDAYS · Tue–Wed lunch only · Thu–Sat lunch & dinner · Sun lunch only", "d": "A deli that grew from an old Lecco shop into a dining room — cheeses, cured meats and Lombard cooking. Reviewers rave about the €30 set menu and the tasting menu (which is 'basically two meals'); one found a main course reheated, so go for the antipasti and pasta. Buy cheese at the deli counter to take away.", "g": "https://maps.google.com/?cid=4506409762306473247", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmN42DYIJDqqeGi6u8qSKNRUgIqgOhtALA6uuMYnsAd1nkLN7gfzb-N8xhhydAJx4UVM5a4eyUq-ga9ZWIAR2G2hGqgI83lGT4eyYLD4u9Avo0p-lul2IAvAlJ5Af6gdFcs79jQNtQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNmoHPVvt9AVYpQgonViwNUOHGEJpzvlQXSPVYUc7ObwjLGCY8AOmoL8CYm3ULxktRzB2cqNg3N7xjpyeebD1vLhg5qcy-jcvoTAmqog3TXiIYYiKBfZgFSlxfvaEijDnqu0qSG1lauCNFj=s4800-w800-h600"], "a": ["Filet osteria", "Filet osteria"]}, {"c": "splurge", "n": "Nicolin", "zh": "€€€ · modern Italian · Michelin-selected", "lat": 45.835, "lng": 9.413952, "m": "4.6★ · Michelin guide · CLOSED TUESDAYS · Sun lunch only · set menu or à la carte", "d": "A chef-owner restaurant on the south side of Lecco, in the Michelin guide, that one reviewer says deserves a star. Choose between the set menu and à la carte; it doubles as a hotel, so it works if you want to walk to bed. Parking is limited and the restaurant is open to non-guests, so book. Not the cheap-lake-fish experience — a good dinner for a special evening.", "g": "https://maps.google.com/?cid=2318015044692224405", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCRgs1XSTXeshSd8YW-eu8Zag3n5SuKYVUSrOFn_5pI4IAXjLlUoymmvwdpfoF6htMJZFC2ABWPQWINS9BpR3DxiLzG8cgcL0tLdid68gmLXXZzKP8PfvxxEWafRL-zXE3MieyJgorC1Fimln9YcusdoA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAn4zoukJVE0pXvVgSkm0Td-fi_StVwmDucUGqX9uzzrRgz-sJzZpmOoJuujwq4_jHCykD6awd8c2SMiA4lWBDREWCU3GzrztWkZxw1wrQ3Z7rXcO_jHdpC3MsaPWwcULfsNpGIXwI54SmDxw=s4800-w800-h600"], "a": ["Koen Huigen", "francesco de nittis"]}, {"c": "nature", "n": "Funivia Piani d'Erna", "zh": "Lecco · cable car to the Resegone", "lat": 45.863096, "lng": 9.427976, "m": "4.5★ · ~€7.50 each way (2026, reviewer) · Google lists FRI–SUN ONLY right now — confirm · last ride ~5–6pm", "d": "A five-minute cable car from the edge of Lecco to a plateau on the Resegone with the whole lake spread below. Reviewers say two hours is plenty: a round trail, picnic tables, a small café and a playground, and a much harder hike back down. Bus 5 runs from Lecco station; base parking is free. Check the operator's site for running days before you go — the current weekly pattern is thin, and one reviewer was caught out in winter by the café being shut.", "g": "https://maps.google.com/?cid=7289971046063366277", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmOQCS5-R1Ftzkuc_nCqaOXzHf0l56a9nAG0_yJmV64LxhVkYFcXZYMIE5PVK-O9Dva-h9Pzb56jBHRW1YFhCafFYLnWADGO7pDULWBSe0V5B0wQeYNwCqraDqkEVfKSWkjyn16PTxjwm8g3=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNqTL3W5M94qgBnSiCTDUVRa-qubbuQWW1WLGnY9mXa0EPK8Z_UN2FP2ZCiMcvvkLPtXxvFuQccwxyfhdNklp63aO6wZxymEBPrzr-rwTdoil5MaylgGfJf1tARhkORrXHE80MU=s4800-w800-h600"], "a": ["Funivia Piani d'Erna ITB S.p.A.", "Roberto Natoli"]}, {"c": "museum", "n": "Museo Moto Guzzi", "zh": "Mandello del Lario · FREE", "lat": 45.915167, "lng": 9.32295, "m": "4.6★ · FREE · CLOSED MON–WED · Thu–Fri 10–5 · Sat–Sun 10–6 · booking may be required", "d": "The factory museum of a motorcycle maker that has built its bikes in Mandello for over a century. Three floors of machines mostly behind a rope rather than glass, plus a wind-tunnel exhibit, design documents and cut-away engines — free, and reviewers call it exceptional for that. One visitor was told to reserve a slot while upgrades continue, so check the museum's site first. Take the train: Mandello is on the Lecco–Colico line.", "g": "https://maps.google.com/?cid=18198386191297696459", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBqn94SERitxVh0jsaAfOJim0zc8KOTbPXFTBsmugYZAckJitW9_IEInGrIVLZCMBQfRWXoij_LEd8vjZlLhvE4R8AWWHy0k51PWRzEVkR0f5yRoLkfXcKz4OB9XXrDSAvnxiN_2lIrwZNYrw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBfktBKEDrpwk0hn6OQXTFLP-EaI5v4L7ViBYyowQoQuL0mWRpHl_N4yznQmdO1y9tmc0wj7YrhNt3X74MbgS0eH_I3Bgi4d4za4LvW93WA6Qve9L6r9dPVq0J3SMGT0EC58oc_CEpJppZHpM0=s4800-w800-h600"], "a": ["Mário Rui Romero", "Selina Ewen"]}, {"c": "heritage", "n": "Abbazia di Piona", "zh": "Olgiasca (Colico) · Cistercian abbey on a headland", "lat": 46.12358, "lng": 9.33174, "m": "4.6★ · Mon–Sat 10–11:30 & 3–5 · SUN 3–5:30 ONLY · narrow unpaved final road (10 km/h)", "d": "A working Cistercian abbey on a peninsula at the top of the lake, with a lakeside chapel, gardens and cloister. Reviewers call it one of the quietest places on the lake. The monks make a liqueur you can buy in the small shop. It is hard to reach — the last stretch of road is narrow and pebbly, and one reviewer says to keep to 10 km/h — and the opening hours are split with a long midday gap. People are on retreat: keep your voice down.", "g": "https://maps.google.com/?cid=15511581130312280048", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmO2QlC-bVjKrA-o2H8_cR3-Tf8aQIk9Vw4uIfPs3BhKiV5xCc3v8L_ZUX7zVrV1uy-f67MMRIO1RXbQh40dl9wY9Hxt1w4lznqFFd8TNTaFNlcm798DF-dbgdq95qOIy0ljCStPPjSj_GL5E=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMfTzWAYNsRThzZP405RT1U-W2QmZhO5G6rZYJT2kZZepS_7EWqugeOTww3YtwzrstkC_erMRMyF6BhjvJezuSjfmtzXxKUcL1rv6gIBGlnk7D_yksWveWvP1SJ1B0JaRxecKNM4Q=s4800-w800-h600"], "a": ["Antonio Nesti", "Wilhelm Krüger"]}, {"c": "nature", "n": "Orrido di Bellano", "zh": "Bellano · gorge walkway", "lat": 46.042686, "lng": 9.304908, "must": true, "m": "4.4★ · ~€7 gorge only (€10 with Cà del Diavol, weekdays) · daily 9–6, Sat–Sun to 7 · ~20–30 min", "d": "A real canyon in the middle of Bellano: wooden walkways bolted to the rock walls over the Pioverna, with waterfalls dropping from above. Reviewers call it one of the best stops on the lake and an easy walk from the train station; the walkway is sturdy but narrow in places and the exit is uphill. Several say tickets are cheaper at the gate than online. Parking is limited to 2 hours; take the train or the ferry instead.", "g": "https://maps.google.com/?cid=4181463668705837044", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDJbqSzCk8Cuihawom3FyWyMwJ1nr7DE-EHepgbdWYLjWz666CPVSLEjnOyjORe0xBdpv2AliPGs1VXbBiLFPtZO-R7lp0mvaagCdV4RW9_Z3oOcjeWFwmVZUCvtjI8912qDZsNW0eUcMICnA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBLW1T60-6MyPTcnSldl6AXfgJFksaQi2Fxn-boy1_wOlLlrfB7kesaW35LKV-V7ePjD8IkD4iENdQ1iJiAV5wE-gV2A6_XoJ3oYZGKc8Rnd9Dbt7is09sJvobHk323FL8KwsJXsM-qATdw_yGiok9ZXA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBjdpNSnpijzjz-YgbxV7QjbEBay8JaG8aRcveX4dCxlssNYqNiiTKmvRCzBoc3JgJ-pTC47_Q_yYfb4XuQ_kI44DA1ARIV4xM8gI4TYwJ0hCSUjUXGBJSCHRld_2Ygc3R7T6lMBllIrk1ZCg=s4800-w800-h600"], "a": ["Orrido di Bellano e Ca' del Diavol", "Aaron", "Francesco Gerolamo Taffa"]}, {"c": "heritage", "n": "Castello di Vezio", "zh": "Varenna · medieval watchtower fort", "lat": 46.010722, "lng": 9.286608, "must": true, "m": "4.6★ · ~€7 (reviewer) · daily 10–5, Sat–Sun to 6 · 30-min steep pebbled walk up from Varenna", "d": "A small medieval fort on the hill above Varenna with the best lake view on this side — unbroken across to Bellagio. Walk up from the village in about 30 minutes on a pebbled, partly steep path (proper shoes; reviewers saw people struggle) and come down the other trail. Inside: gardens with bonsai, ghost statues dotted along the path, falconry demonstrations and a café at the entrance. It is more fort than castle — you come for the view.", "g": "https://maps.google.com/?cid=16790601303817279081", "s": "Local legend ties this watchtower to Theodelinda, the Lombard queen said to have spent her last years around Varenna. Today it keeps a falconry centre: trained hawks fly in the castle garden, and a trail of ghost statues leads you up to the tower with the drawbridge.", "sl": "The queen, the ghosts and the hawks", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPP0TWtnCoWv_biY5LdBsxxeMfjGVtc8mI3IyBfTW0Pq9gdjzUuqB9Yiw3C0LMRowGLYRv4LN-Ab0EYVda1p2186RLb05rPXBC2Y-HsvEPbMax2x4wl1ubzfjMIkpQikUVM3BgoCQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPnJ25NnDq_egQgW91Ivnj9sXG8BrTq-y8ZITkrrT-FW3H-9KCwh07Df-75p6hcCT1HIuMkbu0IdXscLIeprE8XnlDUXEOXS724oYyXOQ_xl-AxgNE_x4x1wbK9EajPyXjN32A=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMkM5LyYvPR4E6sI9QJrvDhhJdclMyJCdLCYaMq0kPSeOI8xikQygFVOeRFcOiE2EhPT8Mjo9XbPCsgy_kTL5DRMqCCBxL73ECFFQEQWkS8rPTvS4vwVPOVOriOLvd_zIHth0U=s4800-w800-h600"], "a": ["AL Y", "Haiemhel", "Brianne Murray"]}, {"c": "villa", "n": "Villa Monastero — gardens", "zh": "Varenna · lakeside botanical garden", "lat": 46.009266, "lng": 9.285561, "m": "4.6★ · ~€13 garden only (reviewer; house museum extra) · daily 10–6", "d": "A former convent turned villa, and Varenna's big garden: a long path right along the water edge lined with exotic plants, with Bellagio across the lake. Reviewers split on the extras — the gardens win, the house museum is a miss for at least one visitor. It is quieter late in the afternoon, and a garden-only ticket is enough. You cannot leave by the far end, so plan a loop.", "g": "https://maps.google.com/?cid=5899485800677490675", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjArwIuOf7gcDjHEGT4xz7NvLayncsOlPrqNurjixPMTZwN3gCqWJ_oPb2ZyMwDb4TU3oN4TzMBXEQuNUIbJq-Q66Yp1pUhn8BXN0MIxZodFT_ZISWghbfPFZOKhNedfkvjUm-Zdrex8wEW2pA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD9OHa3Pt5DGjtqLPR3p0_C36rsIHT6RWais51Dlp4DG8PfBt_diSdd08hsc3BC7gn-ZpdzGPpdt_zc42fggNiYeR0g7QBKg6NBMcoIJwbXlFVwa7gv-bPrT8kev-IuAMucu4_ZiZ2cEA3r_g=s4800-w800-h600"], "a": ["Dominique Bellin", "Michael Soffiatti"]}, {"c": "nature", "n": "Fiumelatte — Italy's shortest river", "zh": "Varenna · 250 m of milk-white water · FREE", "lat": 46.001229, "lng": 9.294459, "m": "4.4★ · FREE · open 24h · steep 15-min climb · DRIES UP AROUND 7 OCTOBER until late March", "d": "A karst spring that bursts from the mountain and runs just 250 metres to the lake, white with foam because it falls so steeply. Right now is the last chance of the season: it disappears around 7 October and returns in the second half of March. Reviewers warn that after dry weather it shrinks to a trickle — one found it bone dry — so don't climb on a long dry spell. The path is steep (ankle care, ticks possible); the picnic area at the top is the reward. Walk it from Varenna via the Greenway dei Patriarchi, ~20 min.", "g": "https://maps.google.com/?cid=8050244561344418615", "s": "Nicknamed the River of the Two Madonnas: it begins to flow around 25 March, the Annunciation, and vanishes about 7 October, the feast of Our Lady of the Rosary, patron of Varenna. Leonardo da Vinci called it 'Fiumelaccio' in the Codex Atlanticus and puzzled over where the water comes from.", "sl": "The river that keeps two feast days", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDi3ll-c7AD-1J7czg0SIZTQf83T2jAQ2i59yRZv-W8UNlGgCgBbrtHbeCW9PrC7AXemVbq-4ctRm-6RCf5-Y1hNufOtza_On9OXhj9rxJM774tdag3oR9vm5_QTbPcSZrVCxli83L6wcJhaz4hzq8SwQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDDQRmfmBgadnuhIojBIG8P8-V_jqA6Zep98j-NUjt_RblCQ1oTY8okzEXJ2Pl5sYm48omaZy8o9uwxvdtoXPIll0hMyv49C5ifOhW9q3wpdeD7h-pJMNegPlZQwhwnNhIqPZq6cYJ7SDOi=s4800-w800-h600"], "a": ["Mario Pastorino", "Alessandro Ippolito"]}, {"c": "mid", "n": "Hosteria del Platano", "zh": "€€ · classic lake cooking · Varenna (Fiumelatte side)", "lat": 45.999924, "lng": 9.291991, "m": "4.4★ · Michelin-selected · CLOSED TUESDAYS · Sun lunch only · two-course minimum", "d": "A Michelin-selected hosteria on the main road just south of Varenna, away from the crowded village. Reviewers call it the best meal of their Lake Como trip — the beef tartare, light ravioli and steak with caramelised onion come up — and say the owner will choose a menu with wine pairing if you ask. You must order at least two courses; the combinations and prices are laid out on the menu. Book, and get a taxi back if you've walked from the village.", "g": "https://maps.google.com/?cid=9021087505369750989", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNnnf0qRbr_7a8R-cO67XA3syNJq57BWb3vV804FMx3LIURlTSJ9nsRkCWbhPXMeXcBNLv7eXDM7MFJdlFCdzvo5OypbLBNQn8CEWrN81qw7o-rCBr7XlPoMr3Z6pUUwes3eH8DJGKd8s4=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmP-KDGQY1mfx1mI22b7B8Jd_tAqSQMCJ_wmG1oRtV72hLDz2Oys0ma52GiHdz48bY4YtUdxNo95jb3Os1YLBDb_sjpYqa0-WIAnCEbDuJT-5SaTD7miK-bkCIkDvvOJRR9GTlQ_=s4800-w750-h600"], "a": ["Poh Lin Goh-Jones", "Hosteria del Platano"]}, {"c": "sweet", "n": "Pasticceria Su Misura", "zh": "€ · filled croissants, vegan options · Via Cavour", "lat": 45.855359, "lng": 9.392172, "m": "4.3★ · Mon–Tue 7:30–2 · Wed–Fri 7:30–7 · Sat 8–12 & 4–7 · Sun 8:30–12 · sweet only", "d": "A small pastry shop tucked off the main street where reviewers say the pistachio- and chocolate-filled croissants are the best they've had. Early in the day there are vegan options. Sweet only — no savoury — and no indoor seating, so eat at the bar or the outside tables; a good stop while you wait for a train.", "g": "https://maps.google.com/?cid=3970936162228078927", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDo3p6XVXWmoEQr8rHcRMxM8N_aePNw93iLuSwtoyn1vH9Bcz6gqPdugTBieqDR-avQxnLde2mqZJSXU7Tb0XfrIViWAgGYjl0R9D5Mub9WBlE_SgGth74fBHwoT9nUo2fNAzrGOr4JSoL5iw=s4800-w800-h437", "https://lh3.googleusercontent.com/place-photos/AG9NLjAsx73__466I02IV6pI52M_5gR6FVVQlCvvyIYsB6fTkNlq3FcZQnbmthaXtPBjbYX5Dpkcsj_4KpED8mrHNtcoemWONuIkQRBGSA7crQZRQxOpEngh8WCLAd5rsvAZRi_msK7EYm1jigoz3u8=s4800-w800-h600"], "a": ["Pasticceria Su Misura Lecco", "Pasticceria Su Misura Lecco"]}, {"c": "sweet", "n": "Gelateria Toldo", "zh": "€ · gelato · Via Cavour 41", "lat": 45.854352, "lng": 9.391094, "m": "4.7★ (1,400+ reviews) · daily 11am–10:30pm (later Fri–Sat)", "d": "Lecco's most-reviewed gelateria, and reviewers say the pistachio, chocolate and yoghurt are the reasons — several came three days running. The chocolate-covered waffle cone gets mentions too. Open every day from 11, so it works as an after-lunch stop after the lakefront.", "g": "https://maps.google.com/?cid=2892657537847412842", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAScIQAaurXhOPq4ws5HgCFcmV8LfhGg7xcpAmlgZb3LEU0SlS6qZTC4_35G6IpeHniW2OxzDUZ_0ioxaKq_JyhHcR3GZrEE0UVOdnwi-9-OmwNZ4wpAGqkXByoXw5PN2IoM653rbP0nJapQuk=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDONuzdq94dmKktqgj07xLA0WTC_ZUiVoWNniWsmVj90OU-ljy9_1qqxTFPRICJS-b5buoZF8K9hLWG5COoohbR5oBbjGSMD5oDuTNK1-ZrrMCsXIYwkzId3SePoN3AlXGjRCIWu26Mky3PelJC56j6=s4800-w800-h600"], "a": ["Gelateria Toldo", "K Koebo"]}, {"c": "sweet", "n": "Lumì — Il Chiosco di ArteSapori", "zh": "€ · gelato kiosk on the water", "lat": 45.855946, "lng": 9.388109, "m": "4.9★ · daily 12–10pm · lakefront kiosk, samples offered", "d": "A gelato kiosk right on the Lungolario, rated 4.9 by the 200 people who've reviewed it. They let you taste before you choose and visitors take their cone to a nearby bench by the water. Small sample size, so treat the 4.9 with a grain of salt — but at the price of a gelato it's an easy bet.", "g": "https://maps.google.com/?cid=9750701539139183056", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMOG6C1NKldJjazfgz1FkfNntH38ATjcOw8bCyPs6hq9f3ZAFbyUg73djsCFPcxQH7gX8Ll2SGWCWw23DlL2PGtvSE6Dmk0QDsPIFnNI7d-Dq10bs4W7-7cUWNrBaQv6DpzD8vjcP8jC_XW=s4800-w595-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNFJtaEDivG2_QwuDPAOex-qHo00tU_FA9eFDd-pQ_I2YanB76VSVx5MdkhTLsEvDOaUqYeJnLGjk_CIhbW4oAtQALPgkvMocU78cwqNsmVPMdU-EL_NtikDLc2cAtnq_5zQkpYN_ZTIaY=s4800-w800-h600"], "a": ["Lumì - Il Chiosco di ArteSapori", "Debora Zecchini"]}, {"c": "church", "n": "Duomo di Como", "zh": "Como · cathedral, 1396–1770s", "lat": 45.811644, "lng": 9.083238, "must": true, "m": "4.7★ · FREE (donation) · Mon–Fri 10:30–5:30 · Sat 10:45–4:30 · Google lists SUNDAY closed to visitors", "d": "Como's cathedral took almost 400 years to finish after work began in 1396, so the façade and the dome mix Gothic, Renaissance and Baroque. Entry is free — leave a donation — and reviewers say the interior is calmer than the big-city cathedrals, with tapestries and stained glass. Sit on the square afterwards: it's a few steps from the lake.", "g": "https://maps.google.com/?cid=695844498207996631", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmP261SWfZ8y3ya9WlZdiOWQ245gtVejjPeqvc2BUBTcJTL9BlZjWx6RIAZ_YDxxYmkDLy2T1CEFmHkyBdw3IHP_hUtEevEWnlMMUXxIYKF1fD2TfsAYM1JobG6XzD-gEraTPxFB=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMOy5TMOye5GZr0SURIuGq1DkQe-nbSQ4gxIa1HlXRyq7VhyvbD8E4kyHJBaod-GCDrPxug0yMjh0lUwtT3oUnSXNtH4uHABJJkn4teP8q6d-sTuWrUb2NrH6Gcb7ajC-tsRlA6HQ=s4800-w800-h600"], "a": ["Daniel Luciani Hansen", "Kamal SEDRA"]}, {"c": "church", "n": "Basilica di Sant'Abbondio", "zh": "Como · Romanesque basilica, south of the walls", "lat": 45.802463, "lng": 9.080324, "m": "4.6★ · FREE · daily 7:30–7 · light the frescoes with a 50-cent coin", "d": "An 11th-century Romanesque basilica built over an older church, in the southern part of Como outside the old centre — and reviewers keep finding it empty, in contrast with the Duomo. 14th-century wall paintings; put 50 cents in the box to light the altar area for a few minutes. A quiet, free half hour if you want old stone without queues.", "g": "https://maps.google.com/?cid=10086967273443253251", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAvVYc_kDt2qhOuCegr38qpR0eWje6bpyh1K9KeDlxzRXy5KVK45dctWqqYrs6sDmSnLCxyxBJMgEVVq6JmL3wN3-P4eNu6QiIyT4luuF5UamNSVmTyxx_5fCih8pyAFi4-Y-JYY1GGEO6_lg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC8L-yrCmixRMhViKlsB954_R7mE-_sZ4LunsnQXZvtiC3Vte2wlJFA4T10CgF_0-53YF6CA5fmJJmJX3L5Rb_vhgUH8Z-lMlGOgRUJ7Uy2R7eIbKY7Bb0VmHA4dRD-K86N-eJfyvbj-ChgGjA=s4800-w800-h600"], "a": ["Rod Piz", "Joe Mele"]}, {"c": "museum", "n": "Tempio Voltiano", "zh": "Como · museum of Alessandro Volta", "lat": 45.814843, "lng": 9.075277, "m": "4.4★ · CLOSED MONDAYS · Tue–Sun 10–6 · exhibit texts in Italian (translation sheets given)", "d": "A neoclassical temple on the lakefront built in 1927 for the centenary of Volta's death, holding his instruments and battery prototypes — about half originals, half reconstructions. Reviewers split: some call it a quick, educational stop in a lovely building, one electrician found it too thin on the science. Texts are Italian only, but they hand out translation pages. The bicentenary of Volta's death is 5 March 2027, so expect more Volta events in Como.", "g": "https://maps.google.com/?cid=15718666475031483869", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmP93iQUkTJpSATaxEnF7tmme4Jh7yC2AKKy7pOm719QdQG_AaDy2NuufgqFxiBvoTTihEZlSnW1TbdqTdQsNL67seh2z6UO11127povL_nfRPLeORUQsSQlZzqywyAhoi8OS2EFcA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOUzE8o9xzKCqrlG9d5UUawJqMheiqvhWkz2VweJe0KrF76zfXk4CWb1Xc_vhFXsnKZvTbg-hS88ciSqqU7YUEhCAReMuw66hYBX2D5vB3IvATdA2tcgxOwXDYqhBfsI9rf88Ak6g=s4800-w800-h600"], "a": ["Frank Siqueira", "Nikola Jocić"]}, {"c": "villa", "n": "Villa Olmo — park", "zh": "Como · lakefront park; villa interior status unclear", "lat": 45.818983, "lng": 9.065376, "m": "4.5★ · PARK daily 7am–11pm · VILLA INTERIOR was shut for restoration — could not confirm reopening", "d": "A neoclassical villa and park on the lake just west of Como's centre. The villa itself was closed for a €11m restoration with a deadline of spring 2026, and reviewers still found scaffolding, with only the park open; I could not confirm whether the interior has reopened, so treat it as a lakeside walk and check the city site if you want to go inside. Easy to combine with the Tempio Voltiano on the lakefront stroll.", "g": "https://maps.google.com/?cid=17864570273507416954", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMEo0zI14FSiMBt7gSGF7EvpyTPaAgPfLKZI7-73YqijjDO1Ix2qscR8UxhmqKQ74jiP8s_-HbL7E9L_oIb0WDrtRmxKP6h7zjinxRLBB5BDO3bXpqQA0jNJRa_huYarhrFpqlgfg=s4800-w592-h440", "https://lh3.googleusercontent.com/grass-cs/ACvplmMCyZaMPCNmWr53WsCGEWIDM9V3aKZwvVCrkFzMjdQtVZoYzV1PxoHB1dmUxRrZdMlWgq7dS26VEglJDA1Ii9ohu_QnF0acz0rc0-7YDGUMRD1PnK_E9LfqfFnnm5WoFJp6qi8Wxw=s4800-w800-h600"], "a": ["Stefano Cucchi", "Nils van Wanderberts"]}, {"c": "nature", "n": "Funicolare Como–Brunate", "zh": "Como · 7-minute funicular to a balcony on the lake", "lat": 45.817682, "lng": 9.08283, "must": true, "m": "4.4★ · ~€7.20 return (2025, reviewers) · daily 6am–midnight · queues 15 min normally, 1–1.5 h in July", "d": "A funicular running since 1894 up a 55% slope to Brunate, 700 m above the lake — seven minutes with the city and lake opening out below. Go before ~10:30 to dodge the queue; in July reviewers waited 1–1.5 hours each way, and you must get out at the top, so you can't ride straight back. Buy the return from the self-service machines. The Faro Voltiano lighthouse at the end of the walk is currently CLOSED for restoration — the walk and the views along it are still the point. The line was shut Jan–Mar 2026 for works, so check ATM's notice.", "g": "https://maps.google.com/?cid=6581336403991470129", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjBXbk5o-t5SPOsb8-Yp0rc27DULy0y4RoVAL4HuYrNh-o4b_sQA6XYSVIdh_4HnhNdeRVcwyqcieknX5rPKzLeu9hRoTBEOfEVWeF0QRDABpSrzpwIyJO_-rELYczZS5WQDIzYO4aX1MLL55QC1dct-BA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAJwQ2MClSd9YXJE9Vb5ii2Rn-7sJBXzZdFYH2JAEAp01AT34oLhFKuQvKp2y0EWqIeo8_Mp-EQ9qPeoGzf3bhv1u6giJ4Q-50S5r0vZhd7ph6DRaSqsPZ9oUSJqv5fmy6cu4gMIQSOYWJkUn0=s4800-w800-h600"], "s": "The lighthouse at the end of the Brunate walk is a 29 m octagonal concrete tower built in 1927 to mark 100 years since Alessandro Volta's death — a beacon for Como's tribute to the inventor of the battery. It is shut for restoration (about €400,000) with the bicentenary of Volta's death, March 2027, in sight.", "sl": "A lighthouse to honour the man who invented the battery", "a": ["Csaba Biro", "swagatam gupta"]}, {"c": "villa", "n": "Isola Comacina", "zh": "Tremezzina · Lake Como's only island", "lat": 45.964676, "lng": 9.176508, "m": "4.5★ · ~€6 entry · season ends late October in recent years — confirm · reach by short boat from Sala Comacina/Ossuccio", "d": "The only island on the lake, a quiet wooded strip with the ruins of churches that were razed in 1169. Reviewers say it's lovely to walk and picnic on — and that €6 is steep when the church is shut and ruins are fenced off, and the café and restaurant are overpriced. Bring lunch. The boat from the Ossuccio/Sala Comacina shore is short.", "g": "https://maps.google.com/?cid=16642315336809632716", "s": "In 1169 the people of Como, with Emperor Barbarossa, razed every building on the island. In 1175 the bishop cursed it: the bells would never ring and no stone would stand on another. In 1919 it was given to Belgium for King Albert I, and handed back a year later.", "sl": "The island that was cursed by a bishop", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPzkDhOshg5wtHF94wQg56mmIUzfAkXkogvDj2Z_vUOyFFSfRp7y7_S4WaNJJRpIJ5hrvGuk4mRJRuhjgrasmrrqYAxLnAcahqZrLVmV7fBZVlqCifUpaHqK_ueMdfrkZZmDmw=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMw_ou2QiJCyuOeuzOWMLcrRJy6kWSMup_Ecv6lQ46lttcJWA5ST5gNMwvXL2UmmjpAhjWXK8kiVT4RiEpYl5ns9igAOR4I3c3inZ29sIxOvu9BOcX0xyi_o71qqFMtHhOnYT0=s4800-w800-h600"], "a": ["AAVA", "Floris Oosterveld"]}, {"c": "villa", "n": "Villa del Balbianello", "zh": "Lenno · FAI villa on a wooded headland", "lat": 45.965253, "lng": 9.202492, "must": true, "m": "4.7★ · CLOSED MON & WED · Tue, Thu–Sun 10–6 · book timed slots · ~€13 park / ~€24 villa tour", "d": "A villa on a wooded promontory with terraced gardens, the most visited property of Italy's National Trust (FAI), and a Star Wars location. Book timed tickets well ahead; the interior is guided only. From Lenno it is a 20–30 minute uphill walk on a dirt road — or arrive by water taxi and leave by boat. No aircon in the villa, so spring or autumn is kinder than a heatwave.", "g": "https://maps.google.com/?cid=5509293497181114517", "s": "The last owner, Guido Monzino, an entrepreneur and explorer, left it to FAI in 1988 and insisted it be opened to the public. In 2019 it was the most visited of FAI's 52 properties, with 135,000 visitors.", "sl": "The explorer who gave his villa to everyone", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmP67YBY3EPdFnZ7njqmsDC_ffHhiNP-_kxP_OQZ3UFnD53GQXxuXqogFB0gmhVDmYb6L4dKtZQgnRVr3iX7Ti-wpu7CH3Blmh-LQcbVVdfzPWFAvxyzn9qZS0cRjyQNK00l46hj=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmM3H4eFuV-JiXBnULETqFkpvciRIWSoIdPDaaJ-n5sS6uFBCD0_O_DUitzuHUhwkdBpAx8nhJD2b9l2qTXtQ7wkFahNZJCNPQviK0OqwK7TBsvE0phlrWNDU_wSvERDPCdAZgs=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOdel2E3qAgg2tLifiR1txGZ68s3AZPZAQGVmvpLeLcoPPwQpyCGH66bccpHz5_jGgt1vjz30WjkG46Rg_CuWq9GzYbfNXtce4uwDs5a8E0zK-aXBokQAvHFm0KAgVdQorzs-o=s4800-w800-h600"], "a": ["Villa del Balbianello", "Flavien V'", "My Kieu"]}, {"c": "villa", "n": "Villa Carlotta", "zh": "Tremezzo · botanical garden & villa museum", "lat": 45.985852, "lng": 9.23064, "must": true, "m": "4.8★ · ~€17.50 (2026) · daily 10–7 in season (Mar–Nov) · two garden trails, steep in parts", "d": "The best-rated of the big villas: a botanical garden climbing from the lake with a villa museum at its base. Reviewers praise the upkeep and the choice of a short or long garden walk; paths are good but steep in places, so wear proper shoes. Give it two hours. Season runs March to November.", "g": "https://maps.google.com/?cid=3273507624804171626", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDy4md7agG-HhMO9mQ0hQsbO89hjrUrUKtZja6kz0XbRBz_ejwcakfHKwt0uE5QMJi_jwl-dU98IHb1csx0Vf89DiP69Te_AzKPFTzt0hT1zOTT0L2lB9ydvkXQCkecyX4cpcZ6jApxIZ-PSzOXzHz8=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjB3VheN_PzOgJ5E9l-uOjH8ysVsUHlykrPejQv38brv8gxIkAGAMOplHn7bP3Hker7wAs3PnhZQhbV_6D-qmACKZEV2jF9aR-CVqycsveozjJgfH8pRBQj3jNqqclmiWSRFnWHUs-lCm3i3QP4=s4800-w800-h600"], "a": ["Fune Thomas", "MB Palejon"]}, {"c": "villa", "n": "Giardini di Villa Melzi", "zh": "Bellagio · lakeside gardens", "lat": 45.979734, "lng": 9.253994, "must": true, "m": "4.7★ · ~€10 · daily 10–6:30 · SEASON ENDS END OF OCTOBER · go in the morning", "d": "Bellagio's lakeside landscape garden, with a koi pond and bridge at the start and a lake overlook at the end. About an hour; reviewers recommend going in the morning for heat and crowds, and a leaflet identifies the trees. It's the cheapest of the big villa gardens and, with the season ending 31 October, one of the last to be open.", "g": "https://maps.google.com/?cid=7494913761769546575", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmOgtDv88fETpAZDB94mQzKFLN-AwnegLJa1ZBqMQ99XpFVXDAkIBRf_gFyq2v7Oq0JTTnKBNEh5a_-219nVUFd9Rtj9mjXT6BGYEZSRVMS64VsKdG67SPiJmhDQaMdHQgPM0UsW=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNln0tgu6fQCZz8rp4bi4zOIejhxg2W6hD5sdyElW0G3MZSBjb76mEsK6KviLozWsUwrSIhDPSuSSsAuiSsqpmO6PR7fn1nMkrCH_PzaPS2jr4aBCnaLedTbDPId7YgsIplVn8vB-JYpZVI=s4800-w800-h600"], "a": ["Maxime Pairoux", "S. Siefen"]}, {"c": "villa", "n": "Parco di Villa Serbelloni", "zh": "Bellagio · guided park tour at the tip of the headland", "lat": 45.987653, "lng": 9.262373, "m": "4.5★ · CLOSED MON · guided tours only, ~11:00 & 15:00 (reviewer) · book ahead", "d": "The park of the villa on Bellagio's point, visited only on a guided walk — a reviewer says just two tours a day, at 11 and 15 — which is why booking matters. It is one of the few places where you can see both legs of the lake at once. Opinions split sharply: one guide-led visitor called it excellent and another found it a boring tour and ranked Villa Carlotta twenty times better. If you only have time for one garden, make it Carlotta or Melzi.", "g": "https://maps.google.com/?cid=5456986095255678588", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjA-su-NdS6GkiLucpYzJw4JRTLB3xzF6VkwDD1MoeVmcPaL_aqPGSUPqSDd1ojIWtFgHR_qys6SOj-pvsAJHOvQZaiZHckBShgXkaEakCWJ1jrVfPjP0nOqksU9C8ZZBiCfXQxPhuA7ARXsgQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAHAQlJfDWElrzZedmAo-bKhrdoxqSUSbpSb9hG03K3CdMyaoTWEzFrPBX1L4Dc_tLpCnsVxKvlqZstYSxa2n5cH4Ypb5q0nJ4u-rgjQRQzy5rxsybwy1P9NodCRHcJVZ9oQ13ocsrNUv7SMLMF9U8SMQ=s4800-w800-h600"], "a": ["Dominique Bellin", "Josiane J"]}, {"c": "nature", "n": "Orrido di Nesso", "zh": "Nesso · waterfall gorge in the middle of the village · FREE", "lat": 45.910379, "lng": 9.15537, "m": "4.7★ · FREE · no parking in the village · hundreds of steps down", "d": "A gorge and waterfall cutting through the village of Nesso, crossed by an old stone bridge. Reviewers say the view from the road is good but there is nowhere safe to stop for long because of traffic; the trek to the bottom is steep and involves hundreds of steps, so skip it with a stroller. Boats on the Como–Bellagio line stop here for a photo if you'd rather see it from the water.", "g": "https://maps.google.com/?cid=1136907452356068981", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmOBvzWHsakI4qCliDYw2TOhIhcuDLnijfY_HUtpqjmyGQ4Xqblnvw_K6KdcOWPR6iMQudwIPgqnTqsIhbANKvp3Vm9WE1qd85XTrnUT5i4x3GR3YyanI8NqpOMbzrGWIHWIrepF2V7ubaYL=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPPdUSo8C6Rc8jATVg7ecU-fo_L6OUcrm0rPc8y9sGmAiIHL547LbTGX3AHPI8Vg0TD3DhZEu9UP3-7Ezw0cvZGqPCz7uCGw7_VJlJ2jPACHq3oRvIv2O_iRD-GfmteGevzGLQ=s4800-w800-h600"], "a": ["Norbert Darnói", "Filomena Andali"]}, {"c": "church", "n": "Sacro Monte di Ossuccio", "zh": "Ossuccio · UNESCO chapels on a steep path", "lat": 45.974711, "lng": 9.177315, "m": "4.7★ · daily 7–6:30 · steep climb · small restaurant behind the church", "d": "A path of rosary chapels climbing from Ossuccio to the pilgrimage church of the Madonna del Soccorso, on the list of UNESCO's Sacri Monti. Reviewers say it's a steep but doable climb with views of the lake all the way and of Bellagio from the top; the chapels are dark inside as you pass. The little restaurant behind the church is the reward. Isola Comacina is just below, so they pair easily.", "g": "https://maps.google.com/?cid=1604519511957050629", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAKX5W49PzwrchNi27U0hcOA3xM3WVynT3H9BIyviv4QrLKCISSMjWIb_RQWAI33gn_6i5tXn223l4dPtxKudajOpstjd0oHSgGrna07D3m6W7kIbVIQV45z9BwJfL_MK3ESWIyRRgpRElfhA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjDEFtRTA7aQU4GzjXkW-zXhi5h4fJxPz3w4XEcw8-5qDn6z5W3J_w8Oj84420iyjFzAPQUePxA72sKFaqWBjkXVnf6DKeNSy9gFmAEewc3J5kHkULSQPKyBEHIMBUiqyL1UWfPQJr5aXJ9Y216K3ReTlw=s4800-w800-h600"], "a": ["luca Gandini", "Davide Cavadini"]}, {"c": "mid", "n": "Ristorante Sociale", "zh": "€€–€€€ · lake fish & Lombard classics · Como's walled centre", "lat": 45.812611, "lng": 9.083572, "m": "4.3★ · CLOSED TUE · Wed dinner only · Sun open lunch & dinner · mixed recent reviews", "d": "A long-running restaurant inside the walled centre that local food writers still send people to for perch risotto and boiled meats. Reviews disagree: praise for tortellini filled with lake lavarello and ossobuco with saffron risotto, but also a 30-year regular who says it has slipped, a complaint of over-salted pasta, and a remark that it leans touristy. Go for the lake dishes; skip the smoked-trout salad if the recent reviews bother you.", "g": "https://maps.google.com/?cid=14598997984222200017", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCF4pFOtCsjUD10tOYiwkEesi6ZK9bfFyKXlIna21rIKwrSoKCvgZ7nz8U7qIyBcZzgxv2P-gGAhnlPK1Cg-VlYIFAPy5xG4xpASQ03B3U5nuSvTVdPPGPfXSbsgNdCExxyaJQHFjXafhAO=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC8hGDdULmfj0Qr6KG1TAT7ELrpOMzgIyjysG-V1EBM8QuNzgDLfZAtzU-J994ticAkUz199khCDwE-7zcgVP06ED6jnATnwPU_fSEf4kXw1ehNYj9w3mMOAzOlPnqAdsZNRVFswX5o1IfxJw=s4800-w800-h600"], "a": ["Ristorante Sociale", "Ristorante Sociale"]}, {"c": "mid", "n": "Tira, Mola e Meseda", "zh": "€€ · Lombard home cooking · family trattoria south of Como", "lat": 45.795939, "lng": 9.091926, "m": "4.6★ · Mon–Tue lunch only · Wed–Sat lunch & dinner · Sun lunch only · ~€20–30 a head (local blog) · no fish on the menu", "d": "A family-run trattoria in a house on the edge of the city, full of locals and rated 4.6 by nearly 1,500 reviewers. Order the polenta uncia (butter, garlic, cheese), pizzoccheri, the generous antipasto and the veal-kneecap salad; reviewers also single out the stracotto with polenta. The menu is meat-led — no fish at all, and few vegetarian dishes. Book for dinner.", "g": "https://maps.google.com/?cid=9433385053571854124", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAK-gINTfzbcEbHLp1qdvqXA0_wHu2Adq-KwNGqckPZtra1ANj2ERx-BoOTQkTb2OOVub3aLiww-DKIV-rTKsJoYqN8d6pGUROWxly9jCM2Mb2oLvxdY8ERg3ySUoRas-78g7IC_S1lKd_wmeY=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBxBLLpOhWU_drqiLZo0zyoB36gUDUouyC3QKyaWR127R33rZ9mgR--dR4rbVuD0sxTUPkPsOze1UrK7lm_6FLSC4hNRZPPHBZUx4dyKaGur2SPALXpkk4gPyZu1k6CCeiHRcxAgVKbVbXaT6B6PB48=s4800-w800-h600"], "a": ["Tira, Mola e Meseda", "Tira, Mola e Meseda"]}, {"c": "sweet", "n": "Beretta il Fornaio", "zh": "€ · Nuvola & miascia, Como's cakes · Via Boldoni", "lat": 45.811149, "lng": 9.0823, "m": "4.4★ · ~€7 for three large pastries (reviewer) · Mon–Sat 7:30–7:30 · Sun 9–2 & 3–7", "d": "A long-established Como bakery, and the easiest place to taste the city's two cakes: the Nuvola (a softer cousin of panettone dough) and miascia, the traditional cake made from stale bread, milk, fruit and pine nuts. Reviewers call it very affordable — about €7 for three big pastries — and also sell pizza and savoury snacks. Buy a slice, not a whole one.", "g": "https://maps.google.com/?cid=4188708418375679130", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMrtbOc2VJ3L6n-dVLlulFS8enFsgdzMbs8JLpp2qi01Z4AUYxFE4wC4qyljwUMaxoD5guHw2fQjcYUms9pzg7pqNL_BWECjURFaUL5kAAtH54OdhUDJTBS_WJNOAsLG0_wUyZX=s4800-w798-h571", "https://lh3.googleusercontent.com/grass-cs/ACvplmPSJRFZbzJsmHxIERpH_sH647NxNiCcWuB5ZxnVzKfvU-c-edJEyQ2Z3s1_meeerk9EC3sMobv0TJKWWPUjRqIW2e0bxxzmKVtWtD1qEuvVoN1DxBz1HMBD6-fLzW7nBjid-LJG8zGHt59c=s4800-w800-h600"], "a": ["Beretta Il Fornaio", "Wieslaw Sz."]}, {"c": "mid", "n": "Ristorante Il Giardinetto", "zh": "€€ · lake fish on the water · Mandello del Lario", "lat": 45.912481, "lng": 9.316616, "m": "4.6★ · Michelin-selected · CLOSED MONDAYS · Sun lunch only", "d": "A Michelin-selected restaurant on the lakefront at Mandello, a few minutes' walk from the Moto Guzzi museum. Reviewers rave about gnocchi stuffed with lake fish and risotto topped with breaded fish, and note the terrace view of boats and ducks passing. Pair it with the museum: the museum is shut Mon–Wed, and so is this on Monday.", "g": "https://maps.google.com/?cid=16152704788216283033", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNO5dMPjP4ssCA_3DVECDEAmrkTqO3iZsaxHcs0gfFEjOES2Fib4zzYnsWxw0TpJ8lUoPSSn8Hr1ijlXKoooaX1XnqIfsIWdisSZkQfQVxcEbNwzsZYO19TU-iQk_46-xCrU38=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMvElmW5VvJhzKnOGkZCFVAhDyUpxOxRxYZVO1Bf9DVyNTGEiufn1AWDX45vvzRXFpNR8mniChkWltxYW8csFZcj5gZEjadr031X6ZHjCWSF5eXMpdCjd9nYUi7bkEjkZEuWH-hQ1uWkLOl=s4800-w800-h600"], "a": ["Ristorante Il Giardinetto", "Umberto Carillo"]}, {"c": "splurge", "n": "Kitchen", "zh": "€€€€ · one Michelin star · Sheraton Lake Como grounds", "lat": 45.833666, "lng": 9.071348, "m": "4.5★ · 1 Michelin star · CLOSED MON · Tue dinner only · tasting menu ('Experience') + wine pairing", "d": "A one-star restaurant in a renovated historic building in a small park, separate from the Sheraton it belongs to. Reviewers say the creations outdo the setting: prices are high and portions small by starred standards, but the flavour combinations and the wine pairing get the praise. It sits on the road to Cernobbio, so take a taxi. Book weeks ahead; outdoor tables go first.", "g": "https://maps.google.com/?cid=4994588606252080178", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPpyOM4pKYYx5ARLIkqj0DalpRhGdKxJoCKRHIS-Hym0BofEKppKayt3cJpLDJykQY3uKb3DIR4Zezw8xzhd3OdqcRWnhiUV0cUDII6-axZ8Z2v63o6LGMgFu4yDNeSuIIQPCb4ur9Qlz03=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPQJlR12DCwrzv01hyp89T5vSc6djRArRCzgc_aPEby6y0xO-yGZBTD9_ZhOPeVSLGTzF1R0l-t2LN1p2_3nhWFoNcwEwkVnY6QMfQx4E9d9Zh1N50PMs4uctAogapOcGSZWC_ZNA=s4800-w800-h600"], "a": ["Kitchen", "Kitchen"]}, {"c": "wine", "n": "Rive Enoteca", "zh": "€€€ · self-serve wine machine + restaurant · Como", "lat": 45.809228, "lng": 9.08148, "m": "4.5★ · hours not published · sommelier-led · skip the duck (one reviewer)", "d": "An enoteca and restaurant near the lakefront where you buy a card and pour your own wine from a machine of about 30 bottles in three measures — reviewers say that's an easy way to taste six wines without committing to bottles. Pasta and dessert are praised, with one reviewer advising you skip the duck breast; the local food blogs also name it for lake fish. Lightly priced for what you drink, pricier for dinner.", "g": "https://maps.google.com/?cid=3147878301137917809", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDOYItAptEXD3WvHusjoAWY67Oomeq4xdv4w2K09Ipco6IqeePaUdu63z-m44_izrLKyx6VSfhVcmPkQZeutIAzAjgG6XGe85JZ_m13q0Ci3tMsBIYzIUhUJUCfWaB8RmRQpRHplRTFW4FE0w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAlCv5y5RuQTD2zl1-rWavuEngHxjcM7E2DEZ4i_aX9zIySrvPxZmMEaWrqOERER8G3CWOjsx9AfSdYpUc2poAtF1Jd8P_GoHDrPv8mTnfEgm3hCBEGtigBJGqx-UWM1E7lWj0irNcrNGJpXHI=s4800-w800-h600"], "a": ["Rive Enoteca", "Rive Enoteca"]}, {"c": "cheap", "n": "Focacceria Ligure", "zh": "€ · focaccia by the slice · Lecco", "lat": 45.85605, "lng": 9.389717, "m": "4.8★ · ~€3–4 a big slice (reviewer) · Mon–Sat 10–7 · CLOSED SUNDAYS · sells out by afternoon", "d": "A takeaway focacceria that reviewers rank among the best focaccia they've eaten anywhere: airy dough, crisp edge, generous toppings (blue cheese, courgette and ham, plain margherita). A big slice is about €3–4; there are a couple of seats at a bar. Go before lunch — it sells out by the afternoon — and expect a short wait for a fresh tray.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPCSOB8LghMGP-KX4P-bqtWZP23JluLgOQt-tMu9UNrzcqUMp8hs_2HnS4hA5Y3rtmVAgQidlVLQ4nXDZTLFJ6GZegKyHAyDysSom3cl7Zql03voSFotOHyhDiTmYGFlYFqK5wqxlAAegQR=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmO1_kNai_pBwVp7fiBplN1Z-d3sAzKAJFzgfsNCnuh2kc7vr_NOnV8EmBQigNHxxSm6jYzlPU1uuFY70cEGQuB4gNHRaXlJL2ZkDn3J0cDugHWqXlpaoySzaOIJrRj2QWXVACJktdA0xrM=s4800-w800-h600"], "a": ["Mahmoud Bay", "Artur Chrostowski"], "g": "https://maps.google.com/?cid=2414972593818487483"}, {"c": "cheap", "n": "Al Borgo Antico City", "zh": "€ · pizza only, down an alley · Via Cavour", "lat": 45.854492, "lng": 9.390604, "m": "4.6★ · specials ~€12 (reviewer) · CLOSED MONDAYS · Tue–Sat lunch & dinner · Sun dinner only", "d": "A hole-in-the-wall pizzeria at the end of an alley off Via Cavour — only outside seats and a small door give it away. Pizza only, with high-quality toppings; reviewers name the mortadella pizza and the 'Ascea Marina' with buffalo mozzarella, and the specials (about €12) are the ones to read. The local wine is good value. Not fancy; that's the point.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmOnwXlj6f88kU2rfuV2JfWu4eA-83hS7V4tBs63CN-dlZiiNsLHmD1u-P515cFQJ5L3Ks-Q2WmHdy5shx51IUYEEf1_MIO7YKVBcW3rQg195DqBYmeLAIFpwSV25fPSuthjdAECgAlwfmY=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOfswDy4tAdND3GVhhS5n9lObGj_hD_MUb5QScm8gErt098iYXfex-om2il50JqOAOgZBAZDJW2MtimyqDmzdCXQjfx5eUxnsNmDLsCk10gudAndtp50iU28oqxC0J60CbdcKMGtNrRIWga=s4800-w800-h600"], "a": ["Katarzyna Dominiak", "Leoni Fritsch"], "g": "https://maps.google.com/?cid=11197572815576199471"}, {"c": "cheap", "n": "Paninoteca Ermete", "zh": "€ · sandwiches & set lunch menu · Lecco", "lat": 45.848926, "lng": 9.395195, "m": "4.4★ · Mon–Sat 8am–midnight · CLOSED SUNDAYS · set lunch menu · karaoke some evenings", "d": "A lunch-counter paninoteca with lots of sandwich choices, very good fries and a priced lunch set menu; reviewers call the value strong and the staff friendly, with an English menu. The raw-meat sandwich is large. Few vegetarian options, and on karaoke evenings reviewers say they couldn't split the bill — come at midday.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCNfssWkQvFXY0TzhsMu-CZjgNLmGKcIw0ZSGlr4axLxndQFn25xJ_YAhg-GEWHyR9CNvdov23GxYizrmLu-56f1Rw8K_UtTQvPv184BIJFXLqY0YcRUL-dQmvrKs7jcFU-NsILeW0GyQL1Dw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAvWeFOhiBNLbdK9aexfptfSoJuYRAZAcsSf_01AWIwE-hYbog-kDZ716O52DAFjxkGNTE31F-kT7WxxVwNCRM-JDYI92c923GlkBZoTL84kdXqrmk0O3fJwQkwncnpjVYvoI3SJ15MsQUo=s4800-w800-h600"], "a": ["Paninoteca Ermete", "Renata Bicz"], "g": "https://maps.google.com/?cid=9159725916686565061"}, {"c": "cheap", "n": "Officina della Piadina", "zh": "€ · piadine & panini · Lecco", "lat": 45.847627, "lng": 9.397005, "m": "4.6★ · Mon–Sat 12–2:30 & 6:30–9 · CLOSED SUNDAYS · one reviewer found it shut at 2pm and 6pm", "d": "A fast piadina and panino counter with plenty of fillings, called fresh and light by reviewers and fair on price. Take it to the lake. Check it is open before you walk over — one visitor found it closed twice, once at 2pm and once at 6pm, which suggests the posted hours are not always kept.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjCuVkyzMkXK7gKTCfUxQEYvgNJwb0jSvxjrBF1J8pNPpm243tzflZw5xVsEwHJZLL6tmCLyObZkpCEv8RkPPTQM5ZZcnR59gDi_0jkC0prNZs2kO-v3icJd6KvQxHiVAhg9ZJSgP94-g29VSA=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjD1av26Yo7viip3urvCt7jBP7p74RpTODtuuIGkGBCYYAKz_fepHHR0dCYXtaIs67lSgZFUxhYRWpvXkZ-HIZkYHjy2sANvIJA05rw_ioPD7ffelFdBovyGA_POxQVZIVMuu436mkOoVdyB6Q=s4800-w800-h600"], "a": ["Luca Panini", "Officina Della Piadina"], "g": "https://maps.google.com/?cid=3177115277536763007"}, {"c": "cheap", "n": "Pizzeria Peach Pit", "zh": "€ · takeaway Neapolitan pizza, vegan option · Como", "lat": 45.809746, "lng": 9.081055, "m": "4.5★ · Mon–Sat 10am–10pm · CLOSED SUNDAYS · a few ledges to eat at", "d": "A takeaway pizzeria a block from the Como lakefront with a handful of ledges to eat at. Reviewers praise the margherita and crema napoletana dessert, and a vegan pizza with friarielli (a bitter Neapolitan green). It is the cheap answer to the tourist pizzerias on the water. Expect to eat standing or by the lake.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPst35rVCUTm-33k1ErQJpxx2wtBtCBsHS53zwY00MjNv7SsOqotloY_pfKskUV5Nz9PL_sMLBPp7mmpdZgf5QTTnY30TTOY2wkh8Gkv155wdyqlHxqz2dPEMXEata4C24MK-UrXg=s4800-w800-h540", "https://lh3.googleusercontent.com/grass-cs/ACvplmNh9RplvuaOHRPlELzbIxJMACGVI-YRr9f6G767AubRXYHcJoAGw5Hd-ZBq04f85TzbVOByOGRUDB-ib4r38nnR5hYVS4_bJNIrxeoNE6SelL8_hIUniUuVXeF-vd1VhkYBtP9Ugg=s4800-w800-h506"], "a": ["Pizzeria Peach Pit", "Pizzeria Peach Pit"], "g": "https://maps.google.com/?cid=1741535933261281551"}, {"c": "mid", "n": "Osteria del San Martino", "zh": "€€ · short seasonal menu · 1600s building, Lecco", "lat": 45.855907, "lng": 9.404789, "m": "4.8★ · BOOK AHEAD · Mon–Wed lunch only · Thu–Sat lunch & dinner · CLOSED SUNDAYS", "d": "A small osteria in a 17th-century building on Corso Promessi Sposi with a short menu that reviewers say reads like older Italy with a modern twist; the 4.8 comes from about 370 reviews. It is full by design — one party waited an hour and got a starter on the house — so book and arrive hungry. Lunch only Monday to Wednesday.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNi4EJFZlh5eVTAZ0EfOW7rmSyr5vMkxpyE7kS3elMtg_wG4HOqORmlgs7IU9Xj8y06V_DHBnz6pTWV4XImB8UsOMu91Tq7JOfRYAO_8thpRoX1dyo4KKyr8fBm42fRwFstRUTa9A=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNNmcWRZkYQTlezXmo3j2UiGv-9KucWyZCUgFF0kliiQyiAP6oU58iis27G1vE65CH1ez74b_xWx1nLl2yZx3BB-ws4h5R-kDTJ9ZKg05UEkhMpFtZSoBp2dkHBWlqHAck_WrE=s4800-w800-h600"], "a": ["OSTERIA del SAN MARTINO", "OSTERIA del SAN MARTINO"], "g": "https://maps.google.com/?cid=9877008010701841365"}, {"c": "mid", "n": "Bar-Trattoria La Rocca", "zh": "€€ · family trattoria on the hill · Lecco/Vercurago", "lat": 45.816224, "lng": 9.427362, "m": "4.6★ · Google lists SAT–SUN 9–5 ONLY · steep road up · one visitor found the kitchen shut at 12:30", "d": "A family trattoria high above the lake, reached by a very steep road; walkers stop here on the way down from the castle ruins nearby. Reviewers say the spaghetti ragù is the best they've had, the dishes are traditional and the room is full of local families on Sundays. Warning: Google lists only weekends, and one party arrived to find drinks only, so call ahead.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMjI4hP_UVtWTOsYGriFFVCITNks0etiXLI9FH_Szk6vlaF3f34VVl9-7VucYmYlx792mziOGe0KYRf5RYj2DCGOV7SRyIPI50yXunfGhNm-a5jd3Vc0rA7Ju8eF-XgxxyWqiT2FA=s4800-w512-h384", "https://lh3.googleusercontent.com/grass-cs/ACvplmMgRMlXptoelLnk2fP4LGJBu7YSaRk9XqI638yEuY9qsTfSgyGwKrOreoZcvwu--ceCpTcrILOAuVCWIsgdvMSW4iWESGISS4SAE8rT9VCIDDozY0I2Y9cSpKcJqsk-bGXpNsvTUw=s4800-w800-h600"], "a": ["Bar-Trattoria La Rocca", "Fabio Marangini"], "g": "https://maps.google.com/?cid=10657317877257365304"}, {"c": "mid", "n": "Trattoria Baita Belvedere", "zh": "€€€ · mountain trattoria above Bellagio · free shuttle", "lat": 45.960495, "lng": 9.253023, "m": "4.5★ · CLOSED TUESDAYS · shuttle van from Bellagio (reviewers) · book a terrace table", "d": "A family-run trattoria on the hill above Bellagio with a view over the town and both arms of the lake. Reviewers say the restaurant runs a van up and down from Bellagio, so you need no car. They single out the buckwheat pasta, rabbit pasta, lamb shank and a smoked antipasto board, and call the staff knowledgeable about wine. Book ahead, especially for dinner on the terrace.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMwhr39KYXgjOPt_Hodtp1USbGjqqbuZj-fIpVWBmw-C0up4sytTVEQxr3s6F6rdgOSONRf5uOnBTqI-St4KrkzzvZ20ZiGcI4fzqN7Kee9Qae5wMjDX5_yXrwkgjPnRGKc3AsZ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOF_JpxtQF6_47vi45uvEuSj2iBeS655U9oqGgpeuY4xo2yiDbwxh7HloKNp_LVwaMOaWZw5vdIX3HwgJdY_pTcgHb8hxg2X_gzjqe5w23uJI9MVt19aHvyV0EWHJapiREomnIwqVcOfots=s4800-w800-h600"], "a": ["Trattoria Baita Belvedere", "Chiara Tornelli"], "g": "https://maps.google.com/?cid=8459275182023404151"}, {"c": "mid", "n": "Osteria da Lu&Ca", "zh": "€€ · hill-village osteria · above Bellagio", "lat": 45.941866, "lng": 9.242225, "m": "4.7★ · CLOSED WED · Tue lunch only · ~20-min winding drive up from Bellagio", "d": "A homey osteria in a hill hamlet above Bellagio, run by its owners, where reviewers call the food outstanding and the portions generous. Order the bresaola e sciatt (cheese-filled buckwheat fritters) to share, truffle tagliatelle or the beef fillet. You need a car or taxi for the 20-minute drive up; one reviewer notes flies indoors. Ask for ice if you twist an ankle — the owners helped one guest who did.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmOUPyWMjqp_Zyui8COtbmSyDtImrRx1O9TnR8Cs60CeFv38Q7ernRsUQFsTE_y95laevl-xxahr1qMk7TUNYtKFsKQ64nsltvC2bKHuW_hZXM_UtBdkmdS6fzE8b1dxsSgi-FKiVQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNdQPhIb2ugCDHbeDvAMwVgpi17CTECTQcpGClA6FjX33AHHZ9VlZJebuMEjQXxGOLKa0N7JKAQPRWNI8DY5quRbMjNLaXxGtMtJUzx_b6XSWGx696Jtzprziff7eqMNw2V9cBTEw=s4800-w800-h600"], "a": ["Osteria da Lu&Ca", "Osteria da Lu&Ca"], "g": "https://maps.google.com/?cid=7797132831367315885"}, {"c": "mid", "n": "Osteria Il Pozzo", "zh": "€€ · simple Lombard cooking · Menaggio's square", "lat": 46.020104, "lng": 9.238855, "m": "4.5★ · CLOSED WEDNESDAYS · ~€50 for two at lunch (reviewer) · English-speaking staff", "d": "A plain, friendly osteria on Menaggio's Piazza Garibaldi. Reviewers rate the ravioli above ones they'd eaten at a luxury hotel, plus pork with polenta and a standout tiramisu; one lunch for two came to around €50. The menu is short and a reviewer wants more wines by the glass. A sound pick when the lake restaurants are full.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAnDWGoV7ZC45iilfotuFvZDciWAHy2N9A1Dmyjo1GCv_H0e4abBI1UnE7VrPcPsyp35Wb1yBeA8XEdA5OteL8dgkz8DKhv2Ksrow6ySRYfJsPk7Ky18Ilk99n7IowabrBvZSt043jmI1v_Rg=s4800-w799-h518", "https://lh3.googleusercontent.com/place-photos/AG9NLjAbrz-eRnsxVgE6GECY2joUDlTODn4OzMyQbeVJd3zit1mcdGE_o0bWYpPXaQaXkiMIMDdRm1KCU26V2QfNp7NkQ5tnZ_s1HEW6ppue_jVvxSlIrbSXd-6VGeUfKONKPEGZ6ROOLPGgY9HYpBY2p9ifrQ=s4800-w800-h600"], "a": ["Osteria Il Pozzo", "Shirley Zheng"], "g": "https://maps.google.com/?cid=16518310542905807976"}, {"c": "wine", "n": "In Vino Veritas Caffè", "zh": "Lecco · wine bar, free tapas with each glass", "lat": 45.845324, "lng": 9.399448, "m": "4.7★ · Mon–Fri 8am–11pm · Sat 11–2:30 & 5–11 · CLOSED SUNDAYS · tapas come free with a glass (reviewers)", "d": "A wine and aperitivo bar on the square at Pescarenico, right by the Fra Cristoforo church. Reviewers say every glass comes with free tapas — cold cuts, a small platter — and call the Aperol spritz the best in Lecco. Good last stop after walking the river. Sunday closed.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAV5S8vBryXs9UI4Zwtb-6svZFbLtHIDP7wLirX2nAvf0SJ3TdnHXJKRzRTTRqH9IQWD4p44Qk75Dh5pK6iqP-WH8C8KFQzSt0GUZt3VBPfjVY1pu4NA7fR6h-leCRtaQpVdw2A2_fySF6b44M=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCLBV3Xp_AxHcG30pdWP_xqojH6DewnuVuPYtazQJvmpes0Tzp59brk8fhn-RDMmQIuwzfCBjrEw5pUMx8ICQoNJEXORkwSmJgZ9kPpZWhJ0qZupIZRtmtRWNlke9uODjb0VaGtQtW1ri1BOQ=s4800-w800-h600"], "a": ["Flavio Raineri", "Mariusz Mucha"], "g": "https://maps.google.com/?cid=7876476427967819733"}, {"c": "beer", "n": "Birrificio Herba Monstrum", "zh": "Lecco · craft-beer brewpub with a burger menu", "lat": 45.845444, "lng": 9.394673, "m": "4.6★ · CLOSED MONDAYS · Tue–Fri 11–2:30 & 5–11 · Sat–Sun 11am–11pm · tables fill up", "d": "A brewpub serving its own beers (reviewers name Malanotte and Booyaka) and a burger menu that includes lamb and vegetarian options. The room is plain; the draw is the beer and the price-to-quantity ratio. It fills up — one party got the last two seats — and a reviewer found the staff impatient at peak. Closed on Mondays.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjC6zonmuRUiqtt97ToqkIEz68RCUW88qkSdd1goIinGMo1hpzPu2yNDJlD8ehKZ7ZbJwS3jEungcCGU0PIPh32wgYRBzsuO_NfpuNwDOwskUVGE_IRvRsCEff9Dkp-cykwbd_GAKTTA-AJNbQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjAumbEbB8H8-Ja8Wfvxvi9HK6TyYdeTrVbLDwSlETXcutt2HOljaFxPJ-M35IisT7lZEuRums03sNTQZkLXgtqtiq7LWK6qzD9BUonE2jU_H0AxgH1LM4DyhJZTv91EM0KRqETPsDcG5I6V6gTZ3erbYQ=s4800-w800-h600"], "a": ["Birrificio Herba Monstrum Brewery", "Olga Rapitskaya"], "g": "https://maps.google.com/?cid=10664978530831786180"}, {"c": "beer", "n": "Dulac birra", "zh": "Galbiate · local brewery, beers named in Lecco dialect", "lat": 45.810581, "lng": 9.37903, "m": "4.8★ · Mon–Fri 9–6 · Sat 9:30–12:30 · CLOSED SUN · bottle shop — taps only at events (reviewers)", "d": "A local brewery south of Lecco whose beers carry names in the Lecco dialect. Visitors split on what you can do there: one says it is a shop only, no tastings; another found an outdoor village-fair atmosphere with burgers and a live band on an event day. Treat it as a bottle stop, and check the brewery's page for event dates before you drive out.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAzSt-2ccE1wSTr5uRBtnpL1xmM14fDxhoHtV3I1dXm-g8v6nRXuAP-qucJ9Z_Og598ZlCZliRWphYCr5f1TkLG9WrlSHD4wMb4ZJMkez-fi5AoMRcqL4bpOcjaJsxeC3PCovrBh68qS2ZE8WECSEEv_w=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjC6mFvM3QuMmsNUkwJ46kFd4zMyga9tM9Fv4LN6BQnv2mwmefjuZsgquOCQB7YfEoERAr7JoBp3-NznQnNaqV0zM0D_fbguFwRvMO_ZrcyF0AjdUO6a36SUTjJS74ZoXFdzGrPuS7T1LMEpmQ=s4800-w800-h600"], "a": ["Dulac", "Dulac"], "g": "https://maps.google.com/?cid=10839477372472252231"}, {"c": "wine", "n": "100 Lire", "zh": "Como · aperitivo bar with real carbonara", "lat": 45.815899, "lng": 9.083515, "m": "4.8★ · CLOSED WEDNESDAYS · Mon–Tue, Thu–Sun 10am–2am · small bites free with drinks (reviewer)", "d": "A small bar a block off Como's lakefront road where reviewers call the carbonara the best they've had in Italy and say drinks come with free small bites. One reviewer notes the pasta isn't homemade — only the sauce — so it is better as an aperitivo-and-pasta stop than a dinner destination. There is a dog, Ranni, who works the tables.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNcQHWKdwAjuC1Ov_irPZk6MEma9vSQojU07OkFTFwAkxU_4-as8Bsw-XRpbgdHZ-Dvp1HJ9pL9CbipW0U25ahBHm7qiljLck7pjNbRmogD6KOSCch8xXDJmjM_-JkUBtIC2dV-qUo5hEyB=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmM85cg1dtropERCELmu-_ZGMFelKSQHAc759QhgIwAVXrk19MmYqRY3YnF5E5hEK-NDumPLeD3jSA3d7_WXLJXjlHqjv9wnMKFz82LBNdU8EqA_j9_-djdGiKR6tMd7fH5rLYQedQ=s4800-w800-h600"], "a": ["100 Lire Como", "100 Lire Como"], "g": "https://maps.google.com/?cid=18033430287303577577"}, {"c": "wine", "n": "Alle Terrazze", "zh": "Como · terrace bar with lake view · aperitivo plates", "lat": 45.821844, "lng": 9.078912, "m": "4.2★ (2,400+ reviews) · daily 11am–2am · aperitivo = a full plate of food", "d": "A terrace bar on Viale Geno on the lake side north of the old town, with long open hours. A reviewer found it a quiet view away from the swarms; another warns the 'appetizers' are a big plate, not a few chips. Cocktails and views are the draw, the risotto drew a lukewarm verdict. Good for a sunset drink; eat elsewhere.", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPmNZBQZr7rceSp04B3oy51St4dNUu9ZytQeTiX8EvDprdENitYfzXsvWan9URCFxFqecwPIcdKO0nNanlOKpu_EsyMyklxVp_XJkBbK84zGGykc1CZngDU6jhdEMpgtVtV8XKe=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPWtkuKPR_gCr-TDAzrs2BOtIxXRsPTTspveEYKuURxM-RQB2BGlsRZFGjBwPvauaHnpKtn_UhsKvG9hwZofFQVsQTgMEhOYZ8dBYEDiolVrVLfLpL4AhODxEzOJKGnOBTYiLNE=s4800-w800-h600"], "a": ["Alle Terrazze Como", "Alle Terrazze Como"], "g": "https://maps.google.com/?cid=5660243846942484034"}, {"c": "stay", "n": "Stay: Lecco — lakefront centre & Pescarenico", "zh": "Cheapest and least crowded base · train to Milan ~40 min", "lat": 45.8553, "lng": 9.3898, "nophoto": "district, not a business", "m": "Best for: budget, hikers, Manzoni country · Trade-off: less glamour, fewer day-trippers = fewer boats off-season", "d": "Lecco is the sensible base if you want to spend two weeks and not a fortune: the guides say it is less crowded and gives front-row access to the mountains and lake activities, and it can be cheaper than the resort towns. Everything on the Lecco cards is walkable from the lakefront; Pescarenico, the quiet riverside fishing quarter, is 1.5 km south. You are on the Milan–Colico–Tirano rail line, so Mandello, Bellano and Varenna are cheap train hops. In summer boats link Lecco and Bellagio; off-season, check Navigazione Laghi."}, {"c": "stay", "n": "Stay: Varenna", "zh": "Quiet, pretty, ferry + train hub on the east shore", "lat": 46.0087, "lng": 9.2842, "nophoto": "village, not a business", "m": "Best for: couples, villas, Bellagio in 15 min · Trade-off: pricey, tiny, crowded at midday", "d": "The east-shore village with a station on the Milan–Lecco line (a short downhill walk to the water) and a 15-minute ferry to Bellagio. Villa Monastero, Castello di Vezio and the Fiumelatte all start here. Guides rate it among the best first-time bases; it is small, so you will see the day-trippers arrive at midday and thin out by evening."}, {"c": "stay", "n": "Stay: Menaggio", "zh": "Practical west-shore hub · hiking, car ferries", "lat": 46.0197, "lng": 9.239, "nophoto": "town, not a business", "m": "Best for: families, hikers, using the car ferries · Trade-off: no train; bus and boat only", "d": "The main town on the western shore, with a pedestrian centre, a lake promenade and car ferries to Varenna and Bellagio. Several guides call it calmer and cheaper than Bellagio or Como with the same ferries at the door, and it is a good hiking base. There is no railway on this side, so you rely on boats and the ASF buses along the shore."}, {"c": "stay", "n": "Stay: Tremezzo–Lenno", "zh": "Villa shore · Carlotta, Balbianello, Isola Comacina on your doorstep", "lat": 45.9864, "lng": 9.2273, "nophoto": "villages, not a business", "m": "Best for: villas, fewer day-trippers · Trade-off: luxury pricing in Tremezzo; bus/ferry only", "d": "Stay between Menaggio and Lenno on the west shore to dodge the biggest day-trip crowds, one guide advises. Tremezzo is the high-end option beside Villa Carlotta; Lenno is calmer and cheaper, with Balbianello 20–30 minutes uphill on foot and Isola Comacina a short boat ride. It is a good second base after Lecco."}, {"c": "stay", "n": "Stay: Como — walled centre / lakefront", "zh": "Best without a car · Milan 30–60 min by train", "lat": 45.8113, "lng": 9.0857, "nophoto": "city centre, not a business", "m": "Best for: no-car trips, Milan day trips, nightlife · Trade-off: busy, farthest from the prettiest middle of the lake", "d": "Como has the best train links (Milan in 30–60 minutes depending on the train) and the most to do on foot — duomo, funicular, lakefront, restaurants — and is the right base if you'll also spend time in Milan. One local forum poster ranks it only fourth for atmosphere and says mid-lake villages have better views; it is also the place for hydrofoils up the lake. Good for the last few nights."}, {"c": "stay", "n": "Stay: Bellagio", "zh": "The postcard — and the premium", "lat": 45.9857, "lng": 9.2619, "nophoto": "town, not a business", "m": "Best for: a splurge night or two · Trade-off: busiest, priciest; a car is a burden", "d": "Bellagio is on the point where the two arms meet and is the classic first-timer choice, with steep stepped lanes, Villa Melzi and Serbelloni. Guides warn it is busy and expensive in peak season, and forum regulars say a car is more burden than help here. Better as a one- or two-night treat than as the base for a fortnight."}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19,
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+(pl.must?' must':'')+'" style="background:'
+         +CATS[pl.c].color+'">'+glyph(pl.c)+(pl.must?'<i class="star-badge"></i>':'')+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true,
+    zIndexOffset: pl.must?1000:0});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galPrev.style.visibility = pics.length>1?'':'hidden';
+  galNext.style.visibility = pics.length>1?'':'hidden';
+  galPrev.disabled=true; galNext.disabled=pics.length<2;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+  const multi=imgs.length>1;
+  galPrev.style.visibility = multi?'':'hidden';
+  galNext.style.visibility = multi?'':'hidden';
+  galPrev.disabled = i<=0;
+  galNext.disabled = i>=imgs.length-1;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+/* arrows, for mice and keyboards; touch users just swipe */
+const galPrev=document.getElementById('galPrev'), galNext=document.getElementById('galNext');
+function galScroll(dir){
+  const w=galTrack.clientWidth||1;
+  const i=Math.round(galTrack.scrollLeft/w)+dir;
+  const n=galTrack.querySelectorAll('img').length;
+  galTrack.scrollTo({left: Math.max(0,Math.min(n-1,i))*w, behavior:'smooth'});
+}
+galPrev.onclick=e=>{e.stopPropagation();galScroll(-1);};
+galNext.onclick=e=>{e.stopPropagation();galScroll(1);};
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng+"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  panToPlace(pl);
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+/* Wide screens show the card as a left-hand panel, so the gesture axis and the
+   map centring both have to change. Keep this threshold in sync with the CSS. */
+const SIDE_MIN_WIDTH = 720;
+function sideMode(){ return window.innerWidth >= SIDE_MIN_WIDTH; }
+
+function panToPlace(pl){
+  const ll = L.latLng(pl.wlat, pl.wlng);
+  if(!sideMode()){ map.panTo(ll,{animate:true}); return; }
+  // shift the centre left by half the panel so the pin sits in the visible half
+  const panelW = (document.querySelector('.sheet')||{}).offsetWidth || 390;
+  const pt = map.project(ll, map.getZoom()).subtract([panelW/2, 0]);
+  map.panTo(map.unproject(pt, map.getZoom()), {animate:true});
+}
+
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the card down to dismiss ----
+   Touch: drag anywhere in the card, but only when it is scrolled to the top, so
+   reading a long card still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    // In side mode the dismiss axis IS the gallery axis, so the gallery wins
+    // any gesture that starts on a photo.
+    if(sideMode() && e.target.closest && e.target.closest('.gal')) return;
+    // Vertical scroll only conflicts with the bottom sheet.
+    if(!sideMode() && sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'go':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  const side=sideMode();
+  // side panel slides out to the LEFT; bottom sheet slides DOWN
+  const along = side ? -dx : dy;      // movement toward dismissal
+  const across = side ? dy : dx;      // movement that belongs to the gallery
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(along)>Math.abs(across) ? 'go' : 'other';
+    if(drag.axis==='other'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(along<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=along;
+  sheet.classList.add('dragging');
+  sheet.style.transform = side ? 'translateX(-'+along+'px)' : 'translateY('+along+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();   // distance OR flick
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='go' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  const ab=document.getElementById('about');
+  if(ab && ab.classList.contains('open')) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- city overview ---------- */
+const about=document.getElementById('about'), aboutBtn=document.getElementById('aboutBtn');
+function esc(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function rich(x){ // allow **bold** only
+  return esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+}
+function renderAbout(){
+  if(!CITY || !Object.keys(CITY).length){ aboutBtn.style.display='none'; return; }
+  document.getElementById('abTitle').textContent = CITY.name||'';
+  document.getElementById('abTagline').textContent = CITY.tagline||'';
+
+  const st=document.getElementById('abStats');
+  st.innerHTML=(CITY.stats||[]).map(s=>
+    '<div class="stat"><div class="k">'+esc(s[0])+'</div><div class="v">'+esc(s[1])+'</div></div>'
+  ).join('');
+  st.style.display=(CITY.stats||[]).length?'grid':'none';
+
+  document.getElementById('abSections').innerHTML=(CITY.sections||[]).map(s=>
+    '<h3>'+esc(s[0])+'</h3>'+String(s[1]).split('\n\n').map(par=>'<p>'+rich(par)+'</p>').join('')
+  ).join('');
+
+  const musts=CITY.musts||[];
+  document.getElementById('abMusts').innerHTML = musts.length
+    ? '<h3>Must see, do &amp; try</h3><ul class="musts">'
+      + musts.map(m=>'<li>'+rich(m)+'</li>').join('') + '</ul>'
+    : '';
+
+  const near=CITY.nearby||[];
+  document.getElementById('abNearby').innerHTML = near.length
+    ? '<h3>Nearby</h3><ul class="nearby">'
+      + near.map(n=>'<li>'+rich(n)+'</li>').join('') + '</ul>'
+    : '';
+
+  document.getElementById('abFoot').textContent = CITY.foot||'';
+}
+renderAbout();
+function toggleAbout(open){
+  about.classList.toggle('open',open);
+  about.setAttribute('aria-hidden',open?'false':'true');
+  aboutBtn.classList.toggle('active',open);
+  if(open) about.scrollTop=0;
+}
+aboutBtn.onclick=()=>toggleAbout(!about.classList.contains('open'));
+document.getElementById('aboutClose').onclick=()=>toggleAbout(false);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') toggleAbout(false); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+let wasSide=sideMode();
+window.addEventListener('resize',()=>{
+  const now=sideMode();
+  if(now!==wasSide){ wasSide=now; if(selected) panToPlace(selected); }
+});
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
