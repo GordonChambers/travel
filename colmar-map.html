@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!-- city-guide-maps template v8 capabilities: swipe-dismiss,drag-handlers,click-away,escape-key,gallery,side-panel,must-see,overview,filters,fullscreen,geolocation,osm-basemap -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Colmar & the Wine Route — a week</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{position:relative;width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .pin.must{border-color:#F2C14E;border-width:3px;
+    box-shadow:0 0 0 1.5px rgba(120,80,0,.55),0 2px 7px rgba(0,0,0,.45)}
+  .star-badge{position:absolute;top:-5px;right:-5px;width:12px;height:12px;
+    background:#F2C14E;border-radius:50%;border:1.5px solid #fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+    width:30px;height:30px;border:none;border-radius:50%;cursor:pointer;
+    background:rgba(0,0,0,.42);color:#fff;display:none;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);transition:background .15s ease}
+  .gal-nav:hover{background:rgba(0,0,0,.65)}
+  .gal-nav:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .gal-nav svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .gal-nav.prev{left:8px} .gal-nav.next{right:8px}
+  .gal-nav[disabled]{opacity:.3;cursor:default}
+  /* only for real pointers — touch users swipe */
+  @media (hover:hover) and (pointer:fine){
+    .gal:hover .gal-nav, .gal-nav:focus-visible{display:flex}
+  }
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  /* when there is no photo the grabber would sit on the text */
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---- city overview sheet ---- */
+  .about{position:absolute;inset:0;z-index:1400;background:var(--paper);
+    overflow-y:auto;transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.32,.72,.35,1);
+    -webkit-overflow-scrolling:touch}
+  .about.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.about{transition:none}}
+  .about-inner{max-width:640px;margin:0 auto;padding:18px 20px calc(40px + env(safe-area-inset-bottom))}
+  .about h2{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:3px}
+  .about .tagline{font-size:14.5px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+  .about-close{position:sticky;top:0;float:right;width:34px;height:34px;border:none;
+    border-radius:50%;background:#eef1f5;color:#5b6472;font-size:16px;cursor:pointer;
+    line-height:1;z-index:2;margin-left:10px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;
+    margin-bottom:20px}
+  .stat{background:#f6f4ef;border-radius:11px;padding:9px 11px}
+  .stat .k{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#8b8577;margin-bottom:2px}
+  .stat .v{font-size:14px;font-weight:700;line-height:1.25}
+  .about h3{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:20px 0 7px}
+  .about p{font-size:14.5px;line-height:1.6;color:#374050;margin-bottom:9px}
+  .musts{list-style:none;margin:2px 0 4px}
+  .musts li{position:relative;padding:7px 0 7px 27px;font-size:14.5px;line-height:1.5;
+    border-bottom:1px solid #f0ece4}
+  .musts li:last-child{border-bottom:none}
+  .musts li::before{content:"";position:absolute;left:5px;top:14px;width:9px;height:9px;
+    border-radius:50%;background:#F2C14E;box-shadow:0 0 0 2px rgba(242,193,78,.28)}
+  .musts b{font-weight:750}
+  .nearby li{padding:7px 0 7px 27px;font-size:14px;line-height:1.5;list-style:none;
+    position:relative;color:#374050}
+  .nearby li::before{content:"";position:absolute;left:6px;top:15px;width:7px;height:7px;
+    border-radius:50%;background:#9E9D24}
+  .about .foot{font-size:11.5px;color:#95a0ae;margin-top:22px;line-height:1.5;
+    border-top:1px solid var(--line);padding-top:13px}
+  /* ---- wide / landscape: the card becomes a left-hand panel ----
+     A full-width bottom sheet letterboxes photos badly once the window is wide. */
+  @media (min-width:720px){
+    .sheet{left:0;right:auto;top:0;bottom:0;width:390px;max-height:none;height:100%;
+      border-radius:0 20px 20px 0;box-shadow:8px 0 30px rgba(16,24,40,.22);
+      transform:translateX(-105%)}
+    .sheet.open{transform:translateX(0)}
+    .gal, .gal-track img{border-radius:0 20px 0 0}
+    .gal-track img{height:auto;aspect-ratio:3/2}
+    .grabber{top:0;bottom:0;left:auto;right:0;margin-left:0;width:24px;height:100%;
+      flex-direction:column}
+    .grabber::after{width:4px;height:38px}
+    .sheet:has(.gal.none) .sheet-body{padding-top:16px}
+    .sheet-body{padding-right:26px}
+    /* keep the filter panel clear of the card */
+    .panel{left:auto;right:70px}
+    .about-inner{padding-left:26px}
+  }
+  @media (min-width:720px) and (max-height:520px){
+    /* phone held sideways: shorter, so trim the photo further */
+    .gal-track img{aspect-ratio:2/1}
+  }
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Colmar & the Wine Route — a week</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="aboutBtn" title="About this city" aria-label="About this city">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Pins: circles = sights, rounded squares = food, diamonds = drinks. Closing days are in CAPS. Checked 6 Oct 2026, and several mountain sites (Hohlandsbourg, farm-inns, the Route des Crêtes) end their season within weeks. Photos are traveller submissions, credited under each card; I could not view them. ~ marks prices I did not confirm. Where sources disagree (e.g. Wistub Brenner, Schwendi), the card says so.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <button class="gal-nav prev" id="galPrev" aria-label="Previous photo">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="gal-nav next" id="galNext" aria-label="Next photo">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="about" id="about" role="dialog" aria-label="About this city" aria-hidden="true">
+  <div class="about-inner">
+    <button class="about-close" id="aboutClose" aria-label="Close">✕</button>
+    <h2 id="abTitle"></h2>
+    <p class="tagline" id="abTagline"></p>
+    <div class="stats" id="abStats"></div>
+    <div id="abSections"></div>
+    <div id="abMusts"></div>
+    <div id="abNearby"></div>
+    <p class="foot" id="abFoot"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"heritage": {"label": "Sights & landmarks", "color": "#5D4037", "icon": "landmark"}, "church": {"label": "Churches", "color": "#6A1B9A", "icon": "church"}, "museum": {"label": "Museums & culture", "color": "#1565C0", "icon": "palette"}, "castle": {"label": "Castles", "color": "#455A64", "icon": "castle"}, "nature": {"label": "Wildlife & nature", "color": "#2E7D32", "icon": "bird"}, "treat": {"label": "Bakeries, market, picnic", "color": "#EF6C00", "icon": "croissant", "shape": "food"}, "cheap": {"label": "Cheap eats (€)", "color": "#00ACC1", "icon": "utensils", "shape": "food"}, "mid": {"label": "Mid-range (€€)", "color": "#F9A825", "icon": "utensils", "shape": "food"}, "splurge": {"label": "Splurge (€€€+)", "color": "#C2185B", "icon": "utensils-crossed", "shape": "food"}, "wine": {"label": "Wine bars & cellars", "color": "#8E24AA", "icon": "wine", "shape": "drink"}, "beer": {"label": "Craft beer", "color": "#37474F", "icon": "beer", "shape": "drink"}, "stay": {"label": "Where to stay (areas)", "color": "#00897B", "icon": "bed"}};
+const ICONS = {"bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "beer": "<path d=\"M17 11h1a3 3 0 0 1 0 6h-1\"/> <path d=\"M9 12v6\"/> <path d=\"M13 12v6\"/> <path d=\"M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 0 1 0-5c.78 0 1.57.5 2.5.5S9.44 2 11 2s2 1.5 3 1.5 1.72-.5 2.5-.5a2.5 2.5 0 0 1 0 5c-.78 0-1.5-.5-2.5-.5Z\"/> <path d=\"M5 8v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8\"/>", "bird": "<path d=\"M16 7h.01\"/> <path d=\"M3.4 18H12a8 8 0 0 0 8-8V7a4 4 0 0 0-7.28-2.3L2 20\"/> <path d=\"m20 7 2 .5-2 .5\"/> <path d=\"M10 18v3\"/> <path d=\"M14 17.75V21\"/> <path d=\"M7 18a6 6 0 0 0 3.84-10.61\"/>", "castle": "<path d=\"M10 5V3\"/> <path d=\"M14 5V3\"/> <path d=\"M15 21v-3a3 3 0 0 0-6 0v3\"/> <path d=\"M18 3v8\"/> <path d=\"M18 5H6\"/> <path d=\"M22 11H2\"/> <path d=\"M22 9v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9\"/> <path d=\"M6 3v8\"/>", "church": "<path d=\"M10 9h4\"/> <path d=\"M12 7v5\"/> <path d=\"M14 21v-3a2 2 0 0 0-4 0v3\"/> <path d=\"m18 9 3.52 2.147a1 1 0 0 1 .48.854V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6.999a1 1 0 0 1 .48-.854L6 9\"/> <path d=\"M6 21V7a1 1 0 0 1 .376-.782l5-3.999a1 1 0 0 1 1.249.001l5 4A1 1 0 0 1 18 7v14\"/>", "croissant": "<path d=\"M10.2 18H4.774a1.5 1.5 0 0 1-1.352-.97 11 11 0 0 1 .132-6.487\"/> <path d=\"M18 10.2V4.774a1.5 1.5 0 0 0-.97-1.352 11 11 0 0 0-6.486.132\"/> <path d=\"M18 5a4 3 0 0 1 4 3 2 2 0 0 1-2 2 10 10 0 0 0-5.139 1.42\"/> <path d=\"M5 18a3 4 0 0 0 3 4 2 2 0 0 0 2-2 10 10 0 0 1 1.42-5.14\"/> <path d=\"M8.709 2.554a10 10 0 0 0-6.155 6.155 1.5 1.5 0 0 0 .676 1.626l9.807 5.42a2 2 0 0 0 2.718-2.718l-5.42-9.807a1.5 1.5 0 0 0-1.626-.676\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "palette": "<path d=\"M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z\"/> <circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "utensils-crossed": "<path d=\"m16 2-2.3 2.3a3 3 0 0 0 0 4.2l1.8 1.8a3 3 0 0 0 4.2 0L22 8\"/> <path d=\"M15 15 3.3 3.3a4.2 4.2 0 0 0 0 6l7.3 7.3c.7.7 2 .7 2.8 0L15 15Zm0 0 7 7\"/> <path d=\"m2.1 21.8 6.4-6.3\"/> <path d=\"m19 5-7 7\"/>", "wine": "<path d=\"M8 22h8\"/> <path d=\"M7 10h10\"/> <path d=\"M12 15v7\"/> <path d=\"M12 15a5 5 0 0 0 5-5c0-2-.5-4-2-8H9c-1.5 4-2 6-2 8a5 5 0 0 0 5 5Z\"/>"};
+const CITY  = {"name": "Colmar & the Alsace Wine Route", "tagline": "A pedestrian old town of half-timbered houses and canals, with the Isenheim Altarpiece in a converted convent, set at the foot of the Vosges in the driest corner of Alsace. Around it run the wine villages, castles, and the cheese farms of the Munster valley, all within about an hour by car.", "stats": [["Population", "~67,000 (2022)"], ["Free imperial city", "Granted 1226"], ["Old town", "Compact, ~2.5 km², mostly pedestrian"], ["By car from Colmar", "Eguisheim 10 min · Kaysersberg 20 · Riquewihr 20 · Ribeauvillé 20 · Haut-Kœnigsbourg ~26 km"], ["Closing days", "Unterlinden TUE · Bartholdi MON · Marché Couvert MON"], ["Bus in town", "€1.50 per hour, €3.50 for 24h (Wikivoyage)"], ["Language", "French; Alsatian dialect; German often helps"], ["Budget/day", "~€55 thrifty, ~€130 comfortable (my estimate from the card prices)"], ["Christmas markets", "23 Nov–29 Dec 2026; book dinner ~6 weeks ahead"], ["Right now", "Hohlandsbourg ends 1 Nov; Route des Crêtes closed from mid-Nov last year"]], "sections": [["History in five minutes", "Colmar was first mentioned in the 9th century and grew as a medieval trading town; in 1226 Emperor Frederick II made it a free imperial city, which is why it was rich enough to build stone and carved timber on this scale.\n\nAlsace then passed between France and Germany several times. Colmar was French for most of the modern period but German-speaking: annexed to Germany after 1871, returned to France after the First World War, retaken in the Second, and liberated on 2 February 1945. A hoard hidden by Jews during the Black Death was found here in 1863, a reminder of how old the town’s layers are. The historic centre survives as a protected ‘secteur sauvegardé’."], ["Culture and society", "Alsatian, a German dialect, is still spoken by older residents and appears under French on some street signs, and many Alsatians are pleased to be addressed in German (not all), while English is not widely spoken. Colmar’s two great artists are Martin Schongauer (15th century) and Auguste Bartholdi (1834–1904), who made the Statue of Liberty. The winstub, a wood-panelled wine tavern, is the social centre: expect low ceilings, tables that are hard to get at weekends without a booking, and lunch kitchens that stop at about 13:30."], ["Economy, then and now", "Colmar calls itself the capital of Alsatian wine and is a prefecture, the seat of the Haut-Rhin department since 1800. The Vosges wring most of the rain out of Atlantic weather before it reaches the plain, leaving Colmar around 600 mm a year, which is why the vines on the slopes ripen so reliably. Tourism now sits on top of wine, with industry including a large Liebherr construction-machinery plant on the north side."], ["Iconic food & drink", "Choucroute garnie (~€25–35 a plate), baeckeoffe (a three-meat casserole baked in white wine), tarte flambée (flammekueche, ~€10–14), spätzle with Munster, kougelhopf, and bretzels. Munster AOP is the cheese: ask for ‘fermier’. Drink white: Riesling, Pinot Gris, Gewurztraminer, Crémant d’Alsace and mirabelle eau-de-vie. The local red is mostly a light Pinot Noir that struggles against pork. Tipping is not required, because service is included."], ["Unique to this corner", "Turckheim’s night watchman, nightly at 22:00 until 1 November. Storks, the regional bird, reintroduced to Alsace (the Hunawihr park tells the story). Marcaire farm-inns on the Vosges ridge, serving roïgebrageldi (fried potato) with farm Munster. A 12 m Statue of Liberty on a roundabout. And the Isenheim Altarpiece, painted for a hospital that treated the sick with prayer and wine."]], "musts": ["**Musée Unterlinden** — the Isenheim Altarpiece; CLOSED TUESDAYS (~€8+, check)", "**La Petite Venise** — canals at dawn or dusk; FREE", "**Maison Pfister** — 1537 Renaissance house; FREE, five minutes", "**Eguisheim** — ring-shaped village; FREE, 10 minutes by car", "**Château de Kaysersberg** — free tower climb over the village; FREE", "**Turckheim night watchman** — nightly 22:00 to 1 Nov; FREE", "**Château du Haut-Kœnigsbourg** — €12, the best-preserved castle"], "nearby": ["**Strasbourg — about 64 km north.** The region’s capital, an hour or so by car or train; more to do than Colmar if you stay longer.", "**Mulhouse — 45 km south, ~30 min.** Wikivoyage says skip it if you are pressed for time.", "**Freiburg via Breisach.** A bus runs Breisach–Colmar in 30–40 minutes (€4.30 in 2018) and a RegioElsassTicket is valid on it.", "**Neuf-Brisach — about 20 km east.** Vauban’s fortress town, free to walk with a 3 km rampart circuit; I did not give it a pin.", "**Écomusée d’Alsace, Ungersheim.** An open-air village museum south of Colmar; Google showed only Friday–Sunday hours when I checked, so confirm the season before going."], "foot": "Prices indicative for autumn 2026, rounded; ~ means unconfirmed, so re-check before you go. Sources: Wikivoyage, Michelin Guide, Gault&Millau, tourisme-colmar.com, Turckheim town hall, Do Eat Better food-tour blog (commercial), and Google Places for ratings, hours and traveller photos (credited; the author could not view the images). Closing days and seasons were checked on 6 Oct 2026."};
+const PLACES = [{"c": "heritage", "n": "La Petite Venise", "lat": 48.0739795, "lng": 7.357287, "m": "4.7★ · FREE · open 24h · boats leave from two landing stages (check season and price)", "d": "The postcard: pastel half-timbered houses along the Lauch. Come early or at dusk, because by midday the Quai de la Poissonnerie is shoulder to shoulder. A local food-tour blog (commercial, so take it with salt) gives one rule worth following: do not eat on the waterside terraces. Drink a Crémant there, take the photo, then walk two streets inland for dinner.", "g": "https://maps.google.com/?cid=16670084317676015637", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmOEYii8iTA_KWZGBIMrDhmf7kt8yXaO3bo-ckv6KMAaywbGLSvgG4GESBsXlhEyz12fedIYnL-J7fzgbekwnXJXmzrzcjeqZvWISJqpKXt_3_HaQo_Bx5pBzwUEwJCPbUWQ29SxbA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmO8KO-eqXF-9FlBNnzeqW4b9H2M_rO8j43iGM_jAFnTKbWYGE5q9C0OV6K-zkwnitIeVtsdV_VWMnd8Lmdz2BCs3DxcvGqiI2mPzkMNbdCbA_xYoDnBHa9xX2p6FgtO9QFTybVD8A=s4800-w800-h600"], "a": ["Sarah Genoud", "Ghadir Chegini"], "zh": "canals & half-timbered fronts · Quai de la Poissonnerie", "s": "The ‘Venice’ is a working river. Market gardeners once brought their vegetables down the Lauch on flat-bottomed boats and unloaded them at the covered market, which was built in 1865 on exactly that logic. The boats visitors ride today, poled by a guide with commentary, are the same design.", "sl": "It was a vegetable route", "must": true}, {"c": "museum", "n": "Musée Unterlinden", "lat": 48.0798629, "lng": 7.3555373, "m": "4.6★ · CLOSED TUESDAYS · Wed–Mon 9–18, last entry 17:30 · ~€8+ (old Wikivoyage figure, likely higher now)", "d": "A 13th-century Dominican convent joined by an underground gallery to a modern Herzog & de Meuron wing. The altarpiece is in the chapel; reviewers say the museum is compact and well laid out, so a morning is enough. Also Schongauer, Cranach’s Melancholy, Holbein the Elder and a 20th-century floor. Plan Bartholdi for a Tuesday, when this is shut.", "g": "https://maps.google.com/?cid=1802677449395903277", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMB_4ut3mwnmeTRsME-4BWFDnCIzld6QPzB8fYcdIBGs9MZdrcSJmjsiysPAOg9jmWUqrKbIzaZ40E8VMepr8Q-3fRIWGc3dd-Huw2--1_m-S3cHv_qGazxVK0eYPyNAqUQX3mvRw=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMDTevwHpH-8yBv1zkr_HTQYNI0MHeDJi7R6t96K_lrGswb-oRyNEPf3MXDh3t0zUwQcspOVb9N7YVesJoQoGpqDVLfusOjSX6juXLV8xP7HSMPihf7qMCWIXmXhMQvvHAIuwsH7w=s4800-w800-h600"], "a": ["Thomas Stoessel", "Loreen Rosenkranz"], "zh": "Isenheim Altarpiece · medieval convent plus modern wing", "s": "The Isenheim Altarpiece was made (1512–16) for the Antonite hospital in Issenheim, which treated ‘St Anthony’s fire’, now known to be ergot poisoning from rye. Patients were carried before it to pray. ‘Grünewald’ is a false name: the painter was Mathis Gothart Nithart, and the carved crowning was lost when the altarpiece was dismantled in the Revolution.", "sl": "A painting made for the sick", "must": true}, {"c": "heritage", "n": "Maison Pfister", "lat": 48.0767151, "lng": 7.3581639, "m": "4.7★ · FREE (exterior) · crowded · 5 minutes is enough", "d": "Colmar’s best Renaissance house: a two-storey corner oriel, a carved wooden gallery, an octagonal tower and painted biblical scenes, built in 1537 for Ludwig Scherer, a hatter who had made his money in trade. A façade stop, not an interior visit. The Bartholdi museum is on the same street (no. 30), so combine them, and keep your wallet zipped in the crowd.", "g": "https://maps.google.com/?cid=8521234063360943385", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLeOoAJonG83oTuTLgqIoEZ5M64e3zb-zN_HCPznia-cpiWlumEfHBOa1q7gL1CGNRPBpZiC9LLcqMUA1hQ6qh_uSj45-tqzFczXRC6cJt371N8yKk1Ej7YDNMEekmXnf9UZvXc6=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLeSKoy7N_aaCo38baBZjVUvvNfv-CFVxOxntvNAvY48kQSKyvbuLd5iHGukq-ACnHzE-KKr9hc7XNuBTkiaFR9bAIQ4WWdGLYEDsUnvzMGkjz4dVHeUYuVNe1CkAD3paM1dxqz9vW6LXfY=s4800-w800-h600"], "a": ["Maison Pfister", "Pablo Meilán Campagnale"], "zh": "Renaissance house, 1537 · rue des Marchands", "must": true}, {"c": "heritage", "n": "Maison des Têtes", "lat": 48.0784935, "lng": 7.3556346, "m": "4.5★ · façade FREE · hotel and restaurants inside, so you view the front", "d": "A Renaissance merchant’s house whose front is covered in sculpted faces (a guided-tour listing counts 106). It is now a Relais & Châteaux hotel with several restaurants, so the courtyard is for guests and diners; everyone else gets the street. Wikivoyage lists the one-star Girardin restaurant here, which is the splurge option if you want it.", "g": "https://maps.google.com/?cid=15437252715510927820", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcpVyI6vGzA55WTGbt6YoNtrI15fTChutojUqPBEtVR7v5lahAAtSLNCFtjBgccLdj6XyX0euvwHm5bcfFr_XOMX-dIx_eTKNl0Lh_DgQDHWWgDJziTqSEYNTkQDACLUicq9bzAtg=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfPuesh9MBzx1R-1NA-V3dY8y5PS2u_p-GksazV_zAuDnHwvyIDfk2xfLBLUFC0ALYriRb8F3dV-fuuxFUuhK-NnhsZ3_Up5x9PaofsxHAdCb1qokbtx-R9GOALAaVG7C51QQPa=s4800-w800-h600"], "a": ["La Maison des Têtes (venue)", "La Maison des Têtes (venue)"], "zh": "façade covered in sculpted faces · now a hotel"}, {"c": "heritage", "n": "Koïfhus (Ancienne Douane)", "lat": 48.0759163, "lng": 7.359131, "m": "FREE · Google files it as a street address, hence no review score", "d": "The old customs house on the square, dated to the 15th century by visitor sources, which also call it the oldest public building in Colmar. In the Christmas season its hall hosts an artisans’ market (Colmar’s markets run 23 Nov–29 Dec 2026). Several winstubs open onto this square, which is why it is busy at dinner.", "g": "https://maps.google.com/?cid=17696159560392232962", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLevvv6CnOPxeZtluMi84Lbe_xKbQw6B03jfaY86r2w8eTkq3TRykV1JBSg5wEScOn3ZllumlhXI7q9vC2ouw8VzDPBP1rjeKolB-d09hg160ORs4_3Jw994iosTHiPFrTsnvfJb=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLeWlIUcfNTmIX3Ix5RzV1ZJodzqOuqa2UzIMvKNLswrv0gSeYNuUEV1j_7gWIZe7NZKLPmeFW-ut7fIKd_LJ-C6vKmdUjX2aefhLIWNJWuGWwxE9PddEeXC5a9tscC-61bNImCF=s4800-w800-h600"], "a": ["Kaddiern Sauvage", "Loris Raffini"], "zh": "medieval customs house · place de l’Ancienne Douane"}, {"c": "church", "n": "Collégiale Saint-Martin", "lat": 48.0775234, "lng": 7.3578254, "m": "4.5★ · FREE · Mon–Sat 8–18:45, Sun 10–19 · façade works possible", "d": "Colmar’s ‘cathedral’ is technically a collegiate church: yellow Rouffach sandstone, an unfinished asymmetrical spire about 71 m high, a Last Judgment over the south portal and the Adoration of the Magi on the west. Free, with a coin box for candles. A tender for exterior renovation was signed in 2024, so check what is under scaffolding before you plan photos.", "g": "https://maps.google.com/?cid=7609238592299564111", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNDq8rzCWp2xPHrG1zoeF5jTzpCvyEEieDYRuw17jRLe23hfMiEFImfH2YXEB8znauncxCXuIsCOY9MS1B9DCh15PTmOoy7l5jYplJTKZz2oXsGZMDn0UD4xN-1eQQQFQCMDUXr=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOcNuDPvqpmGxoTQGsUATlLv2Sw9LNngbuW0wXyABAnNO431os9-oRCKGGtPfF3JypQomJcJ_ouM1aKGf5zz5GUFJ3NmmuTK7MxsGcyvCiKd0n9PB-tnqbRmENTXByBRY9LU7Xhtg=s4800-w800-h600"], "a": ["Valentin Orlov", "Matthias Bahlke"], "zh": "Gothic ‘cathedral’ · yellow Rouffach sandstone"}, {"c": "church", "n": "Église des Dominicains", "lat": 48.0783265, "lng": 7.3564393, "m": "4.3★ · ~€2 · CLOSED MON · Wed 3–6pm only · Fri–Sat 10–18 · other days split at lunch", "d": "Go for one painting: Martin Schongauer’s 1473 Madonna of the Rose Bush, which a local blog says many visitors miss for lack of signage. Reviewers call the rest bare and some grumble about the entry fee, but you can walk behind the painting to more rose-themed art. Opening hours are patchy, and Wednesday mornings are shut.", "g": "https://maps.google.com/?cid=17201387580189626447", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmPRg8v6do620SwTk-pHcLXl4ywFszVYVrR0_egdwHdSJqQq9sHhUvtpnNbMcJ4ezM9SCUheEVmbtpDmfYeL4ndxEPkmx7NnhtMowgceK4g1KJkskho8bubrCAWep2_CB3yysL2lKA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOzKaif9N1dOKzgcNawqwjEwZwWjma5ximdus6A-PbMQ7VgbcxSc0g2hRuG_1HWqHsBGTKWuY6sitac19fToOnlSLlSDo7wedIQIS01Fpa3o8Ym-PjkHTuW_tnv-neDheKqIhAs=s4800-w800-h600"], "a": ["Pei Chen Lee", "Jozef Czarny"], "zh": "Schongauer’s Madonna of the Rose Bush"}, {"c": "museum", "n": "Musée Bartholdi", "lat": 48.0767573, "lng": 7.3576822, "m": "4.4★ · CLOSED MONDAYS · Tue–Sun 10–12 & 14–18 · exhibition ‘Objectif Liberté !’ to 31 Dec 2026", "d": "Bartholdi’s birthplace at 30 rue des Marchands: models of the Statue of Liberty and the Lion of Belfort, family furniture, and a reconstruction of his Paris flat. Reviewers call it small and well organised, about an hour; the audio guide (~€2 extra) is worth it. A heritage-days listing says it is stairs only with no lift. One reviewer disliked the desk staff’s manner.", "g": "https://maps.google.com/?cid=16159606269970034966", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfwpXmTWFIdE210q4-UMyv58HePBjL3_axQRZMDizOEwTq_AAyB4TLyXD0thYSMGZsjl982BmeJLrsZbGREOek54QF6TyiwJnPge11NRcxQnmM9BeQmnOGGm88YSStmYTQnfQjc=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfrU4wUXpFqcbCfbL2xUS1ZYwnPX5SoCY8sUbDpOypiTnT9F48cJtyh3xCyHB9CzqSqLbP5FRMAr-JgqasLp5MW_dwBaWbZ85FB-kBHK779F6ouAVasIJKXyyGbzTNjIwxYmTtN=s4800-w800-h600"], "a": ["Marion", "Eric Roels"], "zh": "birthplace of the sculptor of the Statue of Liberty"}, {"c": "treat", "n": "Marché Couvert", "lat": 48.0746596, "lng": 7.3598277, "m": "4.3★ · CLOSED MONDAYS · Tue–Thu 8–18, Fri 8–19, Sat 8–17, Sun 10–14 · FREE to enter", "d": "Brick-and-iron market hall beside the canal. Go before about 10:30: the food-tour blog warns that a Saturday lunch crush means paper plates and elbows. It names a cheese stall (Fromagerie Saint-Nicolas) run by the son of the affineur Bernard Antony. La Terrasse du Marché inside has its own pin. Boats leave from the market’s landing stage.", "g": "https://maps.google.com/?cid=2172260238511014259", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLd5i1VznHmzmpQqEcMRSzV8Hywu-yevWb53irM07sxxzpLspWoG36NpW91DghNwojx5UndUXLpzRAuhkxtLdArXooX0OpS7SdwWSKtzjfGBZueNlUCnR29ic4IrzzIvJSZWTWI=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfo4gMdh4Rmrp6rklF9F5l5YuUw76O57BCHrmGSeIvcdt_4QotnCA8JHTdqjkO9ao_bDpLvA6CLrvEV2FHaW4sXLSWsZPgAojmgFIqqzhe8SNwN5GqEqiF3ej4K3kNs2VFAJScYmg=s4800-w800-h600"], "a": ["HayLam", "Pál Gátas"], "zh": "1865 market hall on the canal"}, {"c": "heritage", "n": "Statue of Liberty replica", "lat": 48.1083788, "lng": 7.3636364, "m": "4.4★ · FREE · open 24h · ~15 min by bus each way", "d": "A 12 m resin copy, about a quarter of the real height, on the roundabout at the north entrance. Reviewers say it is a great photo but there is no safe pedestrian crossing and the road is busy. One couple took a bus out (about 15 minutes), spent half an hour, and bussed back. Worth it only if you have done the Bartholdi museum and want the picture; this is not a walk.", "g": "https://maps.google.com/?cid=11698082078163961580", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLd6fArdvpftrS_-3whDH583QUJrReUmhZfS9-VKdfKMPq-rBg7IlXd_yWzpfgzOPf_vTvwMTmSP24z03v5hrJCKZun_hRYnFqsG5OVQAjUHvaCUFd4_aFBWhfjpdIbY1BTQoMuyWWH7sGE=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLegzcoIa743CykWtZpag3kNdcPM7A2wyXa5_YlazymHyJuctTujjpTRjbgZhj8tu9_Mbe9S3F9SLyy0V45FMHxzvxqhMLIxdELCi5Su8x29LLUJEjpCioeDnJAt3jX2wqK28Y2py-DGjK8=s4800-w800-h600"], "a": ["Ronald Knüpp", "Marcello Domenighini"], "zh": "12 m copy · north entrance roundabout", "s": "It was unveiled on 4 July 2004, the American national day, for the centenary of Bartholdi’s death, by Mme Jacques Chirac. Colmar has been twinned with Princeton, New Jersey since 1986. It follows the original down to the tablet, which carries JULY IV MDCCLXXVI.", "sl": "Unveiled on the Fourth of July"}, {"c": "museum", "n": "Mon Chat Pitre", "lat": 48.0784327, "lng": 7.3537121, "m": "4.9★ · FREE to browse · CLOSED SUN–MON · Tue–Sat 10–18:30", "d": "A small bookshop with resident cats, around the corner from the Unterlinden at 5 place Sainte-Catherine. Reviewers say the staff speak some English and one cat will not leave your lap. It is a shop rather than a lending library, so budget a browse and a purchase, not an hour.", "g": "https://maps.google.com/?cid=7460899124093235892", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLezYPUHCtBnGcJUaQw65yTEJvLUfwLsz83McXGnSDQ_N_6f2jfFrrEU5L-1j9MYdmrETAPVE30ybqnjSg7_Q3LVe4KkotpUTUfKKoXGuLoP4VOfqiCrYhb92797ZnRsUdCJYUy-lrk20Nwe=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdBzDZK6qSgx5Rv4P-Qf6ZXIEIYP1Si87aNeLaQj0qR-bdE7XJhf-VE-1jozKFYI_wW9OECYao_2fl7dcvuyS3t3XsQRMb0mP2ndGEBjFaV0gwhWgcA2L2sXaVZmx2-Y7YXKccs0uebu_Y=s4800-w800-h600"], "a": ["Mon Chat Pitre (venue)", "Eloïse Jolly"], "zh": "bookshop with resident cats · place Sainte-Catherine"}, {"c": "mid", "n": "Wistub Brenner", "lat": 48.0739142, "lng": 7.3577921, "m": "4.3★ · hours disagree: Google daily 12–16 & 19–22, a local blog says TUE–SAT only · Michelin-selected · fixed-price 2–3 courses", "d": "The candidate for your one proper winstub dinner, a street back from Petite Venise. The blog’s dish is the baeckeoffe with three meats; reviewers describe stick-to-the-ribs cooking (a sausage-and-cheese ‘winemaker’s salad’, roast pork knuckle) and a real Riesling list. Sources disagree on status: the blog calls it a Bib Gourmand, while Michelin’s own Colmar Bib list, as I read it, does not. Book and phone to confirm days.", "g": "https://maps.google.com/?cid=15064103837187777350", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMTdcL75jv-Ik1yKI-mSsxQRvLsTbs8hgc3eximomz8H3dx65dgPX3rnSMkJ2vMifceI2FYDWMJj3ZuR4bU_pWwCDWUWGqCnm-_f6MWSYH4Ljrpgji1Vy0fPu6Ml2bTXHqH3eA_8Q=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmPZVYlqS9cafZf4-V_1x6GGvIxHGS3UoLXALvBCFNjIGxPIpWiXqv3r7BS1UbJz545B1iiSgj9qBYVsnTrh91ctnX4fs3GV7I89lFI4rLPYZ96nj4M5_maTGg99X9xaNEocy9dEoOaHAWgi=s4800-w800-h600"], "a": ["Wistub Brenner (venue)", "Jaqueline Light"], "zh": "€€ · winstub, 1 rue de Turenne"}, {"c": "mid", "n": "Schwendi Bier und Wistub", "lat": 48.076245, "lng": 7.35955, "m": "4.0★ · Google: daily 11:30–21:30 (a blog gives different days and an address) · flammkuchen ~€11", "d": "Large, loud and on the square, so it trades on location and rates only 4.0. Reviews are mixed. The baeckeoffe, the rösti with munster and the flammkuchen get praise; two reviewers separately panned the schnitzel (soggy, odd taste). Order the regional dishes, skip the schnitzel, sit outside, and share a flammkuchen. The blog says Saturday-night service turns brusque.", "g": "https://maps.google.com/?cid=18352770266782218044", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfpf-zSaXKat2Muvt7F4jSmVwyyvSMoCqD-PRegCslrFL21ZKjt-rcrer1QNeRC9DHAn-IqiVM2oQp64ZiFikS5gEOVPwngwkZToGL-yEFJtukiXpknGtptxPc1ftXskRbkxJ_x=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcJQgdx3NAxRqocp8Pf4xGQWuaORxVnvS4grvW-4MU0BhbNTc_IHPjEqYOWtLRiF5K3syD6zs3VPsww9i9ga7eZKAB2Sl6D5zJfEyLyOVSzPNFVh1GjcOgZHGVbNbAt_qsSCHxhMzP4B6XU=s4800-w800-h600"], "a": ["Schwendi Bier und Wistub (venue)", "laura"], "zh": "€€ · winstub on the Koïfhus square"}, {"c": "mid", "n": "Le Comptoir de Georges", "lat": 48.073965, "lng": 7.357013, "m": "3.9★ · Michelin-selected · daily 12–16 & 19–22 · sources split", "d": "The cleanest example of critics and crowd disagreeing. Michelin lists it, while Google reviewers split between ‘a highlight of Colmar’ (bone marrow, the canal-side deck, swans) and ‘burnt spätzle, a hair in the salad’. You are paying for the water view, and the local advice is not to eat on the waterside at all. Go only if the setting is what you want, and with eyes open.", "g": "https://maps.google.com/?cid=9423055254561493946", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfYv9wHABLB5aL0h217GpLzZdBvrjxPy_ZvyYluF7rFtqL31940L1Yl4qSd8Q6Inq4ICUgPFc62tli1A5bg7XQf06VExHyVGqbsRvhAwTTRipS77laaPq3tq5ElwQM85QHNono=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfU_kot8g5U_olGdoqnUbhry_oMaKOxEsF3dNoubkYloUhSEKXYU9b6wgc7bGaP2ry_9DbE4do7quGGbfq-0UD9YI5U2xkklsyWeY3qonCHVsUSF30lqucN41lYT65Uofy0YnUNEQ=s4800-w800-h600"], "a": ["Le Comptoir de Georges (venue)", "Le Comptoir de Georges (venue)"], "zh": "€€ · Alsatian brasserie by the canal"}, {"c": "mid", "n": "La Taverne Alsacienne (Ingersheim)", "lat": 48.0954706, "lng": 7.3049493, "m": "4.7★ · Michelin BIB GOURMAND · CLOSED MON & THU · Sun lunch only · book", "d": "The best-evidenced value meal near Colmar: Bib Gourmand, 4.7 over 1,200 reviews, and a wine list that locals have praised on forums since the 2000s. Reviewers say the cooking is far above what the exterior suggests. Menu de la Taverne or menu de saison, with wine pairing, and a children’s menu. Street parking; reserve.", "g": "https://maps.google.com/?cid=2982560205079809623", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLdI_sze68LZ9xq4H9yxOzY3lsxubagjnkAgL8YZBgYEyNeV2ZWSB8DLpEu7Vre3SrLvki0iDrE7-VUxziEvy2kCkBs3VwF9Jk7_8r1DQbfva-tEnhHo2xqwc8MBngjamlFpjLJy=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfF3YsXo1P_T4cawmsawtrnNCssgeOHGGXoUuUPSvhPLkHW2a8AUcNqA_kBWD_hDYN5C9x0ESY73B3HuMpZURVKPfwPbxbnilfBrzVkSM8CTEGvaUAWd9K0J3DKPNIuFYST9IgaRw=s4800-w800-h600"], "a": ["Jack Holzer", "Taverne Alsacienne (venue)"], "zh": "€€ · Bib Gourmand, 5 minutes from Colmar"}, {"c": "treat", "n": "Pâtisserie Gilg", "lat": 48.0753268, "lng": 7.3576373, "m": "4.6★ · CLOSED MON · Tue–Fri 9–18:45, Sat 9–18, Sun 9–12:30 · no seating", "d": "SNCF’s pick for Colmar’s best kougelhopf, the ultra-soft kind, from a house three generations deep. There is nowhere to sit (reviewers eat on the street or at a bar round the corner), and one visitor found the evening queue more hype than pastry. Go in the morning for the kougelhopf and the tartelettes before the shelves are picked over.", "g": "https://maps.google.com/?cid=15179928163192707569", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLefB7FZyw776VXyRnlj0xjJltG65p3Fhgl9Qqu4Vs_MbmyylpJqZdqp4yeYGqqrY28jyByq7uEpZq5tML2B1lruaFUm6swuNltsWOQqcKRX2Yrb8oR942UBXC6j5KYvn99NCh2vFA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLe10miFdIcI55qlvu0gOKJV5THhgWtQtof6UKLFTydJRB3dDefRvflxsK93xAwSjpRJDeBGSsouz4I3KFTJYQCaW8oNnkXaYe0Mi-LeJ7Ram-rS622zq5qUpnYLtIt_Lxdh4xy0Mjuy3Vei=s4800-w800-h600"], "a": ["M A", "Pascal Bertolami"], "zh": "€ · kougelhopf and tartelettes, takeaway only"}, {"c": "splurge", "n": "Restaurant du Marché", "lat": 48.0774937, "lng": 7.3573109, "m": "4.4★ · Gault&Millau-listed · no hours on Google, phone ahead · ~€85 pp with wine (one reviewer)", "d": "A family-run room by the cathedral that Gault&Millau names as an emblematic address for Alsatian cooking; one reviewer loves the choucroute. Reviews split: ‘charming, he cooks, she serves’ against ‘overpriced’ (starter ~€23, main ~€37), and one family describes a hostile reception when they spoke English. Start in French and expect €€€.", "g": "https://maps.google.com/?cid=15299594739177834379", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfMcm7Rm6jm_9zmzkP-IXojqkcTR0_IIY10NiYqqIfk5IW7lxDYCgTFBTg8NKmXQw4IS9hZkVeRv2AboSm71ZQOlYQF6FhiI1JVjVdzVVtig0Lr5fyjdQkeMZjDvet6FVyVB1Gr=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfrdVGWWDRWz8bcv2n1eyZUmnIj9JNeO1yd1DXh2V_r058OsQka2g7QJlXE8XCZbf2jxHcvM0951T5wJ7UkPJHfzoFMkMfz64MRKkUC2IybYKcOdIJUFiMg7_P6AmX07hou7xg7ZA=s4800-w800-h600"], "a": ["Restaurant du Marché (venue)", "Matthias Michel"], "zh": "€€€ · Alsatian classics, place de la Cathédrale"}, {"c": "splurge", "n": "JY’S", "lat": 48.0755934, "lng": 7.3535334, "m": "4.5★ · CLOSED SUN–MON · Tue dinner only · Michelin-listed · book", "d": "The one big-ticket meal on the map. One reviewer calls it balanced, precise and kind to a child at the table; others report bland, under-salted dishes and slow, uneven service, and the menu is French-only with little help translating. Worth it if you want a tasting menu and accept the service variance. Otherwise spend the money at Taverne Alsacienne and on wine.", "g": "https://maps.google.com/?cid=17012852482099402062", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcg67t4T0Fhcb_AVs0NaMcnp1o7NMvMVIuRRkp2G4gRuUhg5wgQSOxj0YZlBD2mNkcBGe4AERjaF-1rA9qCNPfICDVWHwgt4t_Cxyz2QLn0Nz3pu42iWXfJ77cj4R6HOriJZqstOTPhtTU=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfZ1USem4DD23vtdBmqjUmkff9NMmpzXDHFiHt62ekpkdNTt5594NO_cbW-1W1MHLkGS5ADQn04qBwLYKEzEMr4GRpKi6Xk17sC9DZKdb73iWr5dhj13dW6Yp_5Hgm2sWIEQTkMs9a00C0=s4800-w800-h600"], "a": ["JY'S (venue)", "Eric Poline"], "zh": "€€€€ · tasting-menu cooking, Jean-Yves Schillinger"}, {"c": "wine", "n": "Le Cercle des Arômes", "lat": 48.0776937, "lng": 7.3614306, "m": "4.7★ · Mon–Fri 5pm–midnight, Sat–Sun 11–midnight · ~€35 for a 6-wine flight (a reviewer)", "d": "A wine bar where reviewers say essentially every wine on the list can be poured by the glass, and where the sommelier will build a grand cru flight around your taste. One couple found the older vintages tired (€35 each for six, ~€100 for two with a board) and felt treated as tourists; ask for younger bottles if so. A wine-club site claims ~180 by the glass, which I could not verify.", "g": "https://maps.google.com/?cid=16622289648272774824", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLdWwJqpq5uNm5wY9zIrohl3T01pfVhIe8Z9otLh_dMJgKgYZvh_Uo-KqQLaG88KuUTDKLotk4w8iTDsH2Vr9rSgamksmI8NwDiTgkIObjHdgbhOwC2kI6lSixa7yAyJmd87ARlAlQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcRyWK9kzTumopeWQm8BXV3xBUlt1VNis-ozK082vxepppVBsXeuVV842wMBOpexkYYzcORMGgvqUOr0LHm3JFXd_vjWsq9nC2HFYMW8L6hMGVgiYFd3o2eY-2xw9zjlQvaO6nMzoovukE=s4800-w800-h600"], "a": ["Le Cercle des Arômes (venue)", "Joël Frei"], "zh": "wine bar · place Jeanne d’Arc"}, {"c": "wine", "n": "Au Temps d’un Verre", "lat": 48.0790398, "lng": 7.3618196, "m": "4.8★ · CLOSED TUE–WED · Mon, Thu–Sat 5pm–midnight · Sun 5:30–11:30pm", "d": "A couple-run, trilingual bar with a self-serve tasting card: load credit, then pour small measures of each wine yourself. Boards of meat, cheese and smoked trout, and a terrace. A good second stop after dinner, and it is shut on Tuesdays and Wednesdays.", "g": "https://maps.google.com/?cid=12820741299477650074", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLclXzFwoKI8blODsCq9OSv0tOAl4dNWAnmEVQ2Sq7cl5EqE58EOZeF1efYeRlMdx3ZJHTHRiy06vRZ1_CujI4a0NujYja_71WKsCNDxHx-FygjAVCsqAnb-n_6IcWZZCX51tgmw=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLeE2_N6biWEcU_IxGvFntL516mqcG1v0YmU7_PBcwuiZ7Qscs7_e4RMYUr_3YMOP13BAzx3r9qKPzItQBnvq_RVN5aiMFS5xe9mramh8PqisKFd-QY1oBRpEoz2j2ajMlc2qZlDfDS233l6=s4800-w800-h600"], "a": ["Au Temps d'un Verre (venue)", "Ralf Grandt"], "zh": "wine bar · rue Vauban"}, {"c": "treat", "n": "Sézanne", "lat": 48.076769, "lng": 7.3596337, "m": "4.7★ · CLOSED SUN–MON · Tue–Sat 9–19 · Google lists it as a shop", "d": "Gourmet shop on the Grand Rue that Raisin lists as a natural-wine bar and cave; reviewers describe the owner building a charcuterie-and-cheese lunch with tastings. Use it to provision a picnic for the Route des Vins days. Check whether the bar side is running when you go, as Google shows only shop hours.", "g": "https://maps.google.com/?cid=10238886315442963773", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcyF9z4arz2bffjGiyCYx93ekBQVecwIs1CGZHbmwk7jVgjQY0pliDDC6fQAaSsM8kmEkhto2V2__wdiFXWVufXMXVlf2l-lFD95Vu4qbTtPmbnwLeM236OxrbMZD41S35RQhKPKA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdNaF2whKxFlHabWS6RRuMFAXYqLMYwmjsQtFB_ojfZYXrL4CT5C6iS0jYDInVcMZWOhAiQ_Qc8me5MMOsu3qfoc6w6iCz1H8kwO6uWruWxZBSBOXD8YYf8yxY2NS8bRTcux6pW=s4800-w800-h600"], "a": ["Yves Degreef", "Willy Chung"], "zh": "€ · épicerie, charcuterie, natural wine"}, {"c": "wine", "n": "Domaine Martin Jund", "lat": 48.0786475, "lng": 7.3603099, "m": "4.6★ · Wed–Sat 2–6pm ONLY · 8 tastings ~€20 (a reviewer)", "d": "A winemaker’s courtyard inside the old town. One reviewer shared 8 tastings for €20 in 30–40 minutes; the pourer brings each wine individually, which slows you down. Booking is sensible if you want the cheese-and-wine option. Closed Sunday to Tuesday, so it is a Wednesday-to-Saturday afternoon stop.", "g": "https://maps.google.com/?cid=14951569837168497575", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfb1pDHltx_cns1NePDswC7aW7NlM7_zrKMYs3VSZRkCanQtdbAhWONjQvZk7K35lOx4oFV8_WweXQ0H2mVZPnClq3C1BrkJPr6bcMvkveL8e84eFY_NxmJdo4zPRvD7Mat4aT0TMteInM=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLeWduaZPAMBbNn-zxzm3Z2xWcf3b-Y-ARzSX8lJQ53SkJI6yWWnazIo5neCTmcuidHWEjRhfZ_cPbJgoYYU29qP4edqJqpXkF7Pe0E2MUlto38yCtpHdCUF4mfuyObsyUohsaTHA5G8CCk=s4800-w800-h600"], "a": ["Domaine Martin JUND (venue)", "Domaine Martin JUND (venue)"], "zh": "organic estate cellar · rue de l’Ange"}, {"c": "cheap", "n": "La Stub", "lat": 48.0749217, "lng": 7.3571692, "m": "4.6★ · daily 11:30–13:30 & 18:30–21:30 · tarte flambée ~€10–14", "d": "The flammekueche answer to ‘where’: a family-run room with many toppings (wild garlic and ham, even Szechuan pepper), and reviewers who went twice in a week. Lunch stops at 13:30 sharp. Order two different ones to share, as the reviews recommend, and book for dinner.", "g": "https://maps.google.com/?cid=961172961803778093", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLdkzvWq0qu7C_ra4pyzSTNak9X1aqMDt89uSrKxsz_DDGoP-W6I8E_IYHAC-tIlY58O7uRm4RHV-7NXqkkaiFkGTFwIxruMm60MMkHBH0pK1sag2R7FNGF7kG3Lgh4OiN_Kuitsc-l-pzKp=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcblSre0teBRP2GkYvx3t-dZOs0EJ78bokagzKC1wqTjBFtQ2gnHX98fcFgJV4JZovtXxp-eWQI_TKTcibPGx2EShyIRgF2nByaAV7R9-_mrLNL4sS7ziu0AUBB3dP_bDvqAhGDnHn9CjGe=s4800-w800-h600"], "a": ["La Stub (venue)", "Rafa Vilches Sáez"], "zh": "€ · flammekueche specialists, 72 Grand Rue"}, {"c": "cheap", "n": "La Terrasse du Marché", "lat": 48.0744607, "lng": 7.3597576, "m": "4.5★ · CLOSED SUN–MON · Tue–Sat · flammkuchen from ~€9.50 (Wikivoyage)", "d": "Flammekueche from about €9.50 on a balcony over the canal inside the market hall. Reviewers like the three-beer sampler and the mix of locals and tourists. Tables go at lunch, so arrive at 11:30 or after 14:00. It opens early (7:00 on Thursdays) for coffee and shuts Sunday and Monday.", "g": "https://maps.google.com/?cid=7277002406503451703", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMtWJ1fWzkP0exzFpgPxlyZChNrVBLLZO8ct2nGbvjgFPhgZPIOF-DthHFnNwPnwS9Xx_ozMsGohvp20mEcEYQkhQ0TECDbdIAv0YrJRpwEYVSrY2kpgaO3Y1WnGolS0VRIrSEG=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOaSvmF56Qtk7IJlF8KdZIlpXr4mwaaMq8bdalt2Wz8B_hhWC3Jrt3UEiLnD2KNR6Pfoe0WtcUpQmgE6Yf4HkSJv4osPvuUU7nrhYUvVZukk3dd9ROHM_4hG9C-OaikZZEShZ0dJ6_VUtZW=s4800-w800-h600"], "a": ["GetUsThereAlready", "Lara"], "zh": "€ · tarte flambée inside the market hall"}, {"c": "cheap", "n": "Le Palais Gourmand", "lat": 48.0772187, "lng": 7.3602281, "m": "4.4★ · CLOSED TUE · daily 11:30–14 & 18:30–22", "d": "A crêperie where the buckwheat galettes are gluten-free (a reviewer confirms), and one visitor’s best flammekueche of the whole trip, with a crust that stayed crunchy. Quick, friendly, with a digital menu you can translate. Wikivoyage lists it under budget.", "g": "https://maps.google.com/?cid=321888462482560096", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfkTgpcwtJyztfWuUWYYl3yXF6U_1J5Z2qs5OUABWuMKZUFoX9nrhByF9tsofFy0mmPOKHbcNMQUuLjhmLo7SU12ATii993o6DLQpC8zFu2vqmsIXj5ZygQ2sGVhWDAkkxaW365=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLeqlXH3q-bkGziUi3JejtjIgCtbSRkem53qa7UQuL40bJe5KhJkhCwA06zei-Ph8w_LxN2O58sHzA98SYQQzH71cJ-zpgKNvDNPR_xCgQ85I-WBjlISxghvw9sjDJ78ZCIK8alc=s4800-w800-h600"], "a": ["Birgit Stork", "Le Palais Gourmand (venue)"], "zh": "€ · crêpes, galettes, tarte flambée"}, {"c": "treat", "n": "Boulangerie Maison Alexandre", "lat": 48.0743776, "lng": 7.3566379, "m": "4.4★ · CLOSED WED · 8–14 daily", "d": "A small Grand Rue bakery with only 43 reviews and a reputation for the pistachio croissant: one visitor bought a second 30 minutes later, another stocked up for the road. It shuts at 14:00 and all day Wednesday. A breakfast stop that beats the queues at the famous names.", "g": "https://maps.google.com/?cid=9858044727844307746", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfHnHuCckaSNIK1JKtRlqOZZzgBDPOetK5qYkTUM8sBA8e8OjJPIiYzgJ8UodsKNniXZyZS5WNVM2wdsAOgYkEWKUiU6bGLHCfSuybi6_YypxSqLKdAOllL6ozr1vmj__IojRM5ag=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLf31GfuTHlxpXJBLtYSBrEKuggJWMk4hRMR9eSgZjIwww1GJvVgjrigNAY5SCUQXcg1FVRNVmNxc7XKqwryK0fntks6ZyMmI-BUC_jnrRdWcqBDLNWOswuuQFBO466ZyLYR1TyOhQ=s4800-w800-h600"], "a": ["Boulangerie Maison Alexandre (venue)", "Boulangerie Maison Alexandre (venue)"], "zh": "€ · 43 reviews, pistachio croissant"}, {"c": "nature", "n": "NaturOparC (Hunawihr)", "lat": 48.1796, "lng": 7.3209011, "m": "4.5★ · ~€12.50 adult (a reviewer) · Wed, Sat, Sun 10:30–17:30 · other days 13:30–17 · hours shift by season", "d": "A wildlife park that tells the story of the stork’s return to Alsace, with otters, nutria, raccoons and an aquarium on a 1–1.5 hour loop. Families rate it highly and the stork displays are the draw. Several reviewers also report smelly ponds, wear and tear, animals hard to see and a slow snack bar, so go for the storks, not a zoo. Check hours before you drive.", "g": "https://maps.google.com/?cid=1388594216234053288", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcNurxzlEkI9LInXjg0FyRWS7pPVS3dH77qYFl5C4vk0JFBwR2h3dsw0HW6C1mehPlbn3XzJf20msOF7LxgU48piUsKBim_4OYJIXpcQKZXanNS9WKUVuWkg5J5Cyhe3wVXLAuU9p5OqP73=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdwEWyOZadACKh-Ajx34lg7NmZ7cAwS-aiDGS20Y2WvObp9pJYRoi7rzLJ2OmGHVr8LnxVxRvy0aYkwwps0RdlOBQFdfxxVZA99G3yajq3ZNfgqYTdeeDim83s-x0U9TF84BvOM8w=s4800-w800-h600"], "a": ["Naturoparc (venue)", "Sifa"], "zh": "stork reintroduction centre, otters"}, {"c": "heritage", "n": "Tour du Dolder (Riquewihr)", "lat": 48.1672288, "lng": 7.2955978, "m": "4.8★ · FREE (exterior) · open 24h", "d": "The 25 m watchtower over the upper gate, the highest point in Riquewihr. It dates to the 13th century, though a reviewer says the present tower is from 1842. Riquewihr is the busiest village on the route: a local blog warns Saturday mornings choke the parking, and one visitor was quoted €25 a night for camper-van parking. Come early.", "g": "https://maps.google.com/?cid=12509008996907047486", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLflnciOVgDRX_7CnbPuYSKi2Yd9zFTbhpd4ciR1yGVAVCpm5oAixgpJ92Bw6asQoGX__I258YcC8S7iVGVZdfKJMxyb5V93_jo2GRO4zY49vvruQCdezC0k1Dfg-oRLmN_V-6NU5w=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLc2TX1QaQ8gfUZt7jX6qw111Ft6awiYH2_ZUudKEW2I8kQuAFBIxAlvT9D-A04umaUb-OgOOZiHTB7393FJXt5FvPRkoTkaIxfgB_mUn45A_ZFF0_r06DTsgqPhKoqMY5W1eoCa=s4800-w800-h600"], "a": ["Derek Stewart", "Alessandro Savin"], "zh": "25 m watchtower · highest point of the walled village"}, {"c": "castle", "n": "Château de Saint-Ulrich (Ribeauvillé)", "lat": 48.2028307, "lng": 7.3051273, "m": "4.7★ · FREE · open 24h · 30–60 min climb", "d": "The best-maintained of Ribeauvillé’s three castles. Reviewers report 30–60 minutes up from the car park, moderately steep, with a flatter wide gravel track as the alternative, and views over the valley to the other two castles. Take the shorter route below Saint-Ulrich rather than the one by Girsberg, wear proper shoes, and bring lunch.", "g": "https://maps.google.com/?cid=17644210503468982449", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLeOeoEwUTkFk7qQkl7WL5xNECQZPrnHfC_QpEchjY1YLcqWWkmwJ1nl4cN4ZiE1sbM17SOL12S7hMfwlmYoDK3aL5nhFXZ2zQW3FArxdRfPvZo6snzlD5wLdttcor4HUxeIVtch=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLead_V3MFR13MhSBDS6KGIvx4v_sA5Wg_pbZBzUfoHBK3LfQbek9guk1XYMiq_Q8ApPigIYvWKSd_gWjS99gkSM4RGjNw7X69Q864ASyL0mf4jWPKYZx4u7VC3Uhtq3eI61Lk6b=s4800-w800-h600"], "a": ["Matthias Schreyer", "Martin Kraus"], "zh": "best-kept of three castle ruins · free hike"}, {"c": "castle", "n": "Château de Kaysersberg", "lat": 48.1403939, "lng": 7.262329, "m": "4.5★ · FREE · open all hours · ~500 m, steep", "d": "A short, steep walk (about 500 m) up to a tower you can climb for free, with the village roofs and valley below. One reviewer calls it ‘more a tower than a castle’, and the paths beyond it join the vineyard trails. A blog says Kaysersberg beat Eguisheim to the ‘favourite village of the French’ title in 2017.", "g": "https://maps.google.com/?cid=8005546255111979624", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLeCqBkgyWdod7bswxkjz8XjDm2_JaZl1Vo1eGM2WScRGnuacglSvDxm9TkW6-9JkPe5w7vRYne6kC5IWJf4_xm13nhAaQM18ifkW8Nr9HPpxSnWeGRCTVzbUSYdB0_-tRLHeHSC=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfI5xMVgdSKhksoBAmjN9jrVgCZTy1jpbOFzfJWRv-wods9DI9j25cYXjr94FrKeKuWg0-4VyTiu5XKzXOHBjuOGTL0Ooj51ieTmV7lUiUznxGcmD7ImnEi2P3_JOJzHenh2rGoQw=s4800-w800-h600"], "a": ["Château du Schlossberg", "Peter Reitz"], "zh": "free tower with a view over the fortified bridge", "must": true}, {"c": "museum", "n": "Centre Schweitzer (Kaysersberg)", "lat": 48.1407667, "lng": 7.2588972, "m": "4.3★ · CLOSED TUESDAYS · 10:30–13 & 14–17:30 · ~€7 (2024 listing)", "d": "The birthplace of Albert Schweitzer, Nobel Peace Prize 1952, now an interpretation centre: handwritten letters, travel artefacts and a film on the Lambaréné hospital. Older reviews say it is closing for renovation. That happened, and it reopened in 2023, with guided visits scheduled to 27 December 2026. A reviewer says the modest entry fee goes towards his hospital.", "g": "https://maps.google.com/?cid=1319056714402243543", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLdVDY_BJF6WSEK3_ZvYu2YZSTExWz6zukUUXnSuPs4Xy_yMQVQQAbEJHdUDiutHz_eEd3rI86GeaaUIOyW1Gf32N6XYDXEI7vSecNuPXX9pJCzhD5VxNp1fpUlo1qTfhA7dJXpwgg=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLd_gqWYZ2NGdviDa88aHZp9YLvoRIIh11hLtDU-sj_24lJ0XpfOCrpgfrFr7alYA9fYXx3EOW-I_khbmDZCebSTx9qoEftq8GqygW36YJ9BSlSLXQxfiFtVVf3miyBy9zMNFylX=s4800-w800-h600"], "a": ["Centre Schweitzer (venue)", "Karl-Heinz Weitfeld"], "zh": "Albert Schweitzer’s birthplace"}, {"c": "church", "n": "Église Saint-Gall (Niedermorschwihr)", "lat": 48.099431, "lng": 7.2738862, "m": "4.6★ · FREE · open daily 10–20 · only 15 reviews", "d": "The twisted spire of Niedermorschwihr. A reviewer says the roof was rebuilt after Second World War bombing, while the bell tower itself is 12th-century. It is a five-minute stop, or a half-hour vineyard walk each way from Katzenthal, with lunch at Caveau Morakopf a few streets away.", "g": "https://maps.google.com/?cid=8307763600505687300", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLf-3F-yJ3DTH-_JgKLYnlv9oUYOhtTVPyERgJI32C1u50kz4-kmAeBntayvvNB5OQ2NSbr-jydV8cHspsok2uK5_Txzs0S0Opo2TFCm9_WL-NcW0doD-kfgZ24zPPtv6wlEC_XDqQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLc6RRUsUqzbzez5khdH-JUwBLqfr7BOlmjU2W1xhzsYmbOl8C--N9X2NK3yU3RZu0njWPXDm7Y0XUfZVsuLpQEcn-1ehsQokkvH4WjhDmzVO_9ksA2wuP_-reUsmoxBUq8BNPO0=s4800-w800-h600"], "a": ["ThomasMüller", "Philippe Molard"], "zh": "the twisted spire"}, {"c": "heritage", "n": "Turckheim — Porte de France & night watchman", "lat": 48.0863934, "lng": 7.2781554, "m": "4.4★ · FREE · watchman EVERY NIGHT 22:00 until 1 Nov 2026 · start: Corps de Garde, 6 rue du Conseil", "d": "A medieval town gate on place Turenne, with the Corps de Garde (6 rue du Conseil) a short walk away. From there the night watchman sets out at 22:00 every night until 1 November 2026, in costume with lantern and horn, singing in Alsatian and telling the town’s legends; it is free. After the season it becomes a 21:00 round at the Christmas market from late November.", "g": "https://maps.google.com/?cid=4014625314773886068", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLchzTtB7DW181XTLfe5CFh_bdO7FM-L-IZeyJTF5LTqB4AQucCYfb4Ub-TQ3R-a1ajX7gqedWjqAMxYrJAO1RKJW4DRALtZvR9l9nA-LmQKKHHKHVNuWiTabE29wmaCWIP3mB6s=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLc-Wc0SS5mZhTTCjauhDm8rkUxvrYLaumzO_2LfQ5kUqzuVikoxTx1QZJpT503MUNtNmUE0N-3pBjza9l2g2uRxcB67RSkprScxBeke2sLbNNaK-aeVt0NoDu97a-7JG-b51tTZIA=s4800-w800-h600"], "a": ["Felix Kraenz", "Wolfgang Zoder"], "zh": "medieval gate · nightly ronde from the Corps de Garde", "s": "Turckheim’s watchman once walked the walls to give warning of fire. The tradition is documented in writing from 1540 and was revived in 1953, and the round still passes the town’s three gates. The current watchman says he took the job partly in honour of an ancestor of his who held it.", "sl": "He used to watch for fires", "must": true}, {"c": "heritage", "n": "Eguisheim — village centre", "lat": 48.0425226, "lng": 7.3061692, "m": "FREE · 7 km / 10 min from Colmar · Google files it as a street, hence no score", "d": "The streets run in concentric rings around the old counts’ castle, a plan unchanged since the Middle Ages, and it was voted the French people’s favourite village in 2013. Smaller than Riquewihr. A forum poster says only a couple of restaurants were open midweek, so check before you plan dinner. You can cycle here from Colmar (7 km); walk the rings, then Wolfberger and lunch.", "g": "https://maps.google.com/?cid=9123835286212179372", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmMA5dDlZw06gIJnPCZ94T3HlHUtLDH4sD2VMnoIniPvRmGuXcEW97Jb9dTA7Raqe2XuuhWFk-MRZCb7yDQAQLn5vL3uJ1I1CG09rKuYbNuoM-MFz_c8tvCsimQ-HoaidMRpp80n=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNvWMD48TWJ1xHXkfUJhnJpcYKhtzdbniths4IaEa0KAuvfH0qenJFmeHPOYiQvn5akn_C3psTreqM4MRdsJhOJTfBemMGgaOjp3nryl3ot2Oo0KNeM2nmApORWdyN_VtuWvZyp=s4800-w800-h600"], "a": ["Carvalho José", "Carvalho José"], "zh": "concentric ring village · place du Château Saint-Léon", "must": true}, {"c": "castle", "n": "Château du Hohlandsbourg", "lat": 48.0598552, "lng": 7.2691594, "m": "4.3★ · Oct 1–16 only WED, SAT, SUN · daily Oct 17–Nov 1 · then SHUT until 2 Apr 2027 · 10–17 · ~€7–10 (reviewers)", "d": "A rebuilt castle with a modern exhibition and café and a wall-walk with views in every direction. Reviewers report €7–€10 entry and a 15–20 minute forest climb from the lower car park. The season ends on 1 November, with a Halloween event on 30 Oct–1 Nov, so this is the last fortnight. A Haut-Kœnigsbourg ticket gets a reduced fee here.", "g": "https://maps.google.com/?cid=2663518800570985713", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLeCIwnEYZEpL0BKMoa_vTzBjXu1h03FPBhmGx7LDdQkcaPOT_h9pgjdEVY0yslsKe-UJ459bBxxlsyjY_wH7kn1jSB2mhl9T-LFdAZyh-9QzxhbukCYvi8CpscVgEq59RvobVo=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfC2jg6_N8az6tbc5RPoVhMGrMToHCqs0KVqIgNJf0c_NQYzelCbIK1eFrVcniV2HlaIPIm1kn_xMEgVJp-Pdxb_vcWMGrHL__HkHyyNVwmjKyJY-2CnZjK78i2pO4V-PEq4PC8=s4800-w800-h600"], "a": ["Matthieu BERNHARDT", "Thomas Maurer"], "zh": "rebuilt castle above Wintzenheim"}, {"c": "museum", "n": "La Maison du Fromage (Gunsbach)", "lat": 48.0454439, "lng": 7.1671576, "m": "4.2★ · CLOSED MON · Tue–Thu, Sat 9:30–17:45 · Fri 10:30–17:45 · Sun 9:30–13", "d": "A modern Munster museum with a restaurant (the cheese fondue is recommended) and a shop. Reviewers say the self-guided visit is informative but the ‘demonstration’ is in French and German only and mostly repeats the film; you do taste three cheeses. For real farm cheese, Gault&Millau praises the nearby Ferme Roess, with guided visits and milking from 7:00.", "g": "https://maps.google.com/?cid=9110702944451451100", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfekMdc6wz-X1-lXK1Q8o7CFU6wHGGdzlasGdoJMuJLDS5KuhV0o-F3EaO0PWht80CAtUqqPDR2Z7h_I84-6qoDSTIYLlG-kMm6MYOO2kZsKFd4NVaWs5RAin1UP3BLtqKgI774=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfI0MTrvWbKV-L2g-szBNall4R6S1DVytdY1pcv09zzRixjNl4myj4SvlbYNcNutzpAD3iO4CewPYu3lXTnvSS7G7b6rS4YpLp-A7KzfC_guRq_Rjr4gc7n-GClQi6icnSQEoON=s4800-w800-h600"], "a": ["Maxime Giard", "peggy MARC-FLOYRAC"], "zh": "Munster cheese museum, restaurant and shop", "s": "Munster cheese was born in the abbey that gave the valley town its name, in the 7th century. Across the ridge in Lorraine it is called géromé, a corruption of Gérardmer. Look for ‘fermier’ on the label (farm-made, not factory), ideally made between May and October from hay-fed milk.", "sl": "Why it has two names"}, {"c": "castle", "n": "Château du Haut-Kœnigsbourg", "lat": 48.2495783, "lng": 7.3460067, "m": "4.7★ · €12 adult, €8 age 6–17, €30 family · Mondays open 10:30 · last entry 1h before close · hours differ by source", "d": "A 1900–08 reconstruction rather than a ruin, so the rooms are furnished and you can climb the keep and bastion. Reviewers call it the best-preserved castle they have seen and rate it 4.7 over 44,000 reviews. 300 steps, no pushchairs, and buy tickets online at peak times. Hours differ by source (Google 9:30–17; an official listing 9:30–18 in October), and one tourism listing mentions a closure on 16 October, so check the official site.", "g": "https://maps.google.com/?cid=17118939135809483362", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNR5L2bfwwV6oYnhnPht83nxTMluMlF9OdlppkYeLYkHF9Qb45vmr5dfTvnUtdUAWPNOvqAqEsn2Qr5l4oFxIrx-huTdy1-yiVzWyo_0KZGVl5-kaDxtKuMgEeHpHDRTjdQ35VnpA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmNj3nFsEqZvZRtpiOKY5p1iShKEWO3IqZJW1ze7fAI-wczMxxiWK4HVENvqHBlmXzF_2NiIdBEkiKS1een9X9OnlEghlXagWUwEZc2bpkLbw3bUycDP77oo17M8Og5NHNLNXNkoMA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMitoJVRBKfrLQkekNY5E9SWLHPdocrlq4kHBGARE2yNNg3se0Ep_3tSwCUQ3l1cyf4aEiGTYmJ6kCbWFjDnNAh-G0NxFCJ6VqkFsE5C0rtrxfogjuTlNrsJPuL9BTZVy5f2VCn=s4800-w800-h600"], "a": ["Lutz Klaas", "Raphael Koerich", "Dinh Tuan"], "zh": "restored 12th-century castle on a spur at 757 m", "must": true}, {"c": "museum", "n": "Bibliothèque Humaniste (Sélestat)", "lat": 48.2603827, "lng": 7.455029, "m": "4.7★ · CLOSED MON · Tue–Sun 1:30–5:30pm only · ~€6 (+€2 guided, French only)", "d": "The library of Beatus Rhenanus, who bequeathed some 670 volumes, is the largest Renaissance humanist library kept nearly intact, inscribed by UNESCO in 2011. Reviewers say it is smaller than expected but dense; panels are translated into English and German but the guided tour is French only. The ticket discounts the bread museum opposite. Afternoons only, so pair it with Haut-Kœnigsbourg in the morning.", "g": "https://maps.google.com/?cid=13469746265194664874", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcYEb9IR_JDR0MIXXV4Tkk13LQam9ErqqG5swZJUy6kWyZKozL5pbYqQeWpXetu6diPeZm2aJ7HJsDdQvoydgn7ItGIonsG0ZSHXxeobuHMxH6RQQf0psfWcBxL4tb2s6xeUUcB=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLf6Dg5TrxAFoy2kzXOoVUnYnijSF2kVGDTMpK4fvD7hmUdyKCHWYUCGcZV8imk0cdJ417oWkvmHDrzpHcjFwdqU2d2ymf-I9MxcNuiqwQi9y2k8Tg3DmPXoK3tOpJaupRZaJmbk=s4800-w800-h600"], "a": ["Bibliothèque Humaniste (venue)", "Jean-Pierre FRANOUX"], "zh": "UNESCO Memory of the World library", "s": "A traditional saying holds that Alsace has three great treasures: Strasbourg Cathedral, the Isenheim Altarpiece in Colmar, and this library in Sélestat. Rhenanus, a friend of Erasmus, left his books to his home town when he died in 1547, and they have stayed together ever since.", "sl": "One of Alsace’s three treasures"}, {"c": "wine", "n": "Cave de Ribeauvillé", "lat": 48.1920713, "lng": 7.3273652, "m": "4.6★ · Mon–Fri 8–12 & 14–18 · Sat–Sun 9:30–12:30 & 14:30–18:30", "d": "A co-operative cellar at the Colmar end of Ribeauvillé with a tasting counter and an attached art gallery. Reviewers rate the guided walk through the Grand Cru vineyards, followed by a tasting, very highly, and the staff recommended Riesling from cooler years and the Crémant as an aperitif. A walk-in, no-appointment intro to Alsace wine.", "g": "https://maps.google.com/?cid=16806200400300732279", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLeZEkr1-0B9KVXITAi5TqRZnDPjI78ntgCOpA_SBjfOdQb872Ju6nKBa9NRSrD9SfEAJ-Jd0N9jPUd3TCtn6B9M_b_G8poDrg44fLWQBHHXFApom3epWYvhmtSQNgxLGHJaiu6RzA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfOgxhrFpnPrn5Toq-PXqxWV6GK8wyYbwEzxTGCc_3qkQMvXvN_jodeguv-0uOvcbp4o14zD1NAW9-5ilbwA839BX9N-KjZjJzPh3awrP0iAsLK0QSvGcoANBwdKxRwPb46WNw=s4800-w800-h600"], "a": ["Cave de Ribeauvillé (venue)", "Traveler"], "zh": "co-operative cellar · walk-in tasting"}, {"c": "beer", "n": "Brasserie Bisaiguë (Kaysersberg)", "lat": 48.1387568, "lng": 7.2617141, "m": "4.7★ · CLOSED MON & THU · Tue–Wed 12–19:30 · Fri 4–10pm · Sat 4–8pm · Sun 4–7pm", "d": "A craft taproom on the main street with a shaded courtyard. Reviewers worked through the list over several nights (a kiwi IPA gets a mention), say the tarte flambée is good, and report staff who lent a baby spoon. Unusual hours: lunch on Tuesday and Wednesday, afternoons only at the weekend, shut Thursday.", "g": "https://maps.google.com/?cid=9775576728680631849", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLe54I79LaMmfI0hp8xWLmD8ZYL8qhYH9r0FQLVNo3eeeCyx3Cqe8FpIfXRH6WRwcS_M5eDyL7mVxPymazA-gaB2QGDwdVRveT7ie8C6jVE4RXV29Ddx2PwLnfYU8O6Oo4jWSpJw=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLe5HWYC_69-VIDYL-eDuAQmIQmLDzFmQeX8IXpnoXmH_MlLqMajKfNlQNCrdreNmpSSWa4whhS0H7aAvHwJKhN0oWqVdgjZtc4KD439uF6tbzCA7WpaVBcmdcFqAtxvo6sGNcz2e6esjBDY=s4800-w800-h600"], "a": ["Brasserie Bisaiguë (venue)", "Russell Holden"], "zh": "craft taproom with a shaded courtyard"}, {"c": "mid", "n": "Winstub du Chambard (Kaysersberg)", "lat": 48.1386815, "lng": 7.265693, "m": "4.4★ · Michelin BIB GOURMAND · daily 12–14 & 19–21", "d": "The winstub of the Chambard hotel, from chef Olivier Nasti. Reviewers praise the lake fish, the venison and the sommelier, but another describes a two-hour lunch with long gaps. One review blames illness on raw venison carpaccio in summer; that is a single unverified report. Reserve, and lunch is the better-value slot.", "g": "https://maps.google.com/?cid=2705243788735191110", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLdeoMktvdRckCSIEss54pWzYHgXgZNzru-JBvE4YEJ01exuN1ctzR0hUSLu_6z1xxPvSmhdLI755-vQFkEYZFHshnkXxE6N-pW0flnRGXMNL1rBd3SherfyKDI9YndI07awHUPg=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdy4w-tUnObEPvi2BIkNnK6giD1T8KT7NYVTA0QmPUi_oJLUqP7PXguor6PKZrWm-cOHyusRSYww7y8LHTsf-q_PmctIsd6hjegJhlQuGBCxcmv-bLGPjDzW0OD4HRy7ARkfU1raIn1Y6mR=s4800-w800-h600"], "a": ["La Winstub du Chambard (venue)", "Micka"], "zh": "€€ · chef’s winstub in the hotel"}, {"c": "mid", "n": "La Vieille Forge (Kaysersberg)", "lat": 48.138752, "lng": 7.2623331, "m": "4.7★ · Michelin BIB GOURMAND · CLOSED SUN–MON · Tue–Sat 12–13 & 19–20", "d": "Tasting-menu cooking at Bib prices: the ‘perfect egg’ is the dish people name, and the quail Bordelaise is praised. Service is the recurring complaint, lukewarm to neglectful for a solo diner, and the ‘8 glasses with 8 courses’ deal confused one table because a self-serve top-up counts as a glass. The service windows are short, with lunch 12–13 only.", "g": "https://maps.google.com/?cid=4866303416691674545", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfEr-2km5gjL4jYeuedywwgDy5XH3yKLZzOtrQKKvwnRn5xLs1xtPafQVWBpR9KHgD_w8e_eQb6MCZy794rEz_bZ_OhozmAyk4e_GN6j2SzyfwIEPrakR2emk31KHJ6SaRU1VvMvw=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfTApnuzdvU_kWvwx6Zn8mz4DFg0q56-pPc4bXrbwhh8xdYFfoI417B1at7UdoeBPIyZgPDkQGSwhgWniKDceQNA8Wl8FoFPQO5XDlGJBvgkrQOX69NzeHzOAXDHi1eCuWMDsLx=s4800-w800-h600"], "a": ["Lanza Rotte", "La Vieille Forge (venue)"], "zh": "€€ · Bib Gourmand tasting-menu cooking"}, {"c": "mid", "n": "Caveau Morakopf (Niedermorschwihr)", "lat": 48.0995865, "lng": 7.2758169, "m": "4.4★ · daily 12–14 & 18:30–21 · call 24h ahead for fondue", "d": "A traditional Alsatian cellar where reviewers describe huge portions, foie gras and a busy buzz. A 2008-era forum called it cheap at about €20, but Google now rates it $$$, so do not assume. One review found service quick but unfriendly to non-French speakers. Pair it with the twisted spire down the road.", "g": "https://maps.google.com/?cid=1721569519043585180", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNpCM-QmHBxEiiAlbZNsHZzcrPzmiB0fR7UkoPguQKYucR9lcJ4xPUdjg4RVXjR-hQ3karSbzoMIDg0cOMGo7PkfvZfimeM7Cte4iv0odbxO4x8GWsE7jMgN2O3J4gaLVSWGk_f=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMsjV0Tghey-P-RWF812lt7T2fqVh_Ui-eB09LQZ2sHsbmDlnszl4Vdkil1WMgb3QX9tHpyLlUGOieQl3OC0MVj7GUgUABVcJD-IuwlbRMvGNhYU_vZYILydreTAeQepMmX9VlNk_QMr9wv=s4800-w800-h600"], "a": ["Caveau Morakopf (venue)", "jean philippe bonthonneau"], "zh": "€€ · traditional Alsatian cellar restaurant"}, {"c": "wine", "n": "Domaine Zind-Humbrecht (Turckheim)", "lat": 48.0838271, "lng": 7.2956884, "m": "4.3★ · Mon–Fri 8:15–12 & 13–17 · SHUT WEEKENDS · BOOK AHEAD", "d": "A celebrated estate: reviewers tasted nine wines in about an hour with a patient host, and one calls it a pioneer of organic and biodynamic farming in Alsace. ‘Book in advance’ comes up repeatedly, and it is weekdays only. This is a more serious tasting than the walk-in cellars like Wolfberger.", "g": "https://maps.google.com/?cid=6775190251424181886", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfUd85FbTGPI4s-ANapXXYwm2XJeTQ_PUdTdJoX7TIygM6JqeSyquR7Mwb5YOSkt1WhCUvVlxAv0dhO1Jyb7d6coXMMalIpg7linc3AarPmEWS8XgIeyeMxfZiX2IkRWUne6l5Iyg=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdrwidejHrPA-rAvctAzsEFwlkkRo5hShVt90NbEez9lzlI_8tPgcaCA1swS8uVzcDWcz_8iqPwZr7p7ZatJukS2jowAEjeps-qwqC6TexWyGWUCTw96wZdhkm7m2CIGS0SuLuvrA=s4800-w800-h600"], "a": ["Domaine Zind Humbrecht (venue)", "B C"], "zh": "famous estate · appointment tasting"}, {"c": "wine", "n": "Wolfberger (Eguisheim)", "lat": 48.0421092, "lng": 7.3100984, "m": "4.6★ · FREE tasting of up to 3 wines · daily 9–12 & 14–18 (Sat–Sun from 10)", "d": "A large co-operative shop at the village entrance with a free pour of up to three wines and a small exhibition on the winery. Reviewers say the wines are good at decent prices; one felt ignored by the staff on a quiet day. A no-booking introduction before you commit to a serious domaine.", "g": "https://maps.google.com/?cid=15819829780651251101", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmNWDw9pxY3iQc_aeFyfuAc3PKvWtUKIRjEQLO_WyAcByCdsxML_VsO47bmNBGqn9fv6zSam0hNng6vKw2R8rZoFhaze1C8w8X2jipywMMPeExEEc3Xzz8YGjTrZgBljj_xXDEMf=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmMHkpISnKXM7_SDVuzi8ja3TXlx_f8RugJzwZYyTNozN51lx2UzLk_cFQ-xW5nu9iq2fGSI2hfXakdkIy0YEka6FQSNWWZwpXj5Ra5neGuI2kn7zKO_cwb_BnDexNoTNcxx4m6r=s4800-w800-h600"], "a": ["Wolfberger Eguisheim (venue)", "Yusuf AYAR"], "zh": "big co-op shop · free tasting"}, {"c": "mid", "n": "Au Vieux Porche (Eguisheim)", "lat": 48.042367, "lng": 7.3037567, "m": "4.7★ · Michelin-selected · CLOSED MON–TUE · Wed–Sat lunch & dinner · Sun lunch only", "d": "Eguisheim’s most-praised restaurant: reviewers say the set lunch is excellent value, the wine list (on tablets) is long, and the owners make wine themselves. Closed Monday and Tuesday and for Sunday dinner, which matters in a village where little else is open midweek. Book.", "g": "https://maps.google.com/?cid=14810142680344160473", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLdcHqdkE-W-6YiVSxImIzHmFHPo5hlq0-hC6eXAm1tgWnakdItZX_0-uXQHTt9H-sOkMRCjFU7REhPuf5DtmHpDgJneaXXxTPIb0KUfYq3lugNnvtmPL0ncT9-yhXxXF127T9kHvI0Ajfc=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLeVZo_N2znjFV5mDgluRnJlOQRxkPmAHAd0hBd0cAiW1ux7eHg-Eisj_Adf3fJVeKP0R2mUNaY8X_Rde-eslCJbttKiXH3RktOd1U5jn-tTEFSeqVizPzPJiOOcWtR2FQ1sLI-N2w=s4800-w800-h600"], "a": ["Patricia Trouillet", "Au Vieux Porche (venue)"], "zh": "€€ · the village’s most-praised table"}, {"c": "mid", "n": "Ferme-auberge du Schiessroth", "lat": 48.0293915, "lng": 7.0326018, "m": "4.5★ · CASH ONLY (reviews) · CLOSED MON & THU · Tue, Wed, Fri–Sun 11–20 · 5-cheese plate + 2 rosé ~€11 (a reviewer)", "d": "A farm-inn above Gaschney serving its own raw-milk Munster fermier. One reviewer paid €11 for five cheeses and two glasses of rosé; several report that cards are not taken (and that small card bills get a surcharge or a cheese upsell), so bring cash. Walk down to the Schiessrothried lake afterwards. Farm-inns shorten or end their season around early November, so check first.", "g": "https://maps.google.com/?cid=13196277863295423536", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLeGo-0_eLGiEv8MbF3SqCAmN3xGPm3cd3ACA6x68-dYaOsXp5kCQTOIZjUn4WOIhcy-zCWHwbGS1pQC50x3I_bbSXua0bgL4yo1--9ZgMro0IhV9E9ZVBvZa8Vl5IX9Zuo-COhL=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLelSzPuN6LRpm7jhj1mBiIbV2GfajeeTmspwaP71msNmANPMqFGM5XlnmX4gADAzCSJK6Ox7k2q1XFgdd71u1-TI-s3WkC7mcmUr0v4K1_Q9PZFrdADrITVozTrdoNsg1UaFzFZxCeIrnW0=s4800-w800-h600"], "a": ["Mathieu SPENLE", "Patrick"], "zh": "€ · mountain farm-inn with its own Munster"}, {"c": "mid", "n": "Restaurant L’Olivier (Munster)", "lat": 48.0407567, "lng": 7.136168, "m": "4.7★ · Michelin BIB GOURMAND · CLOSED WED · Mon–Tue lunch only", "d": "The Munster valley’s Bib Gourmand: reviewers praise the foie gras, pork and soufflé and the wine pairings. But one pregnant diner waited two hours and got half-raw fish, and another noted a single server stretched thin. Reserve, expect a slow service, and treat it as the sit-down meal after the cheese museum.", "g": "https://maps.google.com/?cid=16717115746463097701", "p": ["https://lh3.googleusercontent.com/grass-cs/ACvplmOKb4VRYoRWDbWpwtlwLphq4oDWNEVd8sPkahdH09E2VXVce01wfAo31cF6bDmry9dwSivXapxjN6_C30g7UY3yczNfguvlt7MX5sfXenGeMKY6rYCfoXLrrWbvFVFI6NezGOHXvQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/ACvplmOmu7Rrf_E8TNb8eIbRzzmE_sQ61xHPe73VNo-zKjtHL3ksr4Uza08uYIyv3rjRgGHsLmTYEtw-LtR7YgoM1I3LyyGT8d6UGvK6kxeIBh-SX9xIVs_hVlNYZq_iMzQjrWzybkceIiJz09wm=s4800-w800-h600"], "a": ["Restaurant L'Olivier (venue)", "Pietro Dell' Erba"], "zh": "€€ · Bib Gourmand in the valley town"}, {"c": "stay", "n": "Stay: Colmar centre (Petite Venise · Tanneurs)", "lat": 48.0748, "lng": 7.3565, "zh": "the practical hub", "m": "STAY · most restaurants within 5 minutes · priciest in December", "d": "The practical base: Days 1–2 are on foot, the station is about 15 minutes’ walk, and the wine villages are 10–20 minutes by car. Hotel parking matters. Visitors disagree: some call the villages better bases, others call Colmar the most practical. Skip Riquewihr as a week-long base, since parking is tight, evening dining is thin and forum opinion is split.", "nophoto": "district, not a business"}, {"c": "stay", "n": "Stay: Eguisheim", "lat": 48.0431, "lng": 7.3071, "zh": "quiet, 10 min from Colmar", "m": "STAY · few restaurants open midweek", "d": "A ring-shaped village 7 km (10 minutes) from Colmar, quiet at night and good for early walks into the vineyards or a bike ride to Colmar. The trade-off is dinner: a forum poster found only a couple of places open on a Tuesday and Wednesday. Best with a car.", "nophoto": "district, not a business"}, {"c": "stay", "n": "Stay: Kaysersberg", "lat": 48.1396, "lng": 7.2606, "zh": "village base, 20 min from Colmar", "m": "STAY · Bib Gourmands and a craft brewery on the main street", "d": "A village base about 12 km (20 minutes) from Colmar, with two Bib Gourmand restaurants and a craft brewery on the main street. A tourism listing says the village is sheltered from through traffic. A good base for the north, but you will drive to Colmar’s museums and the Munster valley.", "nophoto": "district, not a business"}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19,
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+(pl.must?' must':'')+'" style="background:'
+         +CATS[pl.c].color+'">'+glyph(pl.c)+(pl.must?'<i class="star-badge"></i>':'')+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true,
+    zIndexOffset: pl.must?1000:0});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galPrev.style.visibility = pics.length>1?'':'hidden';
+  galNext.style.visibility = pics.length>1?'':'hidden';
+  galPrev.disabled=true; galNext.disabled=pics.length<2;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+  const multi=imgs.length>1;
+  galPrev.style.visibility = multi?'':'hidden';
+  galNext.style.visibility = multi?'':'hidden';
+  galPrev.disabled = i<=0;
+  galNext.disabled = i>=imgs.length-1;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+/* arrows, for mice and keyboards; touch users just swipe */
+const galPrev=document.getElementById('galPrev'), galNext=document.getElementById('galNext');
+function galScroll(dir){
+  const w=galTrack.clientWidth||1;
+  const i=Math.round(galTrack.scrollLeft/w)+dir;
+  const n=galTrack.querySelectorAll('img').length;
+  galTrack.scrollTo({left: Math.max(0,Math.min(n-1,i))*w, behavior:'smooth'});
+}
+galPrev.onclick=e=>{e.stopPropagation();galScroll(-1);};
+galNext.onclick=e=>{e.stopPropagation();galScroll(1);};
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng+"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  panToPlace(pl);
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+/* Wide screens show the card as a left-hand panel, so the gesture axis and the
+   map centring both have to change. Keep this threshold in sync with the CSS. */
+const SIDE_MIN_WIDTH = 720;
+function sideMode(){ return window.innerWidth >= SIDE_MIN_WIDTH; }
+
+function panToPlace(pl){
+  const ll = L.latLng(pl.wlat, pl.wlng);
+  if(!sideMode()){ map.panTo(ll,{animate:true}); return; }
+  // shift the centre left by half the panel so the pin sits in the visible half
+  const panelW = (document.querySelector('.sheet')||{}).offsetWidth || 390;
+  const pt = map.project(ll, map.getZoom()).subtract([panelW/2, 0]);
+  map.panTo(map.unproject(pt, map.getZoom()), {animate:true});
+}
+
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the card down to dismiss ----
+   Touch: drag anywhere in the card, but only when it is scrolled to the top, so
+   reading a long card still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    // In side mode the dismiss axis IS the gallery axis, so the gallery wins
+    // any gesture that starts on a photo.
+    if(sideMode() && e.target.closest && e.target.closest('.gal')) return;
+    // Vertical scroll only conflicts with the bottom sheet.
+    if(!sideMode() && sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'go':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  const side=sideMode();
+  // side panel slides out to the LEFT; bottom sheet slides DOWN
+  const along = side ? -dx : dy;      // movement toward dismissal
+  const across = side ? dy : dx;      // movement that belongs to the gallery
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(along)>Math.abs(across) ? 'go' : 'other';
+    if(drag.axis==='other'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(along<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=along;
+  sheet.classList.add('dragging');
+  sheet.style.transform = side ? 'translateX(-'+along+'px)' : 'translateY('+along+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();   // distance OR flick
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='go' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  const ab=document.getElementById('about');
+  if(ab && ab.classList.contains('open')) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- city overview ---------- */
+const about=document.getElementById('about'), aboutBtn=document.getElementById('aboutBtn');
+function esc(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function rich(x){ // allow **bold** only
+  return esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+}
+function renderAbout(){
+  if(!CITY || !Object.keys(CITY).length){ aboutBtn.style.display='none'; return; }
+  document.getElementById('abTitle').textContent = CITY.name||'';
+  document.getElementById('abTagline').textContent = CITY.tagline||'';
+
+  const st=document.getElementById('abStats');
+  st.innerHTML=(CITY.stats||[]).map(s=>
+    '<div class="stat"><div class="k">'+esc(s[0])+'</div><div class="v">'+esc(s[1])+'</div></div>'
+  ).join('');
+  st.style.display=(CITY.stats||[]).length?'grid':'none';
+
+  document.getElementById('abSections').innerHTML=(CITY.sections||[]).map(s=>
+    '<h3>'+esc(s[0])+'</h3>'+String(s[1]).split('\n\n').map(par=>'<p>'+rich(par)+'</p>').join('')
+  ).join('');
+
+  const musts=CITY.musts||[];
+  document.getElementById('abMusts').innerHTML = musts.length
+    ? '<h3>Must see, do &amp; try</h3><ul class="musts">'
+      + musts.map(m=>'<li>'+rich(m)+'</li>').join('') + '</ul>'
+    : '';
+
+  const near=CITY.nearby||[];
+  document.getElementById('abNearby').innerHTML = near.length
+    ? '<h3>Nearby</h3><ul class="nearby">'
+      + near.map(n=>'<li>'+rich(n)+'</li>').join('') + '</ul>'
+    : '';
+
+  document.getElementById('abFoot').textContent = CITY.foot||'';
+}
+renderAbout();
+function toggleAbout(open){
+  about.classList.toggle('open',open);
+  about.setAttribute('aria-hidden',open?'false':'true');
+  aboutBtn.classList.toggle('active',open);
+  if(open) about.scrollTop=0;
+}
+aboutBtn.onclick=()=>toggleAbout(!about.classList.contains('open'));
+document.getElementById('aboutClose').onclick=()=>toggleAbout(false);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') toggleAbout(false); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+let wasSide=sideMode();
+window.addEventListener('resize',()=>{
+  const now=sideMode();
+  if(now!==wasSide){ wasSide=now; if(selected) panToPlace(selected); }
+});
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
