@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!-- city-guide-maps template v7 capabilities: swipe-dismiss,drag-handlers,click-away,escape-key,gallery,side-panel,must-see,overview,filters,fullscreen,geolocation -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Freiburg im Breisgau: 3 Days, Where to Go & Eat</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{position:relative;width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .pin.must{border-color:#F2C14E;border-width:3px;
+    box-shadow:0 0 0 1.5px rgba(120,80,0,.55),0 2px 7px rgba(0,0,0,.45)}
+  .star-badge{position:absolute;top:-5px;right:-5px;width:12px;height:12px;
+    background:#F2C14E;border-radius:50%;border:1.5px solid #fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+    width:30px;height:30px;border:none;border-radius:50%;cursor:pointer;
+    background:rgba(0,0,0,.42);color:#fff;display:none;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);transition:background .15s ease}
+  .gal-nav:hover{background:rgba(0,0,0,.65)}
+  .gal-nav:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .gal-nav svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .gal-nav.prev{left:8px} .gal-nav.next{right:8px}
+  .gal-nav[disabled]{opacity:.3;cursor:default}
+  /* only for real pointers — touch users swipe */
+  @media (hover:hover) and (pointer:fine){
+    .gal:hover .gal-nav, .gal-nav:focus-visible{display:flex}
+  }
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  /* when there is no photo the grabber would sit on the text */
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---- city overview sheet ---- */
+  .about{position:absolute;inset:0;z-index:1400;background:var(--paper);
+    overflow-y:auto;transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.32,.72,.35,1);
+    -webkit-overflow-scrolling:touch}
+  .about.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.about{transition:none}}
+  .about-inner{max-width:640px;margin:0 auto;padding:18px 20px calc(40px + env(safe-area-inset-bottom))}
+  .about h2{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:3px}
+  .about .tagline{font-size:14.5px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+  .about-close{position:sticky;top:0;float:right;width:34px;height:34px;border:none;
+    border-radius:50%;background:#eef1f5;color:#5b6472;font-size:16px;cursor:pointer;
+    line-height:1;z-index:2;margin-left:10px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;
+    margin-bottom:20px}
+  .stat{background:#f6f4ef;border-radius:11px;padding:9px 11px}
+  .stat .k{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#8b8577;margin-bottom:2px}
+  .stat .v{font-size:14px;font-weight:700;line-height:1.25}
+  .about h3{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:20px 0 7px}
+  .about p{font-size:14.5px;line-height:1.6;color:#374050;margin-bottom:9px}
+  .musts{list-style:none;margin:2px 0 4px}
+  .musts li{position:relative;padding:7px 0 7px 27px;font-size:14.5px;line-height:1.5;
+    border-bottom:1px solid #f0ece4}
+  .musts li:last-child{border-bottom:none}
+  .musts li::before{content:"";position:absolute;left:5px;top:14px;width:9px;height:9px;
+    border-radius:50%;background:#F2C14E;box-shadow:0 0 0 2px rgba(242,193,78,.28)}
+  .musts b{font-weight:750}
+  .nearby li{padding:7px 0 7px 27px;font-size:14px;line-height:1.5;list-style:none;
+    position:relative;color:#374050}
+  .nearby li::before{content:"";position:absolute;left:6px;top:15px;width:7px;height:7px;
+    border-radius:50%;background:#9E9D24}
+  .about .foot{font-size:11.5px;color:#95a0ae;margin-top:22px;line-height:1.5;
+    border-top:1px solid var(--line);padding-top:13px}
+  /* ---- wide / landscape: the card becomes a left-hand panel ----
+     A full-width bottom sheet letterboxes photos badly once the window is wide. */
+  @media (min-width:720px){
+    .sheet{left:0;right:auto;top:0;bottom:0;width:390px;max-height:none;height:100%;
+      border-radius:0 20px 20px 0;box-shadow:8px 0 30px rgba(16,24,40,.22);
+      transform:translateX(-105%)}
+    .sheet.open{transform:translateX(0)}
+    .gal, .gal-track img{border-radius:0 20px 0 0}
+    .gal-track img{height:auto;aspect-ratio:3/2}
+    .grabber{top:0;bottom:0;left:auto;right:0;margin-left:0;width:24px;height:100%;
+      flex-direction:column}
+    .grabber::after{width:4px;height:38px}
+    .sheet:has(.gal.none) .sheet-body{padding-top:16px}
+    .sheet-body{padding-right:26px}
+    /* keep the filter panel clear of the card */
+    .panel{left:auto;right:70px}
+    .about-inner{padding-left:26px}
+  }
+  @media (min-width:720px) and (max-height:520px){
+    /* phone held sideways: shorter, so trim the photo further */
+    .gal-track img{aspect-ratio:2/1}
+  }
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Freiburg im Breisgau: 3 Days, Where to Go & Eat</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="aboutBtn" title="About this city" aria-label="About this city">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Pin shapes: circles are sights, squares food, diamonds drinks; the gold ring marks first-timer picks. Each card's sub-label starts with Day 1, 2 or 3 for a walkable order. SUNDAYS: Münstermarkt, Markthalle, Euphrat, Günter Coffee, Alte Wache, Craftbeer Lodge, Pfeifle and Großer Meyerhof are shut. MONDAYS: Augustinermuseum, Museum für Neue Kunst, Wolfshöhle and One Trick Pony are shut. Michelin 2026 lists no Bib Gourmand inside Freiburg itself.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <button class="gal-nav prev" id="galPrev" aria-label="Previous photo">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="gal-nav next" id="galNext" aria-label="Next photo">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Directions
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="about" id="about" role="dialog" aria-label="About this city" aria-hidden="true">
+  <div class="about-inner">
+    <button class="about-close" id="aboutClose" aria-label="Close">✕</button>
+    <h2 id="abTitle"></h2>
+    <p class="tagline" id="abTagline"></p>
+    <div class="stats" id="abStats"></div>
+    <div id="abSections"></div>
+    <div id="abMusts"></div>
+    <div id="abNearby"></div>
+    <p class="foot" id="abFoot"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"church": {"label": "Cathedral", "color": "#6A1B9A", "icon": "church"}, "heritage": {"label": "Old-town landmarks", "color": "#5D4037", "icon": "landmark"}, "museum": {"label": "Museums", "color": "#1565C0", "icon": "palette"}, "view": {"label": "Schlossberg & viewpoints", "color": "#2E7D32", "icon": "mountain"}, "cheap": {"label": "Cheap eats (€)", "color": "#00ACC1", "icon": "utensils", "shape": "food"}, "snack": {"label": "Snacks, bakery, coffee (€)", "color": "#00ACC1", "icon": "croissant", "shape": "food"}, "mid": {"label": "Mid-range (€€)", "color": "#F9A825", "icon": "utensils", "shape": "food"}, "splurge": {"label": "Splurge (€€€)", "color": "#C2185B", "icon": "utensils", "shape": "food"}, "beer": {"label": "Beer gardens & beer", "color": "#37474F", "icon": "beer", "shape": "drink"}, "wine": {"label": "Wine bars", "color": "#B71C1C", "icon": "wine", "shape": "drink"}, "cocktail": {"label": "Cocktail bars", "color": "#E65100", "icon": "martini", "shape": "drink"}, "stay": {"label": "Where to stay (areas)", "color": "#00897B", "icon": "bed"}};
+const ICONS = {"bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "beer": "<path d=\"M17 11h1a3 3 0 0 1 0 6h-1\"/> <path d=\"M9 12v6\"/> <path d=\"M13 12v6\"/> <path d=\"M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 0 1 0-5c.78 0 1.57.5 2.5.5S9.44 2 11 2s2 1.5 3 1.5 1.72-.5 2.5-.5a2.5 2.5 0 0 1 0 5c-.78 0-1.5-.5-2.5-.5Z\"/> <path d=\"M5 8v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8\"/>", "church": "<path d=\"M10 9h4\"/> <path d=\"M12 7v5\"/> <path d=\"M14 21v-3a2 2 0 0 0-4 0v3\"/> <path d=\"m18 9 3.52 2.147a1 1 0 0 1 .48.854V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6.999a1 1 0 0 1 .48-.854L6 9\"/> <path d=\"M6 21V7a1 1 0 0 1 .376-.782l5-3.999a1 1 0 0 1 1.249.001l5 4A1 1 0 0 1 18 7v14\"/>", "croissant": "<path d=\"M10.2 18H4.774a1.5 1.5 0 0 1-1.352-.97 11 11 0 0 1 .132-6.487\"/> <path d=\"M18 10.2V4.774a1.5 1.5 0 0 0-.97-1.352 11 11 0 0 0-6.486.132\"/> <path d=\"M18 5a4 3 0 0 1 4 3 2 2 0 0 1-2 2 10 10 0 0 0-5.139 1.42\"/> <path d=\"M5 18a3 4 0 0 0 3 4 2 2 0 0 0 2-2 10 10 0 0 1 1.42-5.14\"/> <path d=\"M8.709 2.554a10 10 0 0 0-6.155 6.155 1.5 1.5 0 0 0 .676 1.626l9.807 5.42a2 2 0 0 0 2.718-2.718l-5.42-9.807a1.5 1.5 0 0 0-1.626-.676\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "martini": "<path d=\"M12 12 4.207 4.207A.707.707 0 0 1 4.707 3h14.586a.707.707 0 0 1 .5 1.207z\"/> <path d=\"M12 12v10\"/> <path d=\"M7 22h10\"/>", "mountain": "<path d=\"m8 3 4 8 5-5 5 15H2L8 3z\"/>", "palette": "<path d=\"M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z\"/> <circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "wine": "<path d=\"M8 22h8\"/> <path d=\"M7 10h10\"/> <path d=\"M12 15v7\"/> <path d=\"M12 15a5 5 0 0 0 5-5c0-2-.5-4-2-8H9c-1.5 4-2 6-2 8a5 5 0 0 0 5 5Z\"/>"};
+const CITY  = {"name": "Freiburg im Breisgau", "tagline": "A compact, sunny university city on the edge of the Black Forest, rebuilt after the 1944 air raid, with water running in channels down the old-town pavements and a sausage that is longer than its roll.", "stats": [["Population", "~236,000 (2022)"], ["Founded", "Market rights 1120; the name means 'free town'"], ["Students", "~30,000; the university dates to 1457"], ["Airport", "EuroAirport Basel-Mulhouse-Freiburg; Basel is 63 km away"], ["Day trips", "Colmar 48 km, Strasbourg 82 km, Basel 63 km"], ["Getting around", "The old town is walkable; trams meet at Bertoldsbrunnen"], ["Budget/day", "~€45 thrifty, ~€110 comfortable (my estimate, food and entries, not beds)"], ["How long", "Three days covers the city; add a fourth for Schauinsland or Colmar"], ["Right now", "Early October: Neuer Süßer (new wine) season; Schauinslandbahn closes for overhaul around 3 Nov"]], "sections": [["Three days, in order", "**Day 1: Münsterplatz and the west lanes.** Start at the market before 1:30pm for a Lange Rote, visit the Münster (and climb the tower if it is open), glance at the Kaufhaus, then Alte Wache for a glass, the Bächle walk, lunch in the Markthalle, the Alte Synagoge square, and dinner at Großer Meyerhof or Schlappen.\n\n**Day 2: Gerberau, museums, Schlossberg.** Breakfast at Pfeifle, Augustinermuseum from 10am, gelato on the Fischerau, the Schwabentor, a beer at Craftbeer Lodge, Feierling's garden, then climb to Kanonenplatz for sunset via the Kastaniengarten. Finish at One Trick Pony if it is Wednesday to Saturday.\n\n**Day 3: Konviktstraße, coffee and the far side.** Konviktstraße and Wolfshöhle (lunch Fri-Sat), Günter coffee, the Schlossbergbahn and tower if the weather is clear, Euphrat or Tacheles, Trotte Weinbar on a weekday, and a student-price dinner at Brennessel. Swap in the Museum für Neue Kunst if it rains."], ["History in five minutes", "Freiburg began in 1120 as a free market town founded by the Zähringer dukes, and silver from the Schauinsland mines made it rich enough to mint its own coin in 1327. The Münster was started around 1200 and finished in 1513, and in 1368 the citizens bought their freedom from the Count of Freiburg for 20,000 marks of silver and put themselves under the Habsburgs. The university followed in 1457.\n\nThe seventeenth century was brutal: sieges, the loss of most suburbs, and French rule from 1677 to 1697, when Vauban rebuilt the fortifications and later armies razed them again. Baden took the city in 1805 and an archdiocese was created in 1827. On 27 November 1944 a single air raid destroyed most of the centre while the Münster stood. The centre was rebuilt, with arcades on Kaiser-Joseph-Straße, and became a pedestrian zone from 1969."], ["Culture and society", "Freiburg is a university town with about 30,000 students, which is why pubs like Schlappen and Brennessel are built around student budgets. Locals identify as Baden more than Baden-Württemberg, shop across the border in France and Switzerland, and call a native Freiburger a Bobbele. The city markets itself as a 'Green City', and sustainability is part of everyday life: Wikivoyage points to the plus-energy town hall in Stühlinger, opened 2017."], ["Economy, then and now", "Silver built the medieval city; the university, the archdiocese (since 1827) and its role as seat of the regional government kept it important. Today it earns from the university, tourism as the gateway to the Black Forest, trade fairs, and its environmental reputation. The city's own tourism board even calls it Germany's craft-beer capital, which is a boast rather than a ranking, though the scene is real."], ["Iconic food & drink", "**Lange Rote:** a 35 cm skinless grilled pork sausage in a roll, sold at the Münstermarkt since the early 1950s. **Butterbrezel:** a pretzel split and buttered, from any bakery. **Spätburgunder** is the local red, and **Kalte Sofie** a summer wine slush at the Alte Wache. In autumn look for **Neuer Süßer**, new wine, at markets and Straußwirtschaften, seasonal farm taverns on the city's edge in Munzingen, Tiengen, Opfingen and Waltershofen. Baden classics are Rinderleberle, Ochsenfleisch with horseradish, Maultaschen and Flammkuchen."], ["Unique to Freiburg", "The **Bächle**, the old-town channels documented from 1220, are the thing no other German city has in quite this form, and the legend that you marry a Freiburger if you step in is told with a straight face. The **pebble mosaics** set into the old-town paving are worth looking down for, and the **tram through the Schwabentor** shows how far the city has gone in keeping a medieval gate working."]], "musts": ["**Freiburger Münster**: free to enter, tower ~€4–5; go before 4pm", "**Lange Rote at Brunner Wurstbraterei**: a few euros (current price not confirmed); Mon–Sat before 1:30pm", "**Augustinermuseum**: €12 day ticket for all city museums; closed Mon", "**Kanonenplatz at sunset**: free; ten minutes up from the Schwabentor", "**The Bächle**: free; walk beside them, not across", "**Markthalle lunch**: ~€14 for a plate at an Afghan stall; closed Sunday"], "nearby": ["**Schauinsland: cable car from Horben.** The 1930 loop cable car climbs about 750 m, to just below the 1,284 m summit, for ~€15 return, with views toward the Vosges and Kaiserstuhl; the valley station is 10 minutes by car or about 30 by public transport from the centre. It closes for its autumn overhaul around 3 November until early December.", "**Staufen im Breisgau.** South of Freiburg, home of Die Krone, a 2026 Michelin Bib Gourmand: one of the closest on the guide's Black Forest list, since none of Freiburg's own restaurants has one this year. Check regional train times before you go.", "**Colmar, Strasbourg, Basel.** 48, 82 and 63 km away respectively, with the Strasbourg TGV link to Paris; I haven't verified current journey times."], "foot": "Prices indicative for autumn 2026 and worth re-checking; hours are from Google Maps on 5 Oct 2026. Sources: Wikivoyage (German), visit.freiburg.de, museen.freiburg.de, Schwarzwald Tourismus (Michelin 2026 list), Falstaff, and local review sites. Photos are traveller submissions via Google Maps and credited on each card; they have not been checked by eye."};
+const PLACES = [{"c": "church", "n": "Freiburger Münster", "lat": 47.9955824, "lng": 7.8527895, "must": true, "zh": "Day 1 · Gothic cathedral, 1200–1513", "m": "4.7★ · FREE entry · tower ~€4–5, SUNDAYS FROM 1PM · sources disagree on tower hours, go before 4pm", "d": "The red-sandstone cathedral whose open-work spire Jacob Burckhardt called the most beautiful tower on earth in 1869; the 116 m tower can be climbed. Inside, look for the guild-donated stained glass and Hans Baldung Grien's altarpiece in the choir, which a reviewer says to reach before late afternoon. Expect some scaffolding: stonework fell from the spire in 2005 and 2009, and repairs never really stop.", "s": "Above the Lamb Portal on the south side, a medieval gargoyle bares its backside. The legend says it moons the bishop whose palace stood opposite. The date breaks the joke: the figure is medieval, but Freiburg only became a bishop's seat in the 19th century, in 1827. Locals tell it anyway, and finding the gargoyle makes a decent five-minute treasure hunt.", "sl": "The gargoyle that moons a bishop", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLel1evG5k8ISTmhdndzeYAaNMIeXW2vmSBvz1CIozAnBGx5cBLQFNKsYl-TRnEdqaGcaYd8h7chWsv9cqtxVgaDSy-EO2UFJLVtv_oUQDQ5mLs1-C9AMSq3Sq93PcwIDLlWaTc=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcGvFfcud8W8b-1Asjf_D8QAxijkFRO3BjPJ-slN6pCnOjMxp_5xMPpcEbsQ_2hmD6Yv2fVQ7Q3YkgrQlMTfc73RzHWReyUTJuDwp8fdWyLRQhPXQjGOpaiE_SdbFWYLal60SjK=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfSYJ5iDaJHTiSFKGNtzXkEdlYDZVPfRd2lbWtqbKLtd0-Ry32MDjXRmRASoEM7xDbBzQrwY9e1nKcKZLsVwZuY7UCrjV0PkvDJy5Be36CGIT757Dyz0rdagckF1DBWz2jH9PDXFA=s4800-w800-h600"], "a": ["Jarosław Rajmund / Google Maps", "Maren / Google Maps", "Martin Smid / Google Maps"], "g": "https://maps.google.com/?cid=2182969198939649095"}, {"c": "heritage", "n": "Historisches Kaufhaus", "lat": 47.995, "lng": 7.8527778, "zh": "Day 1 · Red merchants' hall, 1532", "m": "4.7★ · FREE from outside · mostly an event venue", "d": "The deep-red hall facing the cathedral on Münsterplatz, with four Habsburg emperors on the facade: Maximilian I, Charles V, Ferdinand I and Rudolph II, under gold-trimmed bay windows. Reviewers weren't sure the inside is open to the public, so treat it as a facade to photograph and check the venue's own site if you want to look around.", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcbqyBX8DO6YNOIj1m0WAT372ehkNACVvSb54sgsRxwbmjgJBUoYH-mYX8kbva9OkPwezQkxhLbUSmZWhlp3n6pC_g10w4QQNbh8JitZnzbmwQr8H2v2FYjH25roS_7EeW5Fsw0P8i48FY=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfqEzlhmxiY7FZO9YZEA6M4SZe2mCTpFIqU612-_MG8MgLm1L00zwO_TZLHFxHk2ZgJR9NfpINbF1VBhTYrJk5b5HmrtVkTvzD_qhfofb4-PDEHPIHbPuDemk9jTInMVK006vLqcw=s4800-w800-h600"], "a": ["alexandre rocquin / Google Maps", "Jan Verheyen / Google Maps"], "g": "https://maps.google.com/?cid=3051621356311743646"}, {"c": "heritage", "n": "Platz der Alten Synagoge", "lat": 47.9948945, "lng": 7.8460997, "zh": "Day 1 · Where the synagogue burned in 1938", "m": "4.4★ · FREE · open 24h · tram crosses the square", "d": "The paving marks the floor plan of the synagogue burned in the November 1938 pogrom, in front of the theatre and beside the university. Since 2019 it has been a pedestrian square crossed by a tram line, with a water feature children play in. Reviewers split between 'big empty square' and 'a place to pause'; read the info boards first, then sit for five minutes on your way to the station.", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLdUtzUnBe8eIW8YBcRHslwO7olRHv9hQ0-TRfxOaN4GbwemgIcWW2RJBqiB516BQT9tcDYtXhLu--ZTTYUtEnvN2X5vt2SA2jCbhUBWCgXt2ic0BK_zzjT3dt1j_5KRUiChoOj4lkM7jSvJ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLd_lsZPLBl0z20396B2U9brR0SMHswl-jWkWgn2O7rrSO41GLqlythnYhiJlwjUdspuJxWPJQBOn_gsZjRMooWONvviAnK7YBrrdUnF4Jmq0eMzQvU0hL-LK8kHHyyp0uFrmkRr=s4800-w800-h600"], "a": ["Andreas Lanz / Google Maps", "JC Le / Google Maps"], "g": "https://maps.google.com/?cid=11202244385978084384"}, {"c": "museum", "n": "Augustinermuseum", "lat": 47.9940119, "lng": 7.8524901, "must": true, "zh": "Day 2 · Medieval art in a monastery church", "m": "4.5★ · €12 (day ticket for all Museen Freiburg) · CLOSED MON · open Fri to 7pm", "d": "A former Augustinian monastery church holding the Münster's original prophet figures and gargoyles, moved indoors out of the weather, plus medieval stained glass, altarpieces and an attic gallery of 19th-century painting. The long renovation finished in February 2026 with new rooms in the former convent. A reviewer says about an hour if religious art isn't your thing; the National Socialism documentation centre opened next door in 2025.", "s": "Built in the 13th and 14th centuries for Augustinian friars, the church became the first municipal theatre in Germany in 1823, then a museum a century later. The whitewashed nave is almost twelve metres high, and from the gallery you look down on the cathedral's original stone prophets and gargoyles.", "sl": "A church that became Germany's first city theatre", "p": ["https://lh3.googleusercontent.com/place-photos/AO7kbWFK0-RmjQH_RtF48_xTI7acsR1M5NMYehwr01TWEGF0lewj0NrqAim5HhnNqdteNjkYIQjR2-N1-Tp1tL36lNKWo5KE7A7t7azWXz3KIexprRzv9Kl6ZtflhJcHSpUKCBvjf-pRGdRMX-dxmQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AO7kbWFmwtstkNGpTVFIqdNlcMcIFUPKdvighowxND7aqcyPlccLLD9d87r0ckgk5IXUbNpOjLV3Lm_02bs__WUtl83p7yH56weZaACyhwpJgEj7fYauM7yfYrBrNb7TVoqGxOlQ7cjM6BgArdcRDtX8TLUHig=s4800-w800-h600"], "a": ["Lucky / Google Maps", "Andreas Mannert / Google Maps"], "g": "https://maps.google.com/?cid=4484515752624316764"}, {"c": "museum", "n": "Museum für Neue Kunst", "lat": 47.9927631, "lng": 7.8524018, "zh": "Day 2 · 20th-century art in a former girls' school", "m": "4.0★ · €7 · CLOSED MON · open Thu to 7pm", "d": "Modern German art in a former girls' school in the old town: Otto Dix, George Grosz, August Macke, Willi Baumeister and the Freiburg-linked Julius Bissier, and a Rodin Kiss that a reviewer flags as the highlight. One visitor says it was where their expectations and the reality differed most, so treat it as the wet-weather swap rather than a headline stop.", "p": ["https://lh3.googleusercontent.com/place-photos/AO7kbWG9nbECp1RwdoDiyTKgl5brzKVnFjE2XA4gi9pCHF6plA1bqYsH3ymPqPqm3kOry57BXkhB_tG-rXIGDuUyW4eBW4C8IMnAMA7ekhM8Qd0FYL3HigFr6MaRxH8SotmjR8JcV5QqCifDVcBZbUmkizW4Xg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AO7kbWHFbEWBn2gk0kjmpBzfdMAXQHXzLj94NWzRXsyF7XNmJANS4qLZPaWZDzRSRzGpdXWM6sYaoAyfHcnxcVrR0NoQbdsRL5exY1Cf-Vu0kW7NfxyenRTIATlxZtIStEZyNdqOOE1K-moVUNehM2k=s4800-w800-h600"], "a": ["Thomas Müller / Google Maps", "Daniel Schulz / Google Maps"], "g": "https://maps.google.com/?cid=16967839810621383921"}, {"c": "heritage", "n": "Schwabentor", "lat": 47.9930024, "lng": 7.8541387, "zh": "Day 2 · Medieval gate with a tram through it", "m": "4.7★ · FREE · tin-figure museum inside is listed as open only mid-May to 3 Oct, so likely shut", "d": "One of the two surviving old-town gates, with a St George fresco on the wall and the tram running through the archway. It is also the start of the Schlossberg climb, with Kanonenplatz about ten minutes uphill. Reviewers point to a good bakery directly below the gate; that is Pfeifle on Oberlinden. The small tin-figure museum inside is listed by Wikivoyage as a summer-only opening, so don't plan around it.", "p": ["https://lh3.googleusercontent.com/place-photos/AO7kbWG9CKrTSNOycxHavm-cVFtGuOg5xmuZJVfGiDgmL1AiwM_QxFy-UuGXwKtVNvHJmmzmG10GKsBKiWvDZeWmIeVhOSsMv5Xw24RWa3KHY6d3KC8YV0o18VyUymVcLNHkUNElJN8Lzmz_0SiSe3s4tsA4=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AO7kbWEXI_rmUlrmegwSJk5e3gZZ1TmWCHwJ6zs4KacbNccPKn5A-jrPjuVDEb11PYjPGzxW-H9eMURhhE9nideC4w0L63ZiKHEOw9TK2pA9YoCACVOLGt8_B0jVNbPlwzafeCMQBuFrBtMZ_mTrcA=s4800-w800-h600"], "a": ["Kent Wang / Google Maps", "Franz Weber / Google Maps"], "g": "https://maps.google.com/?cid=11102980789026888012"}, {"c": "heritage", "n": "Martinstor", "lat": 47.9936972, "lng": 7.8489223, "zh": "Day 1 · The other surviving gate", "m": "4.6★ · FREE · exterior only, not open to visitors", "d": "The second surviving gate, where Kaiser-Joseph-Straße enters the old town; it looks best from the inside. Wikivoyage says a McDonald's sits in the gate and reviewers place one beside it, so choose your photo angle. Schlappen is next door and the Markthalle is two minutes on, which makes this the easiest place to start Day 1 if you arrive from the Bertoldstraße side.", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLdZZRG1AgDxW0kyPVEkojMty5AwNDJIovDNTuqyAWlp6el6_Sltc5GCbVyNVaOPjHqM-k2ZnLkZDWxp0omoYcQJfpUT1N6d9N00Idk1PFcMEehBuzss7ZWaicilt0QF7HHg5wjJlSOBdCs=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdUMhCRZVmgugTpuPd6KXmFjhJRL31u95tOhLKBEpn7CN7lPWJgKwZ4Z9op8bOCZMhstdqEmCJuwLToLZI70XXH1gmEK8nFZ67VDlt4tTOIZS65KaS5vS320O7kAagfNOdgMMAs1g=s4800-w800-h600"], "a": ["Kent Wang / Google Maps", "Robert Babiak / Google Maps"], "g": "https://maps.google.com/?cid=17622085566051881988"}, {"c": "view", "n": "Kanonenplatz", "lat": 47.9933401, "lng": 7.8571766, "must": true, "zh": "Day 2 · Sunset terrace over the old town", "m": "4.7★ · FREE · 24h · steep 10-minute climb from the Schwabentor", "d": "The postcard view: the Münster spire and old-town roofs from a paved plateau on the Schlossberg, with benches. Walk up from the Schwabentor in ordinary shoes (steep in places) and pass the Kastaniengarten on the way, or take the funicular. Go for sunset, since the view faces west, then walk back down; a reviewer notes a lift at a midway restaurant if your legs have had enough.", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfPoYu2jUKAS2DWNACKFXxo7aXCe4vY0o30KLCQWGtEOWO4Z4VIp3trmM_o62zdCzKSCOqw83nhy8Vx9SonT-CCN7b9qGehQz0I-e_UQxAmywE7e6kTQ9YlJf9AXiZDOow6LnMa=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdjuog1utyT9I7kUCT0K4WhzT0OVCO5F1BxdH5uGsAUtN7KwS2tOwYG7xqE1TVYers0scGV9ucqw4SsHUJo3pN1XEoKRtgPNrnQubLkNUNXcGegcyKxvp_O2JcQKQmXaXTO0Psm=s4800-w800-h600"], "a": ["Thomas Raab / Google Maps", "Akhil Thomas / Google Maps"], "g": "https://maps.google.com/?cid=6749833408182252091"}, {"c": "view", "n": "Schlossbergbahn", "lat": 47.9971684, "lng": 7.8573747, "zh": "Day 3 · Three-minute funicular from the Stadtgarten", "m": "4.1★ · ~€6 return per a recent review · Google shows MON–TUE CLOSED, other sources say year-round from 9am: check", "d": "A self-service inclined lift from the Stadtgarten up the Schlossberg in about three minutes; you press a button, there's no timetable. Reviewers say the walk is nearly as quick, so ride up and stroll down in 10–15 minutes. One visitor found the restaurant at the top shut. Café Marcel at the bottom, in the park, is open on Sundays.", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLdq2Q4LHj_6uR5WoSWu1lJ22ESyysddST5IulV8xsBrY4mATGpIAnBAxgOWW9E2vdKAXtVCgc9q8rjVH0Ls_0tiZxDzxkKlWrFzHxQR5RRv9TRXo7jYJMjX8N9bORD0t5Y8YSfH=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLchlBEvNwEKpBO_JME97eEX6Rx28VGOaYCMkUU2UzhnghspCJDLqX-3eDFByj0llQZHg86IPumNIjVOE1l5ONA9iBNT59Gf9sAxvJI1wjbvIxNnehzRZSx59zoj-6Ni4TzB60Bk=s4800-w800-h600"], "a": ["Falk Przewosnik / Google Maps", "patty hou / Google Maps"], "g": "https://maps.google.com/?cid=3997350561561724778"}, {"c": "view", "n": "Schlossbergturm", "lat": 47.9950853, "lng": 7.8619333, "zh": "Day 3 · Free lookout tower", "m": "4.7★ · FREE · 170 steps · ~30 min walk up from the old town", "d": "A 35 m lookout tower on the Schlossberg, built in 2002 largely from donations, with a wide view over the Rhine valley. Reviewers walk up from the old town in about half an hour, or ride the funicular and walk the rest. Hold the railing on the 170 steps and skip it if you have vertigo. Sunset is the favourite slot because the view faces west.", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcQMxF82SUiot226oY4bCtx63j6bp-e1NCFL3O1UgJ5hoiG705Itfh51vYARv7mGpNN55TNi1lifFQ1sqaO_wOcmRYI1971XSLtBaHPyujvct1rLNpdGd07hWwi0J3wiUsqpvC2SRqtIh3S=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLebMPSQysKeUDsibzjsWaIymvB9DtNr4nmj1Z4dfX3hcxtGtiRMUnfkiCWh1c2YgYkAUAs0oLwFXu1cEZpRYA5fgY8vBnwjdB487cyHN_m0LIIo9vv4e4raf0ICjRvAVTuUHv21=s4800-w800-h600"], "a": ["Frank Zimmermann / Google Maps", "Michael K / Google Maps"], "g": "https://maps.google.com/?cid=10782689185663380236"}, {"c": "heritage", "n": "Freiburger Bächle", "lat": 47.9941426, "lng": 7.8499531, "must": true, "zh": "Day 1 · The old town's water channels", "m": "4.8★ · FREE · 24h · about 15 km of channels, some underground", "d": "The shallow channels set into the pavement are Freiburg's trademark; this stretch by the Markthalle has decorated sections and children sailing toy boats. The water is diverted from the Dreisam river. Walk beside them rather than across, because stepping in by accident means you'll marry a Freiburger, as the legend goes. The Alte Wache on Münsterplatz sells wine by the glass you can carry to a channel and sit beside.", "s": "First documented in 1220, probably older, the Bächle carried Dreisam water to feed livestock and fight fires, never to drink. As the town spread, water struggled to reach the newer streets, so the old town was raised by up to three metres to keep the whole system flowing. Step in by accident and, they say, you'll marry a Bobbele, a native Freiburger.", "sl": "The town that was lifted three metres", "p": ["https://lh3.googleusercontent.com/place-photos/AO7kbWFNfjXhVm0SZZc9hfIZ51VfZpjWqXZPUcvd3fDNNvHTYhpA7FtEZwWrAyDbzv-N-YxD9AQ9UfWSGROd_41VvZ9CkSnPM0wiKwhIM4AIf3TH4L01wBuZn51OIxOH1Mf3RP6aBd9YSz13saBCGg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AO7kbWFOwP9wNsgCuidPtuoqIkN0ev4dodxBOe-K6poSdU5BhK9GqiS8SGzCEOzFo3VIpU3Hv1ODu4gjHy7ypLTBJ6FoR4zYsGb4IxPnp8J9rvr5Bf7OgVr43zp1MNDdXYEUlyWv8hZ24F5PnSF42g=s4800-w800-h600"], "a": ["Vira Vinnitsa / Google Maps", "Franz Weber / Google Maps"], "g": "https://maps.google.com/?cid=17150716057415009686"}, {"c": "heritage", "n": "Konviktstraße", "lat": 47.9940341, "lng": 7.8545889, "zh": "Day 3 · Wisteria lane toward the Schlossberg", "m": "FREE · wisteria blooms in spring, not now", "d": "Walking-tour guides call it one of Freiburg's prettiest streets: narrow, medieval, wisteria-draped, with a view up to the Schlossberg at the end. The Michelin-starred Wolfshöhle is at No. 8. Google files it as a road, hence no photo card; that is a data gap, not a sign it's second-rate. Walk it after the Münster rather than making a special trip.", "nophoto": "street, Google lists it as a route"}, {"c": "snack", "n": "Brunner Wurstbraterei", "lat": 47.9958032, "lng": 7.8527245, "must": true, "zh": "Day 1 · Lange Rote at the Münstermarkt", "m": "4.8★ · MON–SAT 7:30am–1:30pm (Sat to 2pm) · CLOSED SUNDAY · price not confirmed", "d": "One of the seven Lange Rote stands on the north side of the Münstermarkt, rated 4.8 by 157 reviewers; it also does a chili-buffalo sausage and a deer bratwurst with cranberry. Say 'mit' or 'ohne' for fried onions. Queues peak around lunch. El Purica, a specialty coffee stand in the same market (4.9, closed Sunday), is two minutes away, and Stefan's cheesecake is at the fish fountain.", "s": "In December 1949 baker Josef Föhrenbach sold boiled sausages from a kettle at this market; two years later they moved to the grill. The sausage is 35 cm, skinless, and the question is always 'with or without onions'. Order it folded in half, 'geknickt', and you've outed yourself as a tourist: a real Bobbele eats it whole, with the ends sticking out of the roll.", "sl": "Order it bent and you've outed yourself", "p": ["https://lh3.googleusercontent.com/place-photos/AO7kbWGRc0lrPi-MqN9ka9V9xzNgZueK7wvuLQiZ1KdnnWk7wK7IaAlW8O3G_-6XRUmhjBwiw60JMyrx4vRc9f9keGCmF5G6irDhmm09KOtxEs9kI5gELNjrSjKv5KeqvPETZEFMdrN9WkN27Jsdmw=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AO7kbWF66zKVg0cm7KdKV9RDBXMrso8KOPqxjQdjATm4jKl-dLYYEb2UhGJwXXKMI414r3qYKVFY5vAPXHlVw84smQdyJ5_OuTakypvDk-Nuo7qWIKJQbIMrRQnbxPR7G_qbmoNTmU6re-yqsOSMHoI9y6nb2g=s4800-w800-h600"], "a": ["Brunner Wurstbraterei / Google Maps", "Benjamin Hoover / Google Maps"], "g": "https://maps.google.com/?cid=2225271875622443693"}, {"c": "cheap", "n": "Markthalle", "lat": 47.9941725, "lng": 7.8498361, "must": true, "zh": "Day 1 · 20 stalls under a printing-house roof", "m": "4.4★ · CLOSED SUNDAY · Mon–Thu 8am–8pm, Fri–Sat to midnight · one Afghan plate cost €14", "d": "A food hall in the former newspaper printing house on Grünwälderstraße, open since 1985, with about 20 stalls and a no-chains rule: Afghan, Persian, Italian, Asian, German. Seating is tiny and the smells are strong (the complaints), so eat off-peak or take it out to the Bächle. One reviewer paid €14 for an Afghan beef-and-rice plate and still thinks about it.", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcAP0letYsfFEEmazz0OuEMnXo5LpwLleDViX6t9ep2DVeyol8GgjSkkhTfuZOaMbaoUd6HMcC5soaE9bBrymHtHGJF4gkrOmvvOkhlcUXh-AVeEwkYSe3I7an7zeFh7x-NxA=s4800-w800-h540", "https://lh3.googleusercontent.com/grass-cs/AABkmLd829k9hFg9uTYrrpiNthcLKmRzYQxTXN-wxb8VY1mvCrpfxLOsWofxAbYGKDI4adf6EAapDB7Obza7XOlrEAKkibdP83wLNenc8qo3q_UGAyuZ-ahZgUYXgOoAwPxl7HUBFtM=s4800-w800-h600"], "a": ["Markthalle Freiburg / Google Maps", "Maritza Ochrom / Google Maps"], "g": "https://maps.google.com/?cid=11059591329749339380"}, {"c": "cheap", "n": "Euphrat", "lat": 47.9948464, "lng": 7.8478827, "zh": "Day 3 · Yufka wraps and kebab", "m": "4.5★ · CLOSED SUNDAY · Mon–Sat 11am–9:30pm · lunch queue moves fast", "d": "A kebab shop that reviewers rate for its homemade yufka flatbread: the falafel yufka and the doner yufka are the orders, with big portions and a lunch queue that moves quickly. Vegetarian and vegan options exist. For context, Wikivoyage grumbled in summer 2022 that doner costs €6–7 across the old town.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjD7j-KD2epVsw71HzkWxQeHvD256HmJ4o_bIfls51IsNlLDlKj5yqugJ8B1RIxRZTMgfIg2L2_Xo9F8atAG8Off6rigwxlhCW9MqZLLxyjdFs4DPSs0jTqoat-aB95xy6U4r9EdtN9qR6u9Rg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjBdT_tastQ8NA75qOLQmWzRSv3IjTLn84r3E1aSlO73H7GunfgeUBFYL2F_WSxrVKwySrzw96_Bvdz9boawkmZiauVai0uAmi2kWhoaVGvtd0lNUSVogbIGBKyexiMQ_GFdIqZVtXnsSTywbnFWj8bwLg=s4800-w800-h600"], "a": ["Klaus / Google Maps", "Omar Omeirat / Google Maps"], "g": "https://maps.google.com/?cid=4454269962710163006"}, {"c": "snack", "n": "Klein Venedig (gelateria)", "lat": 47.9931471, "lng": 7.8492657, "zh": "Day 2 · Gelato in the canal quarter", "m": "5.0★ (only 33 reviews) · CASH ONLY · daily 10am–8pm, Fri–Sat to 10pm", "d": "A small Italian ice-cream parlour on the Fischerau, the canal lane that the old town calls Klein Venedig. Rosemary ice is the flavour reviewers rave about, plus affogato and vegan scoops. Cash only. Look for the metal crocodile hidden in the Gewerbekanal along this stretch, a detail from the audio-tour route.", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcZpfe4ZGvyCYO6d6xkyvp_FJAVWzqdB0R_6vJSZ9_NZFtoceyyVTa67KYG8oEK-XZl_BEIUCKAuSJTzXDYuGlKsfgCKbrillJQBO7Gp47_scSWPU0EntZBa6dG1MREE550EQVIK8LGeLB5=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcG3VJsrFhrZXppDqNTFj_9fMGskeqzJnyZ2jnQGLn-TX8kywR-djxIN6rxw5JaoSbbNud5VsTAxF9aCSyF16Gm8LsZW74gLnYlriUo8H3OI7cZiZDhdeEsKooAFXtBeSBxfnyJHN971Ms=s4800-w800-h600"], "a": ["macallan 99 / Google Maps", "Martin Brodbeck / Google Maps"], "g": "https://maps.google.com/?cid=6453917765600942640"}, {"c": "snack", "n": "Bäckerei Pfeifle (Oberlinden)", "lat": 47.99324, "lng": 7.85394, "zh": "Day 2 · Butterbrezel under the Schwabentor", "m": "4.6★ · CLOSED SUNDAY · Mon–Fri 6:30am–6:30pm, Sat to 5pm", "d": "The bakery at the foot of the Schwabentor: reviewers single out the pretzel, a ham-and-cheese baguette with coarse salt, and the Rosinenschnecke. A second branch on Schiffstraße is rated 4.4. Buy breakfast here before the Augustinermuseum opens at 10. Zum Roten Bären, on the same square, is billed as the oldest hotel in Germany.", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLeklYEZHvNiu1ks8FUXyZvgfSyY2_eqh9v47afb6ZWkInx9upquIZLVbQdGGCAxJILm45YRFElGV7T3d7CoiKwtpVWEVaRlYmcYEmHJ5Gf-D9FqcKGiS4dyshQO7Ox-hP-6Zd-fYDKiNmEg=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfUaiu8ixnAZ993_1t7kzn31HJ6iiREexcqaIz8QZI-9lqqWqFEZHW80ABDpnugb_Qmdm3bmzLVS4nWmGqnU8jS1ZupsRIHH_GridrHxvRC5zk3lMkgMBiX7fhVXs_dz50S__Q=s4800-w800-h600"], "a": ["Thierry Pouyleau / Google Maps", "Bäckerei Pfeifle / Google Maps"], "g": "https://maps.google.com/?cid=14322038507436007157"}, {"c": "cheap", "n": "Brennessel", "lat": 48.0003021, "lng": 7.837888, "zh": "Day 3 · Student-price dinner in Stühlinger", "m": "4.5★ · CLOSED MON · Tue–Sat from 6pm, Sun from 5pm · dinner plus a drink ~€10 per a reviewer", "d": "An old student haunt west of the station, nicknamed 'unofficial Mensa III' because it was first with early-evening student-price spaghetti. Reviewers report a big Bolognese for about €3.80, a happy hour on certain dishes, generous German mains such as Kartoffelgratin, and a loud, crowded room. Arrive early or expect a short wait. Egon 54 nearby is another student pub with vegan currywurst.", "p": ["https://lh3.googleusercontent.com/place-photos/AO7kbWFCogtlIph2PIwZGND1h_c1M6K_U000iROYKJLEXOYtQmD4ILs2fnyoLClOgLNhhRcEMy-o--hng5X4Ru20LmX25LuAwV8e0jHhqMIKTQiPglqJvnmgrIGF-xTyMWHYVMrlE_mdpfDa3-l9Ww=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AO7kbWEFXBfLiXX6ctzmPgGIjfTnG_v65zDUwv_HKoYQ8KWpF46-3wpqYQStZlajnUVF64_XxkaadwLhII3FBgyLZa6zHe7rRtF6jZF65L0AJ7lbi0q7AgVqcF4vayRmTXW-byyelbp-ohR7lJhKsS-vqUv7bQ=s4800-w800-h600"], "a": ["Zip / Google Maps", "Helmut Knoeferl / Google Maps"], "g": "https://maps.google.com/?cid=17509541837993718680"}, {"c": "snack", "n": "Günter Coffee Store", "lat": 47.9971184, "lng": 7.8494068, "zh": "Day 3 · Specialty coffee, card only", "m": "4.8★ · CARD ONLY · CLOSED SUN · Mon–Fri 10am–5pm, Sat 9am–6pm", "d": "Altstadt roaster-café on Merianstraße that draws a regular all the way from Basel for the beans and the cosy room; try the Ethiopian espresso or the batch brew, and the lemon cookie. Card only. One reviewer found a cortado harsh, so ask what's on. The same team runs Café Marcel in the Stadtgarten, open Sundays 10am–6pm.", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcZkh9ftLGJ-FHRH2bND7vMaf_BVh-GaTzjwG7vgcozSTLhjwhZhthOwmMGjo1iNIqM_0w7F5LWVSX0XVE0VMwxepabnI6f-mQfhU_zuV_-19egRoj4JZfe-YarTSyOjA35QDQ9qJati82z=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLe2SLAvy2ftPzy4qG7FYJW0EH7fi4JN518GLlIiSB1cOOiIVvR5osYDpwq_60lEHZhV-vahZguJgYO-p7mcDz1WUhrcMcN-97Ifm7gvYk-uKBGFOzsYPo4RQFHEXWHL25UUmwrUew=s4800-w800-h600"], "a": ["N.K.H / Google Maps", "Oliver Heil / Google Maps"], "g": "https://maps.google.com/?cid=16299312360152134827"}, {"c": "mid", "n": "Großer Meyerhof", "lat": 47.9941817, "lng": 7.8500868, "zh": "Day 1 · Baden pub food, shared tables", "m": "4.4★ · CLOSED SUNDAY · Mon–Wed to 11pm, Thu–Sat to midnight · prices called fair by reviewers", "d": "A big, old-fashioned Baden tavern at the Markthalle end of Grünwälderstraße. The house dishes are Rinderleberle (beef liver, sour or fried), Badisches Ochsenfleisch with horseradish sauce, and lentils with Spätzle and Wienerle. You may share a table. Service can be slow when full: one party waited 15 minutes to be seated. A calmer fallback when Schlappen is too rowdy.", "p": ["https://lh3.googleusercontent.com/place-photos/AO7kbWE_nWRde-0-3T3z8PYvMBr0g1yPjz2tngfTtaNhd_4nHL3VxSydjHeA4poPwJgF4AGa95tt9o04F7DiO1Q5qzP4q4OtjXNFq8HsIuQNyKZk9o57gJZ31vOmzewOv9A4dsHAYkmci7-FFvxp=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AO7kbWEXBeY4tGUHbfesFYLeLJlF-NT3SxZ6e-w3uCowmutzn4pbvJKuMOUyUtyWpKYPsOzpzDnAFoHzEszlJZ9RFziwzr_y7fijJ63o6Xks1qLUjtVpJ4q3Wnz-B089v7r84h4s1qfudT8ZlvR0=s4800-w800-h600"], "a": ["Phillip Damataho / Google Maps", "Großer Meyerhof / Google Maps"], "g": "https://maps.google.com/?cid=13156149781014673185"}, {"c": "mid", "n": "Tacheles", "lat": 47.9940804, "lng": 7.8509646, "zh": "Day 3 · 24 schnitzels, down a stairwell", "m": "4.3★ · open daily from noon (Fri to 3am, Sat to 5am) · expect a wait upstairs", "d": "Schnitzel house in a basement off Grünwälderstraße: you enter through a courtyard and down metal stairs, and it can look closed; it isn't. A travel site counts 24 schnitzel variations, and reviewers praise the 'Schnitzel Quattro' (four schnitzels, four sides, four sauces to share) and say the lower-level staff are calmer than the busy ground floor. Sides sometimes arrive lukewarm.", "p": ["https://lh3.googleusercontent.com/place-photos/AO7kbWHcBM1gLGnptmH7IBsGtwbaeKnxTGio6R-U_N1rSI-luJoSTdnPlVFe0VD37-uE7-mErtFIb7EWBXGWehAn99U76HjSx-0mxOrm89QrerxPljWLbR9g46LnmpWkhkVZYIXF25i8hc7QBrRg-Q=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AO7kbWGGcoZs7UBKPASzwS63m3py_agakfkV-7Vxp0xVoyLAhxPH-ElQ1sITHZwXL5bMMvE0YLCDoR--v-qpUvjRYZm0dCLIqBFBnpVZ3x_Sv1I8sGaNPFDnKbq07WZx41v2FnBts1oBZmJ9VlxTv0kUO0QVQg=s4800-w800-h600"], "a": ["TACHELES / Google Maps", "Aline Beilschmidt / Google Maps"], "g": "https://maps.google.com/?cid=15947883701413136957"}, {"c": "mid", "n": "Schlappen", "lat": 47.9939836, "lng": 7.8486891, "zh": "Day 1 · Student pub in the Bermuda Triangle", "m": "4.3★ · SUNDAYS FROM 3PM · Fri–Sat to 3am · Maultaschen, Flammkuchen", "d": "The student pub beside Martinstor, in the nightlife quarter locals call the Bermuda Triangle. Filling, reasonably priced Baden food: reviewers order Maultaschen and Flammkuchen with onions and bacon, and the beer list includes unfiltered Waldhaus. Its toilets have a local reputation, so go and see. It only opens at 3pm on Sundays.", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLciRxjo-jHHO33lqrfdhHw9NpaCi7Y-5AuMn-TpMT6IZ7g_bzCx5oZZvep7GSlmT2lRwkirflvZZS8lhexu-3g9DcX3f2BE8QLoAZIdZpMg-BLe3h_hgB10d0jXEBUBoQZI_7Q=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLeatf_c3r8yPBxo33dnKiufm7kvgT7CdLNQvOYypK5Ug8MwGXF1mWH3X9Omqh5UkNfSQ81l4O0H8226KPYtpF3Z8ouzJO_MgktD-0VDx9dOcZzbVLQno6CqLvdN5G3AmvdrCneTUQ=s4800-w800-h600"], "a": ["B-B.D.B / Google Maps", "Andreas Müller / Google Maps"], "g": "https://maps.google.com/?cid=17440961794188723930"}, {"c": "splurge", "n": "Wolfshöhle", "lat": 47.994494, "lng": 7.8547469, "zh": "Day 3 · One Michelin star, Konviktstraße", "m": "4.7★ · 1 Michelin star (2026) · CLOSED SUN & MON · dinner Tue–Sat from 6pm, lunch Fri–Sat 12–2:30pm", "d": "One of five one-star restaurants in Freiburg on Michelin's 2026 list, alongside Hawara, Jacobi, the Colombi Restaurant and Eichhalde. Falstaff calls the cooking classic and highly refined, with pigeon and char among the showcase products. Reviewers prefer ordering à la carte to the wine pairing; one lunch for two came to about €290. One diner met a 'summer break' that Google didn't show, so call first on +49 761 30303.", "p": ["https://lh3.googleusercontent.com/place-photos/AO7kbWEMZ_KwN0Cy8r8asbVQKmzO-aZpU0WlYuMHs8f2q3W6ObSAoIAV3_wmSfHjL8Tt5qih8JZGxab-RU4dc5xp54lZL_jRuT36eDaywiWc6FL0YOfMXCm3uHamTRpx1O4mHZwyvGkfC2OEy2Mj9KFBAYFuQQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AO7kbWHdHe7V8GmztCEWktpmuVc3hQOWbMj9zpe_GYCZte8ONnS0RjKcj9MTmY0KVhx-szrwvINcef60nBAA_sCsARQHaJPXjwf57UVDHfsHuL67-L2sPgajXsSyhsekJC90t6iw1-rgIe9ButLmO2jCb4jTgA=s4800-w800-h600"], "a": ["Ant1 Lsg / Google Maps", "Roland Pobisch / Google Maps"], "g": "https://maps.google.com/?cid=2872082598283766488"}, {"c": "beer", "n": "Hausbrauerei Feierling Biergarten", "lat": 47.993413, "lng": 7.8528405, "zh": "Day 2 · Freiburg's oldest beer garden", "m": "4.4★ · daily 11am–11pm (Fri–Sat to midnight) · kitchen gets mixed reviews", "d": "Freiburg's oldest beer garden, under chestnut trees on the Gerberau, serving house-brewed beer; the brewery dates to 1877 and claims the city's first light-coloured beer. Come for a drink with Bibeleskäs or a pretzel, since reviewers split on the kitchen, and note one complaint that bottled water cost more than beer. The brewpub restaurant of the same name (Gerberau 46, 4.5★) is across the street.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjDRrEqRVnk36UqyKxaHByfHX-m8S42a-6NYNAdybw9bULXyDgAP9vkGXoRxILgOdisOljf8IWnBhFzL0Gntax9lNIXDvyDekJnCNPgw_CpeUAPNHiVYfItF5tZh53G5rEiYhLjo1eFC-jm2Pu8=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCPCs7oygL-RtkqAD-diZDdO_U9DUk03GoydK_tad_U2Hx6DVNkDfTJ4QS_nd0py26insJG307Rf8kHclLwbLEq-he15O14ngAZkVvtcL9kJFgatMD7CwNZNof2QcKJIKfVAylwjyxTzpnsEWtN0C1d=s4800-w800-h600"], "a": ["Huub Van Rooij / Google Maps", "Uwe Jan / Google Maps"], "g": "https://maps.google.com/?cid=8112272729602655756"}, {"c": "beer", "n": "Kastaniengarten", "lat": 47.9926791, "lng": 7.8555961, "zh": "Day 2 · Beer garden with the view", "m": "4.3★ · daily 11am–11pm per Google · autumn hours depend on weather, check · food 'just okay'", "d": "A beer garden halfway up the Schlossberg above the Schwabentor, with a view across the whole old town toward the Vosges, best around sunset. Reviewers say the beer and the view carry it and the food is basic. Above it, the Greiffenegg-Schlössle is a pricier sit-down restaurant reached by lifts inside the hill (Wed–Sun; closed Mon–Tue).", "p": ["https://lh3.googleusercontent.com/place-photos/AO7kbWE5txc0P555p3gNVVkFNzWQx5p-7Sg_iES0vzeAErAh1s-6CiWTcjL4daSpAd4RCJSDQ8DTuw1tSBiAccB9FhnG8VoOXX-JhaQRbUxMIDFV9gobSJiEVxyghq2rfDg5WPzVkMvR25LK8hkFJg=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AO7kbWHkNtnpnVV59acDH-rVZMgbZ0SxxzSIn6OJ26qC3sNSniGHs8Z4K7f7yxEsmrqzW54iij1VPPlvgIBhYVRQbOAFdMn25n68aE6gHcMvT9NBbgOALO_FAJxOvaCfOXo31DJQEUw-UN2usxtT7Dgw_CFT=s4800-w800-h600"], "a": ["Freiburger / Google Maps", "Darren Keague / Google Maps"], "g": "https://maps.google.com/?cid=13292921026464399290"}, {"c": "wine", "n": "Alte Wache (Haus der badischen Weine)", "lat": 47.995341, "lng": 7.853432, "zh": "Day 1 · Baden wine on the Münsterplatz", "m": "4.5★ · CLOSED SUNDAY · Mon–Sat 10am–9pm · take your glass to a Bächle", "d": "The Baden wine house in the old guardhouse beside the cathedral: wine by the glass, an upstairs tasting room, and glasses you can carry to the nearest Bächle. In summer they serve Kalte Sofie, a wine slush; reviewers also like the guided tastings. A good 5pm stop to get a feel for local Spätburgunder without committing to a long list.", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLeJ662rczeVO5yloYF0fcKlWhrMtZ_enHVCBtgPci98JhDz9yddXTdYG2XIvZyz8ttdNRp8IwW62mQeQWDHudylhbE_c5muvh7e4mcSM1Pk2RB4-grn82ER_MljetJpL_YolKdRfQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLd2WukbrF585L4fRPqmNMJxf5c7IgGESKCtRD1Elnnp_sg6PTRFAIrROuV0ZztQxg5d_yZOV7Ibx4-HmwQ_7FcVFQdJtDXQFOvzeYLOmHO66Kgd0oKplRl_wxpEVfOmDVacq6Pk=s4800-w800-h600"], "a": ["Alte Wache / Google Maps", "Stéphanie David / Google Maps"], "g": "https://maps.google.com/?cid=11707489076325761512"}, {"c": "wine", "n": "Trotte Weinbar", "lat": 47.9931278, "lng": 7.8502592, "zh": "Day 3 · Wine bar with small plates", "m": "4.8★ · MON–FRI ONLY from 5pm · CLOSED SAT & SUN · reserve", "d": "A stylish wine bar on the Fischerau lane with a well-priced Baden list (a reviewer mentions Wörner's Grauburgunder) and small, carefully made plates. Seats are limited, so reserve, and note it shuts Saturday and Sunday. Reviewers compare the feel to Paris or Milan rather than the usual Freiburg Weinstube.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjB0lggN336Kl1esxc5cTKOoCWC4lYsJ-obGhTEQdl8NX5v9qQ0pkY9TNIfkID3Xy2b6UfeTBOHi0pSI3DLzQ6u6u_jwRCxHZvW8AqkoQlPU9uDYsK-utit2fNmtOUa8uRJmpQxTCg-NtKHa31CRhX4eYQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCjy8Ob7S3BTA-qaoJ7pPD6fYYyhmJq0fbS_w0yoMB_r3wdN9FHRHY2hWX4xsk99isBcmZHo60-BroaBbP8wE-smGAs7QnE-rJ0Avm0s9nztjdigsHhGKI-w3lghNSOErxynsS3b0_n4xsqlw=s4800-w800-h600"], "a": ["Sammy-Jo Wymer / Google Maps", "Thilo vG / Google Maps"], "g": "https://maps.google.com/?cid=1317550038942642919"}, {"c": "cocktail", "n": "One Trick Pony", "lat": 47.99354, "lng": 7.85365, "zh": "Day 2 · Cocktails in a cave-like cellar", "m": "4.6★ · WED–SAT ONLY, 8pm–1am (Fri–Sat to 2am) · CLOSED SUN–TUE · cocktails €15–20 per a review", "d": "A cocktail bar in a vaulted cellar below Oberlinden, with a menu of about two dozen house creations; tell the bartenders which fruit you like and they choose for you, as several reviewers repeat. One reviewer found a €15–20 drink watered down, so ask about strength. Wikivoyage's older €10 price is out of date.", "p": ["https://lh3.googleusercontent.com/place-photos/AG9NLjAC4KCFJz6eEyC_42UmYNdbRi-5KBQq2qYYiVyLFkIi6JU8DicjnAVBaxCxm-aokBYkMgOYWrBxkygHYb1b1ygTYlTVBrnrbOVGzWQUhi8lLOBCCRHuV21He13f8TwcbrTzE9sx2SNTruI4vQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AG9NLjCLALWC4wtcwC6fqrkh8N4hbzXsxh4yugP28789dIVti8KBEWiCCxv2OS1yIx9DXq-Hd-TRaARiqB-18j5NhhEL-ZJm-XR04HcZLTC7Q8RqdVpfJM9V76QL2Y6zLNPRAttlUSBFaeDAHj7LC6O90fFf6Q=s4800-w800-h600"], "a": ["One Trick Pony / Google Maps", "Olaf / Google Maps"], "g": "https://maps.google.com/?cid=10578873127066448934"}, {"c": "beer", "n": "Craftbeer Lodge", "lat": 47.9934714, "lng": 7.853738, "zh": "Day 2 · 500+ beers, seats outside", "m": "4.8★ · CLOSED SUN · Mon–Sat 11am–7pm", "d": "A bottle shop on Oberlinden with 500+ beers, local craft on tap and seats outside facing the Schwabentor and the top of the Münster. Reviewers mention the world's strongest beer on the shelf and good IPA advice. It is a shop, not a bar: it shuts at 7pm and all day Sunday. Take a cold bottle from the fridge and drink it outside.", "p": ["https://lh3.googleusercontent.com/place-photos/AO7kbWFj3brmj9X-YuegUymuHctPptexWZrZpkVlkaVqhnADO1bZYz3tYzAkyk5WoMjD2n8wmV7MRqRKcpVLoucTbjvhBx9Z32wUEB7GR50WxmB54gP_X9d3s7wv0qnkf9RNBuOmj5NHzAsJ5faRKQ=s4800-w800-h600", "https://lh3.googleusercontent.com/place-photos/AO7kbWEUB3pQuiDhJpT9bXC0La5k4Lr9_sBVjTCZ4uOsX1Fd0IO4LwW6sgmeJ9Px3NwSSimTJzT_LfYek0lzWCfz1OMJ2GzsYtb_p1FckGgPBb-Cvg_KENJkoILVAjRa7Hf5VW03FQZunYJijOzH8EU=s4800-w800-h600"], "a": ["Craftbeer Lodge / Google Maps", "Felix Wölfle / Google Maps"], "g": "https://maps.google.com/?cid=5449933023259289266"}, {"c": "stay", "n": "Stay: Altstadt east (Oberlinden / Konviktstraße)", "lat": 47.9948, "lng": 7.856, "zh": "Walk to everything · most expensive", "m": "Where to stay · best for first-timers", "d": "Nearly every pin on this map is within about a ten-minute walk, and the lanes around Oberlinden and Konviktstraße are calmer than the west side. Zum Roten Bären (Oberlinden 12), billed as Germany's oldest hotel, is here; a reviewer found it a bit pricey. Avoid the west side between Martinstor and the university, the Bermuda Triangle, and Augustinerplatz on warm evenings: Wikivoyage says the crowds there get loud.", "nophoto": "district, not a business"}, {"c": "stay", "n": "Stay: Wiehre", "lat": 47.984587, "lng": 7.847487, "zh": "Quiet villas · about 1.2 km south", "m": "Where to stay · quiet and residential", "d": "A residential villa quarter about 1.2 km south of the Münster, with small shops and pubs and a quieter night; booking sites list it among the calmest areas. Hawara, a one-star restaurant, is here. The trade-off is a commute of roughly a quarter of an hour on foot, plus tram or bike for the return after dinner.", "nophoto": "district, not a business"}, {"c": "stay", "n": "Stay: Stühlinger", "lat": 48.0044582, "lng": 7.8374651, "zh": "Young and lively · about 1.5 km west", "m": "Where to stay · near the station, mixed after dark", "d": "Younger and livelier, west of the old town and close to the station, with a Wednesday and Saturday farmers' market and student pubs such as Brennessel and Egon 54. The trade-off: reviews of the Stühlinger Kirchplatz describe drug dealing and unease after dark, and Wikivoyage notes Freiburg has pickpockets and drug crime, though falling since 2014.", "nophoto": "district, not a business"}, {"c": "stay", "n": "Stay: Herdern", "lat": 48.0068779, "lng": 7.8748446, "zh": "Green and quiet · about 2 km north-east", "m": "Where to stay · quiet, needs transport", "d": "A green Art Nouveau quarter north-east of the centre that the city tourism board calls Freiburg's most idyllic neighbourhood, with hiking trails close by. It is quiet and good for outdoor people. The trade-off is that you are about 2 km from the Münster and need a tram, bus or bike for every pin on this map.", "nophoto": "district, not a business"}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19,
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+(pl.must?' must':'')+'" style="background:'
+         +CATS[pl.c].color+'">'+glyph(pl.c)+(pl.must?'<i class="star-badge"></i>':'')+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true,
+    zIndexOffset: pl.must?1000:0});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galPrev.style.visibility = pics.length>1?'':'hidden';
+  galNext.style.visibility = pics.length>1?'':'hidden';
+  galPrev.disabled=true; galNext.disabled=pics.length<2;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+  const multi=imgs.length>1;
+  galPrev.style.visibility = multi?'':'hidden';
+  galNext.style.visibility = multi?'':'hidden';
+  galPrev.disabled = i<=0;
+  galNext.disabled = i>=imgs.length-1;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+/* arrows, for mice and keyboards; touch users just swipe */
+const galPrev=document.getElementById('galPrev'), galNext=document.getElementById('galNext');
+function galScroll(dir){
+  const w=galTrack.clientWidth||1;
+  const i=Math.round(galTrack.scrollLeft/w)+dir;
+  const n=galTrack.querySelectorAll('img').length;
+  galTrack.scrollTo({left: Math.max(0,Math.min(n-1,i))*w, behavior:'smooth'});
+}
+galPrev.onclick=e=>{e.stopPropagation();galScroll(-1);};
+galNext.onclick=e=>{e.stopPropagation();galScroll(1);};
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://www.google.com/maps/dir/?api=1&destination="+pl.wlat+","+pl.wlng+"&travelmode=walking";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  panToPlace(pl);
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+/* Wide screens show the card as a left-hand panel, so the gesture axis and the
+   map centring both have to change. Keep this threshold in sync with the CSS. */
+const SIDE_MIN_WIDTH = 720;
+function sideMode(){ return window.innerWidth >= SIDE_MIN_WIDTH; }
+
+function panToPlace(pl){
+  const ll = L.latLng(pl.wlat, pl.wlng);
+  if(!sideMode()){ map.panTo(ll,{animate:true}); return; }
+  // shift the centre left by half the panel so the pin sits in the visible half
+  const panelW = (document.querySelector('.sheet')||{}).offsetWidth || 390;
+  const pt = map.project(ll, map.getZoom()).subtract([panelW/2, 0]);
+  map.panTo(map.unproject(pt, map.getZoom()), {animate:true});
+}
+
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the card down to dismiss ----
+   Touch: drag anywhere in the card, but only when it is scrolled to the top, so
+   reading a long card still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    // In side mode the dismiss axis IS the gallery axis, so the gallery wins
+    // any gesture that starts on a photo.
+    if(sideMode() && e.target.closest && e.target.closest('.gal')) return;
+    // Vertical scroll only conflicts with the bottom sheet.
+    if(!sideMode() && sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'go':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  const side=sideMode();
+  // side panel slides out to the LEFT; bottom sheet slides DOWN
+  const along = side ? -dx : dy;      // movement toward dismissal
+  const across = side ? dy : dx;      // movement that belongs to the gallery
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(along)>Math.abs(across) ? 'go' : 'other';
+    if(drag.axis==='other'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(along<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=along;
+  sheet.classList.add('dragging');
+  sheet.style.transform = side ? 'translateX(-'+along+'px)' : 'translateY('+along+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();   // distance OR flick
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='go' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  const ab=document.getElementById('about');
+  if(ab && ab.classList.contains('open')) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- city overview ---------- */
+const about=document.getElementById('about'), aboutBtn=document.getElementById('aboutBtn');
+function esc(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function rich(x){ // allow **bold** only
+  return esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+}
+function renderAbout(){
+  if(!CITY || !Object.keys(CITY).length){ aboutBtn.style.display='none'; return; }
+  document.getElementById('abTitle').textContent = CITY.name||'';
+  document.getElementById('abTagline').textContent = CITY.tagline||'';
+
+  const st=document.getElementById('abStats');
+  st.innerHTML=(CITY.stats||[]).map(s=>
+    '<div class="stat"><div class="k">'+esc(s[0])+'</div><div class="v">'+esc(s[1])+'</div></div>'
+  ).join('');
+  st.style.display=(CITY.stats||[]).length?'grid':'none';
+
+  document.getElementById('abSections').innerHTML=(CITY.sections||[]).map(s=>
+    '<h3>'+esc(s[0])+'</h3>'+String(s[1]).split('\n\n').map(par=>'<p>'+rich(par)+'</p>').join('')
+  ).join('');
+
+  const musts=CITY.musts||[];
+  document.getElementById('abMusts').innerHTML = musts.length
+    ? '<h3>Must see, do &amp; try</h3><ul class="musts">'
+      + musts.map(m=>'<li>'+rich(m)+'</li>').join('') + '</ul>'
+    : '';
+
+  const near=CITY.nearby||[];
+  document.getElementById('abNearby').innerHTML = near.length
+    ? '<h3>Nearby</h3><ul class="nearby">'
+      + near.map(n=>'<li>'+rich(n)+'</li>').join('') + '</ul>'
+    : '';
+
+  document.getElementById('abFoot').textContent = CITY.foot||'';
+}
+renderAbout();
+function toggleAbout(open){
+  about.classList.toggle('open',open);
+  about.setAttribute('aria-hidden',open?'false':'true');
+  aboutBtn.classList.toggle('active',open);
+  if(open) about.scrollTop=0;
+}
+aboutBtn.onclick=()=>toggleAbout(!about.classList.contains('open'));
+document.getElementById('aboutClose').onclick=()=>toggleAbout(false);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') toggleAbout(false); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+let wasSide=sideMode();
+window.addEventListener('resize',()=>{
+  const now=sideMode();
+  if(now!==wasSide){ wasSide=now; if(selected) panToPlace(selected); }
+});
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
