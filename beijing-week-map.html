@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!-- city-guide-maps template v7 capabilities: swipe-dismiss,drag-handlers,click-away,escape-key,gallery,side-panel,must-see,overview,filters,fullscreen,geolocation,osm-basemap -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Beijing — A Week of Sights & Food</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{position:relative;width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .pin.must{border-color:#F2C14E;border-width:3px;
+    box-shadow:0 0 0 1.5px rgba(120,80,0,.55),0 2px 7px rgba(0,0,0,.45)}
+  .star-badge{position:absolute;top:-5px;right:-5px;width:12px;height:12px;
+    background:#F2C14E;border-radius:50%;border:1.5px solid #fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+    width:30px;height:30px;border:none;border-radius:50%;cursor:pointer;
+    background:rgba(0,0,0,.42);color:#fff;display:none;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);transition:background .15s ease}
+  .gal-nav:hover{background:rgba(0,0,0,.65)}
+  .gal-nav:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .gal-nav svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .gal-nav.prev{left:8px} .gal-nav.next{right:8px}
+  .gal-nav[disabled]{opacity:.3;cursor:default}
+  /* only for real pointers — touch users swipe */
+  @media (hover:hover) and (pointer:fine){
+    .gal:hover .gal-nav, .gal-nav:focus-visible{display:flex}
+  }
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  /* when there is no photo the grabber would sit on the text */
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---- city overview sheet ---- */
+  .about{position:absolute;inset:0;z-index:1400;background:var(--paper);
+    overflow-y:auto;transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.32,.72,.35,1);
+    -webkit-overflow-scrolling:touch}
+  .about.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.about{transition:none}}
+  .about-inner{max-width:640px;margin:0 auto;padding:18px 20px calc(40px + env(safe-area-inset-bottom))}
+  .about h2{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:3px}
+  .about .tagline{font-size:14.5px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+  .about-close{position:sticky;top:0;float:right;width:34px;height:34px;border:none;
+    border-radius:50%;background:#eef1f5;color:#5b6472;font-size:16px;cursor:pointer;
+    line-height:1;z-index:2;margin-left:10px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;
+    margin-bottom:20px}
+  .stat{background:#f6f4ef;border-radius:11px;padding:9px 11px}
+  .stat .k{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#8b8577;margin-bottom:2px}
+  .stat .v{font-size:14px;font-weight:700;line-height:1.25}
+  .about h3{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:20px 0 7px}
+  .about p{font-size:14.5px;line-height:1.6;color:#374050;margin-bottom:9px}
+  .musts{list-style:none;margin:2px 0 4px}
+  .musts li{position:relative;padding:7px 0 7px 27px;font-size:14.5px;line-height:1.5;
+    border-bottom:1px solid #f0ece4}
+  .musts li:last-child{border-bottom:none}
+  .musts li::before{content:"";position:absolute;left:5px;top:14px;width:9px;height:9px;
+    border-radius:50%;background:#F2C14E;box-shadow:0 0 0 2px rgba(242,193,78,.28)}
+  .musts b{font-weight:750}
+  .nearby li{padding:7px 0 7px 27px;font-size:14px;line-height:1.5;list-style:none;
+    position:relative;color:#374050}
+  .nearby li::before{content:"";position:absolute;left:6px;top:15px;width:7px;height:7px;
+    border-radius:50%;background:#9E9D24}
+  .about .foot{font-size:11.5px;color:#95a0ae;margin-top:22px;line-height:1.5;
+    border-top:1px solid var(--line);padding-top:13px}
+  /* ---- wide / landscape: the card becomes a left-hand panel ----
+     A full-width bottom sheet letterboxes photos badly once the window is wide. */
+  @media (min-width:720px){
+    .sheet{left:0;right:auto;top:0;bottom:0;width:390px;max-height:none;height:100%;
+      border-radius:0 20px 20px 0;box-shadow:8px 0 30px rgba(16,24,40,.22);
+      transform:translateX(-105%)}
+    .sheet.open{transform:translateX(0)}
+    .gal, .gal-track img{border-radius:0 20px 0 0}
+    .gal-track img{height:auto;aspect-ratio:3/2}
+    .grabber{top:0;bottom:0;left:auto;right:0;margin-left:0;width:24px;height:100%;
+      flex-direction:column}
+    .grabber::after{width:4px;height:38px}
+    .sheet:has(.gal.none) .sheet-body{padding-top:16px}
+    .sheet-body{padding-right:26px}
+    /* keep the filter panel clear of the card */
+    .panel{left:auto;right:70px}
+    .about-inner{padding-left:26px}
+  }
+  @media (min-width:720px) and (max-height:520px){
+    /* phone held sideways: shorter, so trim the photo further */
+    .gal-track img{aspect-ratio:2/1}
+  }
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Beijing — A Week of Sights & Food</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="aboutBtn" title="About this city" aria-label="About this city">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Pins: circles are sights, rounded squares are food, diamonds are drinks, and a gold ring marks the must-sees. CLOSED MONDAYS: Forbidden City, National Museum. BOOK AHEAD with your passport: Forbidden City (7 days), Lama Temple, Temple of Heaven, Tiananmen Square, National Museum. Coordinates are Google's (offset inside China); the map converts them for the basemap and hands the raw values to Amap for navigation. Photos are traveller uploads from Google Maps, credited on each card; I could not view them.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <button class="gal-nav prev" id="galPrev" aria-label="Previous photo">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="gal-nav next" id="galNext" aria-label="Next photo">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Amap
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="about" id="about" role="dialog" aria-label="About this city" aria-hidden="true">
+  <div class="about-inner">
+    <button class="about-close" id="aboutClose" aria-label="Close">✕</button>
+    <h2 id="abTitle"></h2>
+    <p class="tagline" id="abTagline"></p>
+    <div class="stats" id="abStats"></div>
+    <div id="abSections"></div>
+    <div id="abMusts"></div>
+    <div id="abNearby"></div>
+    <p class="foot" id="abFoot"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"palace": {"label": "Palaces & imperial gardens", "color": "#B71C1C", "icon": "crown"}, "landmark": {"label": "Temples, towers & squares", "color": "#6A1B9A", "icon": "landmark"}, "wall": {"label": "Great Wall", "color": "#2E7D32", "icon": "mountain"}, "museum": {"label": "Museums & art", "color": "#1565C0", "icon": "palette"}, "hutong": {"label": "Hutongs & lakes", "color": "#8D6E63", "icon": "footprints"}, "cheap": {"label": "Cheap eats (under ~¥60)", "color": "#00ACC1", "icon": "utensils", "shape": "food"}, "snack": {"label": "Snacks & old-school stops", "color": "#00897B", "icon": "cookie", "shape": "food"}, "mid": {"label": "Mid-range (¥100–280)", "color": "#F9A825", "icon": "utensils", "shape": "food"}, "splurge": {"label": "Splurge (¥400+)", "color": "#C2185B", "icon": "utensils", "shape": "food"}, "brew": {"label": "Craft beer", "color": "#37474F", "icon": "beer", "shape": "drink"}, "cocktail": {"label": "Cocktail bars", "color": "#5E35B1", "icon": "martini", "shape": "drink"}, "stay": {"label": "Where to stay (districts)", "color": "#78909C", "icon": "bed"}};
+const ICONS = {"bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "beer": "<path d=\"M17 11h1a3 3 0 0 1 0 6h-1\"/> <path d=\"M9 12v6\"/> <path d=\"M13 12v6\"/> <path d=\"M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 0 1 0-5c.78 0 1.57.5 2.5.5S9.44 2 11 2s2 1.5 3 1.5 1.72-.5 2.5-.5a2.5 2.5 0 0 1 0 5c-.78 0-1.5-.5-2.5-.5Z\"/> <path d=\"M5 8v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8\"/>", "cookie": "<path d=\"M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5\"/> <path d=\"M8.5 8.5v.01\"/> <path d=\"M16 15.5v.01\"/> <path d=\"M12 12v.01\"/> <path d=\"M11 17v.01\"/> <path d=\"M7 14v.01\"/>", "crown": "<path d=\"M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z\"/> <path d=\"M5 21h14\"/>", "footprints": "<path d=\"M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z\"/> <path d=\"M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z\"/> <path d=\"M16 17h4\"/> <path d=\"M4 13h4\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "martini": "<path d=\"M12 12 4.207 4.207A.707.707 0 0 1 4.707 3h14.586a.707.707 0 0 1 .5 1.207z\"/> <path d=\"M12 12v10\"/> <path d=\"M7 22h10\"/>", "mountain": "<path d=\"m8 3 4 8 5-5 5 15H2L8 3z\"/>", "palette": "<path d=\"M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z\"/> <circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\"/> <circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>"};
+const CITY  = {"name": "Beijing", "tagline": "A capital laid out on a single north–south line, and still readable that way: palace, ritual altars, drum towers and lakes are all strung along it, and the best eating is in the lanes beside it.", "stats": [["Central Axis", "7.8 km, UNESCO World Heritage since July 2024"], ["Visa (Australian passport)", "30 days visa-free; the policy runs to the end of 2026"], ["Best months", "Spring and autumn; avoid Spring Festival, Tomb Sweeping and the May and October holiday weeks"], ["Getting around", "Metro plus Didi taxis; use Amap or Baidu Maps, not Google Maps"], ["Paying", "WeChat Pay and Alipay dominate; some vendors refuse cash and foreign cards"], ["Airport to centre", "Airport Express runs from Terminal 3 to Dongzhimen; one traveller timed it at 36 minutes"], ["Book ahead", "Forbidden City (7 days, 8pm Beijing time), Lama Temple, Temple of Heaven, Tiananmen, National Museum; passport needed for all"], ["Eating", "¥25 noodles to ¥400 duck; Bib Gourmand meals are mostly ¥80–150 a head"], ["Tickets (headline sights)", "Palace ¥60, Temple of Heaven ~¥34, Lama Temple ¥25, Summer Palace ¥30–60, Mutianyu ~¥65 plus cable car"], ["Daily budget", "About ¥300 thrifty, ¥700 comfortable, excluding the hotel (my estimate from the prices on the cards)"], ["How long", "A week: three days on the axis and its lanes, one for the Wall, one for the north-west gardens, one flexible"], ["Heating", "Central heating is off until about 15 November, so hutong rooms can be cold in late October"]], "sections": [["A week, day by day", "**Day 1 — the north end and the lanes.** Drum and Bell Towers, Fangzhuanchang noodles, Mao'er Hutong, Houhai at dusk, then Modernista, Caterpillar or Great Leap's original taproom (all within about a kilometre; Modernista is closed Mondays).\n\n**Day 2 — the palace.** Forbidden City (booked a week ahead, closed Mondays), out the north gate to Jingshan, then Siji Minfu for duck: take a number early.\n\n**Day 3 — the south axis.** Yin San douzhi for breakfast, Temple of Heaven by the East Gate, lunch at Bianyifang or Li Qun in Qianmen, and the Tiananmen Square slot and National Museum in the afternoon if you booked them (the museum is closed Mondays).\n\n**Day 4 — the Wall.** Mutianyu: leave by 8am, cable car up, toboggan down. A weekday is quieter.\n\n**Day 5 — the north-west.** Summer Palace early, Old Summer Palace in the afternoon (about 2 km east).\n\n**Day 6 — the north-east.** Lama Temple, almond tofu at Sanyuan Meiyuan, Jinshenglong's tripe hotpot, and Guijie after dark.\n\n**Day 7 — pick one.** The south-west food crawl (Huguosi, Niu Street's Hongji and Jubaoyuan, Xiaochang Chen, Jingyi in Liulichang), or Chaoyang: 798 in the afternoon, Jing-A and Baoyuan dumplings, with Da Dong for a splurge dinner."], ["History in five minutes", "Beijing is the product of a straight line. The Drum and Bell Towers go back to 1272 under the Yuan, and in 1420 the Yongle Emperor had them rebuilt slightly east to sit on the axis of his new palace. The Forbidden City took 14 years and over a million workers (1406–1420) and the Temple of Heaven was begun in the same reign, so the ritual and political heart of the Ming and Qing was laid out in one campaign and then kept. Twenty-four emperors lived in the palace until Puyi was evicted in 1924, and the Palace Museum opened the next year.\n\nThe Qing added the gardens to the north-west. The Marble Boat dates from 1755, and the two stories every guide tells about the dynasty running down are the 1860 destruction of the Old Summer Palace by Anglo-French forces and the 1893 rebuilding of the Summer Palace with, it is said, money meant for the navy. UNESCO inscribed the 7.8 km Central Axis itself in July 2024, so the line you can walk is now the monument."], ["Culture and society", "Public space here is lived in, not just visited. Between 6 and 8am the Temple of Heaven grounds fill with tai chi, ballroom dancing, water calligraphy on the paving and opera singing, which is the best free thing in the city. Hutong gates left slightly open are usually someone's front door, so do not walk into courtyards.\n\nNiu Street, south-west of the centre, is the Hui Muslim quarter: halal hotpot and snack counters, and its mosque has been shut for restoration since August 2024, with about three years planned. Many sights now require your physical passport and a timed slot booked through a WeChat mini-program, and mobile payment is assumed almost everywhere, so set up Alipay or WeChat Pay before you land."], ["Iconic food & drink", "**Peking duck** comes in three styles on this map: wood-fired and carved at the table (Siji Minfu), closed-oven stewing with juicier meat and less crisp skin (Bianyifang, which claims 1416) and the lean modern version (Da Dong). Beyond duck: **zhajiangmian** (Fangzhuanchang), **copper-pot lamb hotpot** (Niu Street, halal), **luzhu huoshao** braised offal, **baodu** scalded tripe, **douzhi** with jiaoquan for breakfast, and **almond tofu**.\n\nMichelin's 2026 guide lists 26 Beijing Bib Gourmand restaurants, and several are on this map. Local blogs say to skip the snack streets at Wangfujing, Qianmen and Nanluoguxiang for food. For drink, there is craft beer (Great Leap from 2010, Jing-A) and hutong cocktail bars. Baijiu bars exist, but I could not confirm one to pin."], ["Unique to Beijing", "You can walk a 7.8 km line of gates, palaces, ritual altars and drum towers that UNESCO now protects as a single thing, starting at the Drum Tower and ending at Yongdingmen, and be on a restored Wall section the next morning from the same hotel."], ["Where to stay", "**Gulou and the Nanluoguxiang hutongs** for atmosphere and the best bars and noodles at your door; taxis cannot enter the alleys and budget guesthouses can be cold and basic, so choose a boutique hotel. **Wangfujing** for the easiest first visit, walkable to the palace and on Line 1, but touristy and pricey. **Dongzhimen and Sanlitun** for airport trains, the bus to the Wall and nightlife, but far from the palace.\n\n**Avoid for a first sightseeing week:** Zhongguancun/Haidian and the Guomao business district. Both sources I read rate their access to the central sights as poor or limited. Confirm any hotel accepts foreign guests before booking."], ["What I could not confirm", "The Beijing Underground City reportedly reopened in May 2026 as a civil-air-defence museum near Qianmen, but Google reviews describe it as closed or in the wrong place, so I left it off. Liu Ma Ma dumplings (a 2026 Bib Gourmand) only resolved to a different district. Jing-A's Longfusi taproom and a baijiu bar did not resolve either. Great Leap's original taproom has no confirmed hours. Most prices and hours come from third-party travel sites or reviews, not official pages, and the photos are traveller uploads that I could not view."]], "musts": ["**The Forbidden City** — book 7 days ahead at 8pm Beijing time; ¥60 (¥40 Nov–Mar); closed Mondays; 3–5 hours", "**Temple of Heaven** — about ¥34 combo ticket; go 6–8am for the park life", "**Mutianyu Great Wall** — about ¥65 entry plus ¥65 cable car up; leave Beijing by 8am", "**Summer Palace** — ¥30, or ¥60 with the inner sites; allow 3–5 hours", "**Lama Temple** — ¥25; timed ticket, book ahead with your passport", "**Drum & Bell Towers** — about ¥15 a tower; the axis starts here", "**Fangzhuanchang noodles** — about ¥25 a bowl; Michelin Bib Gourmand", "**Peking duck at Siji Minfu** — about ¥260 a duck; take a number an hour early"], "nearby": ["**Simatai (about 2 hours by car)** — a night visit is the draw, with an evening ticket of about ¥110 booked through the Gubei Water Town website.", "**Jiankou (about 3 hours)** — wild, unrestored Wall for experienced hikers only; the Jiankou to Mutianyu traverse takes 3–4 hours, and a taxi to Xizhazi village is about ¥300–400.", "**Ming tombs at Changping (about 30 miles north-west)** — National Geographic reports several previously closed tombs are being restored to open in 2026; I could not confirm which are open."], "foot": "Prices are indicative for October 2026 and mostly from third-party travel sites; re-check on official channels before you go. Sources: Michelin Guide Beijing 2026, Beijing municipal government, wanderinchina.com, chinavigators.com, nomadotravel.app, visitbeijing.com.cn, Wikipedia, Google Maps reviews."};
+const PLACES = [{"c": "palace", "n": "The Forbidden City (Palace Museum)", "zh": "故宫博物院 · Gùgōng", "lat": 39.9163447, "lng": 116.3971546, "must": true, "m": "4.6★ · ~¥60 (¥40 Nov–Mar) · CLOSED MONDAYS · last entry ~4:10pm · BOOK 7 DAYS AHEAD, PASSPORT REQUIRED", "d": "The palace of 24 Ming and Qing emperors, and the one sight in Beijing you cannot turn up to. Tickets are passport-linked, timed and sold online seven days ahead from 8pm Beijing time (Alipay or WeChat Pay); the gate sells nothing. Enter at the Meridian Gate in the south, walk the central axis north (about two hours), and leave by the Gate of Divine Prowess for Jingshan. Allow 3–5 hours if you add the ¥10 Treasure Gallery, and arrive near opening to beat the tour buses.", "s": "Everyone repeats that the palace has 9,999 rooms. It does not: surveys count about 980 surviving buildings containing 8,886 bays, a bay being the space between four pillars. The 9,999 figure is oral tradition, not a count. A smaller surprise: the stone ramp in front of the Hall of Supreme Harmony is two slabs, and the carving laid over the join hid it until weathering widened the seam in the twentieth century.", "sl": "The 9,999-room myth", "g": "https://maps.google.com/?cid=16015903006089306212", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLd6o-unfAtfae6NVUh7WfmZdGFasEDECpE6qgRT_gLppgMuABjFsR8HgD4QvgRP-XTiN0kLJvA06Nmq4YvXgQMX9JSMg7wTfe5Xn7j5NQJ7dg7EICcp6RuWnlnsDPNkOgeAprlb=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcjT6hjDIS54zXmAcFDo27_9_eM0_SSyE2-tkmPKKWcWt2KUUwVQUq-Hhq5cQ4rYt5entXB1L5urtHC8UHffXfmUX_PnoXlX69EmL4uHPYjF6DOyZ99fwZ2ZsVB1WQcLyo7BSpHrw=s4800-w800-h600"], "a": ["Matthias Gottschalk", "Yanhong Lu"]}, {"c": "palace", "n": "Jingshan Park", "zh": "景山公园 · Jǐngshān", "lat": 39.9250988, "lng": 116.3968433, "m": "4.6★ · ~¥2 · pay on site by WeChat or Alipay · go before 9am on weekdays or at sunset", "d": "The artificial hill directly behind the Forbidden City, and the cheapest way to see the whole palace in one frame: climb to the top pavilion for the golden roofs running south in a straight line, the Drum Tower to the north and the White Dagoba in Beihai to the west. It sits across the road from the palace's north exit, so do it straight after the palace. Weekday mornings before 9am are the quiet slot.", "g": "https://maps.google.com/?cid=10760400281914008411", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfkzNO0y05qZTWLKvchUqcfJT5r2crahLno9xJA7_UjA6KkY0Qt8qXicT_RV-ZLX34vhw_6J0RfacfhKRHQ3n8Bp4u3lGL-FcA5Wt_RhwXDDor5-ecQyXsvHL2LpDxcL_aWAOao=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcZbmVUfjziUSvkkXCB4q94JJLeh3S2wkQhk0LJnrwOyLfzFPRwx-o_GwpkiJP81V_iGVTq-PSl9_orTL3pJJZfKU1vFyewX2eSJzdQayIAVUlmx-C0ioCQo_en90_HL0908xts=s4800-w800-h600"], "a": ["simon h", "Savoir Aimer (Admin)"]}, {"c": "landmark", "n": "Tiananmen Square", "zh": "天安门广场 · Tiān'ānmén Guǎngchǎng", "lat": 39.9054895, "lng": 116.3976317, "m": "4.4★ · FREE · TIMED SLOT BOOKED ON WECHAT + PASSPORT REQUIRED · airport-style security", "d": "Now a controlled space: you need a timed slot booked on WeChat (usually the day before; reviewers report four slots and four entry points), your physical passport and a security queue. The square ticket covers only the square; the National Museum and Mao Mausoleum are separate bookings. Beijing's government site says the flag-raising ceremony also needs a reservation at least a day ahead. Honest verdict: a vast, empty plaza whose real payoff is the view of the palace gate. Allow an hour.", "g": "https://maps.google.com/?cid=3092335537874557203", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLchK92yY5dddF3-CiiDudoVKX_DoBaHb2TiqBeY26oQwkYBbsWLSC4ZF-VA-asrknIQdeiZ3-LipKXNjObNro8bCq6fpA5SAKO8cP1IbUSG5BY1RDAXC3mIXkpplafaVCfGwcBGYw=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLde4yAaV0MWLUHxYjRaZlvpTOVDTl8PUoJOhXjXha26Z6HBOap8FB3L5M7CAye2PyY-3AKzc9zo08LO1K761nzyKJv62jN4E7s8Z8JMlx7LH-Nj7jIS_Y5rMZSVBgyvr6aw7sPHTnaR3Xw=s4800-w800-h600"], "a": ["Frank Fung", "Dejan Braki"]}, {"c": "museum", "n": "National Museum of China", "zh": "中国国家博物馆 · Zhōngguó Guójiā Bówùguǎn", "lat": 39.9050945, "lng": 116.4015829, "m": "4.3★ · FREE but BOOK AHEAD · CLOSED MONDAYS · Tue–Sun 9:00–4:30pm · passport", "d": "Free, enormous and next door to Tiananmen, with five thousand years of Chinese objects; reviewers single out the ancient bronzes and the jade burial suit. The catch is the booking: several reviewers say the official system is close to impossible for foreigners and ended up paying a third-party agent or joining a guided tour. Book the moment your dates are fixed, bring your passport, and check that any power bank carries the CCC mark or security may take it.", "g": "https://maps.google.com/?cid=164207946776495625", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLdFKpbrVrxz7uWSN6D21XahTpVs58skRy9-O87HFu_ZAdi_eNEYUgaOUCDgha2e1sCSZ12u8J30eQc4YN7yPbWd21-AsPhzic5qLNCyJqTtgmP0x0aH36yiUe7e-j2b67Li3wHU1Q=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLeDzDiRBFmZqAY2jg-J8CIbUZuRJ7qpah_JSKn_zsOrV5VMf4FF6ZjTfgZ5FZakWDEYd0l6DGpN8T_APRplsthkybvmKDOczU875WtQnEzaL0Wm43LqZ9YS1dEMYgCA8BUArPC361BP0Ko0=s4800-w800-h600"], "a": ["Savoir Aimer (Admin)", "Chong Foo Hing"]}, {"c": "landmark", "n": "Temple of Heaven", "zh": "天坛 · Tiāntán", "lat": 39.8821803, "lng": 116.4066056, "must": true, "m": "4.6★ · ¥15 park / ~¥34 combo with the halls · park 6am–9pm, halls from 8am · BOOK on the official mini-program", "d": "Where the Ming and Qing emperors prayed for harvests, in a park about four times the size of the Forbidden City. Buy the combo ticket (about ¥34) or you only get grounds, not the Hall of Prayer for Good Harvests. Enter by the East Gate (Metro Line 5, Tiantandongmen, Exit A) and do the Hall, Danbi Bridge, Imperial Vault with the Echo Wall, then the Circular Mound Altar: two to three hours. For tai chi, ballroom dancing and opera among the cypresses, come between 6 and 8am. Foreign passport holders are said to be unable to buy at the gate.", "s": "The Hall of Prayer for Good Harvests is a triple-roofed wooden drum, 38 metres tall, built without nails. Lightning burned the original down in 1889 and the replacement went up within a few years. Out on the empty marble Circular Mound Altar, the emperor made the main winter-solstice prayer from the centre stone, which was designed to amplify his voice to heaven.", "sl": "Struck by lightning in 1889", "g": "https://maps.google.com/?cid=3975575958149205610", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLeA-FM1KdGGpZzWp5hLKyJSmw-PcFXfs30DponyONtpY3-eb261YbvONU75nVxp7xefEbLBzIdjXDUEURx4SeIaqlgdoEoTot4QXeynBGMBuGivtJlzIU1geLf0xJZjp2Igqy5ohn5zN0L5=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfEm6yGqmGcY28CxI3gvcJ0R6c5HCWG5RCgfY61FcmPCWBnHDUadQuB5aQ6dWGewG6HXBErfikPrxBBGUXSkKliRGvBXXJy2rSqMIbWr-v6cNarJjYCoxunAFwST0HFUufEgt-hGZmdiIaV=s4800-w800-h600"], "a": ["Nasz Plus", "Blanchet Parisi"]}, {"c": "landmark", "n": "Drum & Bell Towers", "zh": "鼓楼与钟楼 · Gǔlóu & Zhōnglóu", "lat": 39.9407055, "lng": 116.3958979, "must": true, "m": "4.5★ · ~¥15 a tower, combo available (reviewers; confirm) · steep, narrow stairs", "d": "The twin towers at the north end of the Central Axis. Reviewers recount that the Drum Tower dates to 1272 under the Yuan and that in 1420 the Yongle Emperor rebuilt them slightly east to line up with the palace. Climb the red Drum Tower for the best view over the hutongs towards Jingshan; the grey Bell Tower is the quieter climb. The advertised drum show can run under two minutes, so go for the view, not the performance. Start your axis walk here and head south.", "g": "https://maps.google.com/?cid=14393882415613995369", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfFbk7nZez3yn-8qBpAJLWmbQrutVFzjzixI1Ys5qCCG4-KkowZQlpwxhOaYZPRcECL7GYr8T5ZSQ8YQFn_tJtCdJqHvzcubDjceoaemi7kcSJZ8yRTTex6nM6FVBcZnZv_HEAFsg=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLclUvbD5vEEimr69CKoynPQ6klDtZ0_6NJtZqeB6hsBCi0gdAgaZqoY9cDAu6hwTnVL8z_ddqAi7zqEqNydsy4OeeprMHcW_j_wnZ6pC6gSVZMoLsk9ptpCu3905vR1NuzkHSV7=s4800-w800-h600"], "a": ["Camille Scharre", "Jerem"]}, {"c": "hutong", "n": "Mao'er Hutong & the quiet lanes", "zh": "帽儿胡同 · Màor Hútòng", "lat": 39.93636, "lng": 116.39969, "m": "FREE · best on weekday mornings, roughly 8–10am · download an offline map first", "d": "Skip the main Nanluoguxiang strip, which walking guides call commercialised, and use the quieter parallel lanes: Mao'er, Ju'er and Banchang hutongs, then Yandaixie Street towards Houhai. By late morning at weekends the lanes fill. Gates left slightly open are usually someone's front door, not a shop, so do not wander into courtyards. The side alleys defeat GPS, so download an offline map. Modernista, Caterpillar and Great Leap's original taproom are all within this walk.", "g": "https://maps.google.com/?cid=827350592248842918", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcoXA3pUaw7Gjz1GtpVGprnia9Bc11J13RoR97k8KsSXzXSCACKBAt64gycyLIQjQpjAbuGkeBv7GFA2OzbM7mjTP2Lr8jRcx0BJ--YNzzjOznDrXaXD5R0Wgiq2yuuj6qqHCBZ=s4800-w800-h600"], "a": ["FireFox Hu"]}, {"c": "hutong", "n": "Houhai & Shichahai lakes", "zh": "后海 · Hòuhǎi", "lat": 39.942312, "lng": 116.385821, "m": "4.4★ · FREE · pedal boat ~¥180 an hour for four (one review) · bar strip busiest at night", "d": "The lake district north-west of the palace. By day locals play chess, fish and swim; by night the lakeside bars come on, and reviewers mention live music in many of them. The strip is the tourist-facing part, so walk the shore early or at dusk and eat elsewhere: Fangzhuanchang's noodles are about a kilometre east. Boats and carriage rides are on offer; one review quotes ¥180 an hour for a four-seat pedal boat.", "g": "https://maps.google.com/?cid=4071427835810509826", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfjdrj15fk19Ggjs_MvfllQg93sNeWdciWnXQgOkHlU3MhtuaT3ovbEX9_PysamL7J-P5I2HND0rVdUsZ8R9IrClNS9PnOI53UEUrHTiyaXY3TB0A27U_LqScowxv3iwyRPooc=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcFamqsLpOYlFe4W26_TZDkJWScQxFbtWi6i6i7T_vSGhCw_FurglFD6Ztk5vr4MeYHG9i7FFjJ4hHnggpygw9PSC-km8a8jYTAWjz_XnrlQl1Tm8ykytWP2hSRiZeco6IHt2R2=s4800-w800-h600"], "a": ["Pang Cheung Sze", "世旻鄭"]}, {"c": "landmark", "n": "Lama Temple (Yonghe Temple)", "zh": "雍和宫 · Yōnghégōng", "lat": 39.9476712, "lng": 116.4172902, "must": true, "m": "4.7★ · ¥25 · BOOK ~7 DAYS AHEAD (WeChat mini-program, passport) · 9:00–4:30pm · no restaurant inside", "d": "A Tibetan Buddhist temple in the old north-east of the city. The draw is the Maitreya in the Pavilion of Ten Thousand Happinesses: 18 metres above ground, carved from a single piece of white sandalwood. Tickets are timed and sold ahead via the Yonghegong mini-program; one source says there are no walk-up tickets and morning slots go first. Incense is free at the gate: light all three sticks together, wave rather than blow them out, stand them upright in the burner. Monks chant around 10am or 2pm. Sanyuan Meiyuan's almond tofu is 300 metres away.", "s": "Yinzhen, the future Yongzheng Emperor, lived here as a prince from 1703. When he took the throne in 1722 the house became a palace, and in 1744 his son Qianlong turned it into a lamasery. The giant Buddha was a gift to Qianlong from the seventh Dalai Lama and took three years to bring from Tibet. The temple was closed in the Cultural Revolution and is said to have survived because Premier Zhou Enlai intervened.", "sl": "A prince's house that became a monastery", "g": "https://maps.google.com/?cid=6804010715832503248", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLf3x7WsUx5uAVUHyMsCUrWq2oy0RUJFqxThXIGtXbT7ms_IiCyaZfuymm-IASlXivJUk2TvU1JUravW47NwnscT4wImUUWFfgq9o8OTKdWkvFzzwAzZAo8rQnAREgEDXGrPgogeIA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcFQlbgzlFZi3aRGNOXmk7UgUKy87jk4Hw4gg2PdIcQY4iV04FKCdEipLakbBLFip4QTaB9Eg20D9SS5KLkoG-Wka8J51swcRtZptxWF-nRO_8XhiKec3SBfVFSHOt_AxJ13s8ziA=s4800-w800-h600"], "a": ["Anonya Roy", "Phoptronics Phoptronics"]}, {"c": "palace", "n": "Summer Palace", "zh": "颐和园 · Yíhéyuán", "lat": 39.9999823, "lng": 116.2754606, "must": true, "m": "4.6★ · ¥30 entry, ¥60 through ticket for the inner sites (Apr–Oct; ¥20 / ¥50 Nov–Mar) · 6am–8pm · allow 3–5 hours", "d": "The imperial lake-and-hill garden in the north-west, about an hour out. Walk the Long Corridor, visit the Marble Boat, climb Longevity Hill for the view across Kunming Lake, and take a boat across rather than walking the whole shore: reviewers agree it is a long haul. The through ticket adds the Tower of Buddhist Incense, Garden of Virtue and Harmony, Suzhou Street and the palace museum. Enter by the North Gate to climb first, or the East Gate for a gentler lakeside start. Go early; it gets very crowded.", "s": "The Marble Boat is a wooden pavilion on a stone base. It was first built in 1755 under Qianlong, burned in 1860 on Lord Elgin's orders in the Second Opium War, and rebuilt for Empress Dowager Cixi in 1893 with its upper deck painted to imitate marble. The money is often said to have been diverted from the imperial navy, which is why many read the boat as an ironic joke. That part rests on historians' inference, not a paper trail.", "sl": "The boat that can't sail", "g": "https://maps.google.com/?cid=5033249184497836338", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcF18FYN1-ENoEieQJoPuZ63aUFijCBjR-iDG_Dc_Cg2AU-u17uyXvJ_PYpuDTg4sPZcmML2IN10RmR_7ZQ2pNUGLQyb-xLXj_EotnwEGDUOvylShdNyw7VB_BM-WIVJKtqX1ImvQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLeBjyVsABwugp3D2Xpc3gf1qETl_iPMg_xlGMc5RPguDJWwlTltyK_28SeRV_UwhvRv4wnhIdR76jKR8vIbxCCBS4VHI7bT8JwgUUat7czsAfqLsLwbPFW5jJ-SFHZ8OuFRcNCK=s4800-w800-h600"], "a": ["Bakeel Obyan", "AROUND THE WORLD"]}, {"c": "palace", "n": "Old Summer Palace (Yuanmingyuan)", "zh": "圆明园 · Yuánmíngyuán", "lat": 40.0080982, "lng": 116.2982148, "m": "4.4★ · ¥10 park, +¥15 Western Mansions ruins (¥25 through ticket) · 7am–5pm · about 2 km east of the Summer Palace", "d": "The ruins of the emperors' Garden of Gardens, largely destroyed by Anglo-French forces in 1860. What survives is the broken marble of Dashuifa and the Western Mansions, scattered through a huge park of lakes and willow paths, so it reads far better with the audio guide or the AR scans reviewers recommend. Autumn colour and fewer people than next door make this a good second stop after the Summer Palace; pay the ¥15 extra for the ruins, which is where the point of the visit is.", "g": "https://maps.google.com/?cid=17338741661519584588", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfIXD4OMhZbgKlETgKhlUZuwaM32g1RGQqQtZCO92CnbUYixPoPRjPkTtEzOu6Y8PUWdLs_ZAKIfaJ1iloWH_YFH_T3E8VSb48793dkrw5LNASGmhh44y_hd5xZm-mXNdL5P9HwE-XZzbDe=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfXY3eyIDNJc5n-3BDUmeWAikCrLvMVk83vyXJySZOXdSmXo1N6mJvmWE7A4587nRORE2qtjd3QaULav5Q7EnzhKQqUlyEMjYX0qpXdIQN8qQYby2CtSERjFoye1sh-vTZeBmlMPA=s4800-w800-h600"], "a": ["Petra Rettberg", "jy"]}, {"c": "wall", "n": "Mutianyu Great Wall", "zh": "慕田峪长城 · Mùtiányù", "lat": 40.432683, "lng": 116.564006, "must": true, "m": "4.8★ · ~¥65 entry + cable car ~¥65 up / ¥55 down, toboggan ~¥55 · leave Beijing by 8am · ALLOW A FULL DAY", "d": "The best-restored Wall section for a one-day trip, with forest on both sides and far fewer crowds than Badaling. Public transport: bus 916 from Dongzhimen to Huairou (about ¥15), then minibus H23 or H24 (about ¥15); a private car was ¥600 round trip for one reviewer. Ride the cable car up, walk the towers, come down on the toboggan. Queues build by mid-morning, so be at the wall early. Weekdays are quieter. Check the weather: reviewers' best days were clear autumn mornings.", "s": "This stretch is older than Badaling: the wall was first built in the mid-sixth century under the Northern Qi, and the Ming general Xu Da built the present one on top of it, rebuilding it again in 1569. Unusually, both parapets are crenellated, so defenders could shoot from cover on whichever side the enemy came from.", "sl": "Armed on both sides", "g": "https://maps.google.com/?cid=300229255227996312", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLd25_H99PFHfOtshSrsZGPWkTY401J2nj7LJUh82ewZFwgrQJozZHh0Em7PcVuwhBXFzBLdeOSI4J3FOoENYvWtvb0IzAHMBOencXyRf9mG2Rzdgw29QkjNYAhmCVubkcbSU9oAzrwBXog7=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLeZKdm0UeWYBv2284gcTflLBKlROAJW1fEY_-N9HAwje8fTMm3t3CGpQrmiCELNr_9r7qmG1AV8H-2a7I9QMp6phux_jjK8DJSCPhv1OOl-HluW4AjPBGR_eyMflwzabnhIu45jssVNzfVQ=s4800-w800-h600"], "a": ["Joe Belanto", "3 Schwerter"]}, {"c": "museum", "n": "798 Art Zone", "zh": "798艺术区 · 798 Yìshùqū", "lat": 39.984138, "lng": 116.49609, "m": "4.5★ · district FREE, big exhibitions ~¥100–180 · galleries roughly 10:00–18:00 · MANY CLOSE MONDAYS", "d": "A former military-electronics factory turned gallery district. Free to wander, with UCCA as the anchor and the smaller project spaces in the back lanes worth more time than the main strip. Weekday afternoons are quietest; take Line 14 to Jiangtai, Exit A, then walk about ten minutes north. Carry ¥100–200 in cash because some small galleries refuse foreign cards, and check each venue's WeChat for hours. About 40 minutes by subway from the centre, so give it an afternoon.", "s": "The buildings are Bauhaus-influenced, designed by East German engineers for Joint Factory 718, which began production in 1957 under a Sino-Soviet military-industrial plan. Slogans painted on the ceiling arches during the Cultural Revolution were kept when the factories became studios, because the artists asked for them to stay.", "sl": "Built by East Germans, painted by Mao", "g": "https://maps.google.com/?cid=10603645148988935011", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfNYc1Ezv0OQGWG6F7GUPkJEBbG3fV_WcO0s6gUqJElHB2Eu1J9eFTP-n7zGdz_bAJ6sCijn8wI1i9FQSJcvIUuT3fCL-_QTTidhUJCPpoQCZgOnago8Ju1Oa-VeWwmf4q-aD7J=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfc2RhVI7Xqx1dqJGt31VQHXAnDWdRYs_F2T_cs2IVkxw-MkG4X7FzePEJlNDpwN1o2QQX53L9yTMjGd11M0tsFG4kscp3-fhdDZ4wFrLtXVIeNfJeXIr9HX1AItufzzhECrKch=s4800-w800-h600"], "a": ["Savoir Aimer (Admin)", "吳冠廷"]}, {"c": "cheap", "n": "No. 69 Fangzhuanchang Zhajiangmian", "zh": "方砖厂69号炸酱面 · Michelin Bib Gourmand", "lat": 39.938005, "lng": 116.396163, "must": true, "m": "4.7★ · Bib Gourmand · ~¥25 a bowl · queues at peak · order by QR code", "d": "Beijing's noodle benchmark: one dish, zhajiangmian, wheat noodles with fermented soybean paste and shredded vegetables, about ¥25 a bowl, ordered by QR code and delivered fast. The map pin sits on the hutong, not the shop: walk to the end and it is the corner shop on your left. Mix everything yourself, take the pickled garlic, and use all the paste; it is milder than it looks. Noodle soup, lemon water and chilli oil are self-serve. Eat before 11:30 or after the lunch rush.", "g": "https://maps.google.com/?cid=10602689317347076217", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLctPJ02i9VGB12qN9y_tNFiWcK6YWErd3sUZtTDvSgqo2crRUnVHhcOcAbS--grHGfXKbeEjl-CwlfNkr8fCuESSfT9V4ZkrJ2i-x6fpKHisV0reVqJjPApqeR2doSKFs3Zw5w=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLelcUcXJpDRiNmQ86FdzFbNKffV6-3NRdae97Wqz358e9wZhG-OBWZz31pzQ_zGzWeqeBLdjKozuBncmiYZd-0bMziMWsw2UmPiXbyBCclg3CqSws2htRuEB0kDZnC0GnU-JghjRM4YWUzr=s4800-w800-h600"], "a": ["Aza Uzul", "Tomasz Langosz"]}, {"c": "cheap", "n": "Pangmei Noodle House", "zh": "胖妹面庄 · Chongqing noodles · Bib Gourmand", "lat": 39.939364, "lng": 116.416379, "m": "4.6★ · Bib Gourmand · budget (¥) · 11am–10pm daily · order by QR code in WeChat", "d": "Chongqing-style noodles in Xiang'er Hutong near Jiaodaokou: communal benches, order through WeChat, and you choose both the spice level and the bowl size. Reviewers rate the wonton in spicy pork mince and the Chongqing noodles; the mixed beef noodles can be made mild with no mala. The queue is short (about five minutes in one review) and staff have offered tea and heat packs to people waiting. Add a winter-melon tea to cool the heat. Smoking is allowed indoors.", "g": "https://maps.google.com/?cid=7393743769885426453", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfoLKsVOOW-F2rFEUwGeIxFDr5H0anN5YBFF9yWY-RndzFDlv8rsu6VKvb__8rY39Luf0-SVzSP2MTTzAjZyExbSgX47Lt3T589spDrPTuCfa0BMRr3zMsTD5r7462TNYr1igFc=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcBo2ji6D0SzYicSqvnbhN_Hyh7cBiXKEGi56pVuyWIkLdV2jllzMmm1NW1XnFXpMKsUejMycMlr1lqTUQBxgQraZnZDUoJvNMqPl2B5SqVhk13_kiFTczf4e0bn8D6msSAdYY=s4800-w800-h600"], "a": ["DC CHEONG", "Jason Chang"]}, {"c": "cheap", "n": "Baoyuan Dumplings", "zh": "宝源饺子屋 · Bib Gourmand · Maizidian", "lat": 39.945444, "lng": 116.46872, "m": "4.4★ · Bib Gourmand · 10:30am–10:30pm daily · one liang = 6 dumplings · expect a 15-minute wait at lunch", "d": "A no-frills dumpling house in Chaoyang with a menu book of fillings, vegetarian ones included. You order by the liang, which is six dumplings. Regulars order the lamb with carrot and the pork with green pepper, plus kung pao chicken and green beans stir-fried with pork. One reviewer waited 16 minutes at lunch. The menus have photos and some English, and the decor is basic. Go before 11:30 or after 1:30 to avoid the wait.", "g": "https://maps.google.com/?cid=2822995984338306516", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcJ99h0mpMPM8v_BTvyWUhaUXobzUh-gRP2VXFOdn1FvRoHomWSQ-SN-ZqJcMbfKiiOe7x8IUrEBbb9A_24Gx7Dtkria8W5bktpJWKfXMHbwc7lvVpqLC5p_0w56t22Iq0oWowyoZfElYsX=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcoqTixyA-1zCiYGmTeN8e3xt_zkqedOutnEXRNFdaiRz9bupGHu4ftSVvgziMkgCjTWgtmrUBIpy3Md68wYNc17-Qj_sVUlZ-FnJZZ_snjpFNd6CDAMB0Et7zqmApuoosz0FlYxwZUPd0k=s4800-w800-h600"], "a": ["B S", "Tiger"]}, {"c": "cheap", "n": "Xiaochang Chen (luzhu)", "zh": "小肠陈饭庄 · braised offal · 南横街194号", "lat": 39.8831597, "lng": 116.3760362, "m": "Only 2 ratings online · 10:30am–3pm and 4:30–10pm weekdays (CLOSED 3–4:30pm), all day weekends", "d": "Luzhu huoshao is Beijing's acquired-taste classic: pork intestines and lung simmered with fried tofu and wheat flatbread in an offal broth. A local-blog list sends you to Nanhengjie for the version it rates. Google has almost no reviews to back that up, so treat this as a local recommendation, not a verified favourite. Order a single bowl first. Prices are not published on any source I could read.", "g": "https://maps.google.com/?cid=16273510094125051243", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcWzYaXr6Sk-Wus4Q_dtTAYB7vb46WHci9UZrC2X-vtVmssvnuaPQ7Gk2mi7-KwUQk-xNPxBQaNePFDmMh6G2OG_JNwm8JXLkLo83LZpuOdSPm02VjQwbGbZehvbMHGEaPuVtcClA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLd9HeEfeT-UyOFjmuy8Pr-haER1_rp8OxWUCi9sqAs8SXCBdvk7yKM_Xep4h4S9HwrNZZwRXyf8AJjS3ZTYSv5lXGmCt3xfsaceEI2wpSC7hs8UWkU1sIOrd4dQ8cXoIlE0ihgB=s4800-w800-h600"], "a": ["Zon LV", "Zon LV"]}, {"c": "snack", "n": "Yin San Douzhi", "zh": "尹三豆汁 · Bib Gourmand · 东小市街176号", "lat": 39.890543, "lng": 116.412769, "m": "4.4★ · Bib Gourmand · about ¥8.50 for the full breakfast (one reviewer) · tiny room, breakfast hours", "d": "Douzhi is Beijing's most divisive breakfast: fermented mung-bean drink, sour and smelly, served with crisp fried jiaoquan rings and miancha, a millet porridge topped with sesame paste. Reviewers split from a taste-and-smell horror to authentic and listed by Michelin since 2020. The shop is a small, cosy room near the Temple of Heaven's north gate, so pair it with the temple. Order all three and decide for yourself; the jiaoquan and miancha win converts even when the douzhi does not.", "g": "https://maps.google.com/?cid=18332696117778682301", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcl8Ua8jYcdNL0f4eNMMI6EfQ31WfO6r3Z29NxVj27P-HKNOoMeiYNCbyBvmBhqeEXGdGjLotBpZguKAID318hqyICkshPirBur_Na6evnLBI87hslZdEeF-8kDSlk3ZoA7twfV=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcUCu2L0OyinVq-D3Rv9vZrE7bZfRNBCGSKBcWic_-6CMsZVy5M1z77QeQlKEAfdPdEsB4arrGHPKQryb0FIP19IVm1hzZx3JF0hNLYYaDz9d-bbQRw_Q_qpzjs5fv0C0wcpRvLmg=s4800-w800-h600"], "a": ["黎志強 Jonathan", "Prince Charlie Q"]}, {"c": "snack", "n": "Huguosi Snacks", "zh": "护国寺小吃 · Hùguósì Xiǎochī · 护国寺街68号", "lat": 39.934893, "lng": 116.375191, "m": "3.7★ (reviews split) · ~¥40 a head (older listing) · 9am–9pm daily · order by WeChat or at the counter", "d": "Founded in 1956 with over 80 snacks under one roof: luzhu huoshao, ai wowo glutinous rice balls, lv dagun (the rolled sweets called donkey rolls, ¥2 in one review), fried jiaoquan, miancha and zasui soup. The 3.7 is a real split: one reviewer calls it the go-to for Beijingers' quick bites, another a tourist trap with bad food. Come to sample a few sweet and savoury items to share, not for a meal. If douzhi is the goal, Yin San is the specialist.", "g": "https://maps.google.com/?cid=16478178057362518819", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLe8VhUP1LUZLExfA4Yez6jLI89BXxd0mS0BUQlWswvqafLxcQqeT9TilKLu9fePJRDk9pMJyWFIWdxbBCAf8xj0Dxjj-K8kiAM7fh9fPhw75oDioZ54cE3p00T7wkJVFbbdC8_WrA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfv_ONBlq_oPKFReHouvTN8Bot346OnRIDGo8z-SOyX3xyPTchluhg0M51650ukimu9lpv1h7g88cJSZM6oe9aqS_FEUvddJKkK6TT-Eq4XfJ5LS0T6BaOeZWvBgDzWHB39r8PMdGYHDCM=s4800-w800-h600"], "a": ["Happy Time", "ChingHua Chuang"]}, {"c": "snack", "n": "Hongji Snack Bar (Niu Street)", "zh": "洪记小吃 · 牛街12号 · halal", "lat": 39.887103, "lng": 116.36393, "m": "4.0★ · halal · 5:30am–10:30pm daily · a separate queue for each counter · average taste, good value", "d": "The flagship snack counter on Niu Street, the Hui Muslim quarter, where every window sells something different and you queue separately for each: beef baozi (about ¥2.50 per a 2024 blog), fried millet cakes called zhagao (about ¥3) and more. Reviewers rate it good value and long-queued but only average in taste. The Niujie Mosque next door is shut for restoration until about 2027, so come for the food. Jubaoyuan hotpot is a minute's walk away.", "g": "https://maps.google.com/?cid=440096102067967165", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLecgmenL4uuxLx690cBTm5j1vNJUuc131zs8XHQpceRXn2Iu92K3BAb1IQ8-GFDNQRLiMG9jZnFbXqH3fe2uQOdNWieIswszjOpd3z1gYKeXVlLz_GrKLdg2DF8x6ioy11ZKI6gx2kXNY8F=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdWpFedZsNJ6tigAx0mztIY_TOmBUt8Cb9kVGH0SIYX1eKAWo-vZrsoD62vcfgBOXJG96RzrNPcepPuyPYCk6sU7DzwlgJz3pec1qwBL7YzZI3Qjckst05woJOqYT7q5G4111ky=s4800-w800-h600"], "a": ["Mark Chen", "Cz juarez"]}, {"c": "snack", "n": "Sanyuan Meiyuan", "zh": "三元梅园 · almond tofu · 国子监街14号", "lat": 39.94541, "lng": 116.41569, "m": "Only 2 reviews · old-brand dairy shop · 300 m from the Lama Temple", "d": "An old-brand dairy shop known for almond tofu and milk rolls; one reviewer's takeaway had red-bean and Greek-yogurt puddings. This branch is on Guozijian Street, about 300 metres from the Lama Temple, which makes it the sweet stop after the temple. Local blogs file the brand under Beixinqiao, so other branches exist. Almost no review data online: treat it as a recommendation rather than a verified rating.", "g": "https://maps.google.com/?cid=9620192475188078110", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfVfrl2ZUDywVlZhtT12iwsuJGLp3bmWYVxSYFvov7r7pD28skV98V-Kjz6dCbVoutRgBpzEMjqwzi3zjF_nRV4OP6t5kOnKKvqpsLBf7QB-XnlJqLNmZ6ahTTuXr1a8TPwO6Rr_8RmhjJG=s4800-w800-h600"], "a": ["はる"]}, {"c": "mid", "n": "Baodu Jinshenglong (Dongsi)", "zh": "爆肚金生隆 · scalded tripe & hotpot · Bib Gourmand", "lat": 39.933267, "lng": 116.429513, "m": "Bib Gourmand · 10:30am–10pm daily · ¥¥ · very few online reviews", "d": "Baodu is tripe scalded for seconds in boiling water, and Jinshenglong is the name locals use for it. Michelin's Bib list puts it in Dongcheng, but another summary of the same list says Xicheng near Houhai, and a local blog sends tripe fans to a branch on Andelu, so there are probably two shops. This pin is the Dongsi Shitiao one, which I could not confirm carries the award. Google has a single review, so confirm the branch before you cross town. Order the tripe first.", "g": "https://maps.google.com/?cid=9476966768547376898", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLd7lPvyY_9lXz5JYiQu8v2VrIFDiuohwcEhnp7eY3IQ45vyT3A1MhuYjA305988CH-1OuVsxq6ENp5c8G36EkCJjdM2MylelJP_5RYR9FAcmnAvIy8uyR2ps2K9NsaotA14VH8_2aFukRH5=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcS3jRdw-HNiV05TQZYfi6g5vZECandaLTXPkCW_Hal9hknR9sIhgEiLomvsW0_X_wTWtMPvlr-mbxYZDgL2PH2GkV_2QTpqFEGpm6MgfJ-WxG1HWvDkumVo2FuXOiwdvUsKMkU=s4800-w448-h336"], "a": ["Wisanu Tuntawiroon", "Shinichi Kono"]}, {"c": "mid", "n": "Jubaoyuan Copper-Pot Hotpot", "zh": "聚宝源 · 牛街5-2号 · halal", "lat": 39.8868644, "lng": 116.3632247, "m": "4.6★ · halal · 10am–10pm daily · ¥¥ · menu in Chinese", "d": "Halal copper-pot lamb hotpot on Niu Street. Reviewers praise the tenderness of the hand-sliced lamb and beef, which needs only 10–15 seconds in the broth, and the staff who help you order; the menu is Chinese-only, so bring a translation app. For the cheaper route, queue for the door-nail beef pie (mending bing), which one reviewer likened to a soup dumpling, and note each counter has its own line. Skewers are about ¥10 per a 2024 blog.", "g": "https://maps.google.com/?cid=11785248358871232279", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcn96BhDCt7KkRI3fLZikBbO9lm18i_OclMbT6Rnwn6zlFCAV6HaFveGHYNK2cr9qxbN00YHYMShiIBvKCmQXb8uIlJWoe2nG3rBMrxim1_EBrT6xW1_38xTDhdL93J_3JJh_gCFQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdM-TElm-16U8n3noVxAtbw8pHjfq1F5q6GFspZKjJJINnES5Sf9ZTWe4APsU36t4LM82w9x34tLAIN_onKFAA0boBXda77kCUs-5wqOLJdEkvqbnekOG_CyVVZvcmrYfm0naMkqhFCtdnM=s4800-w800-h600"], "a": ["Patty Cai", "Mel Anie"]}, {"c": "mid", "n": "Jingyi (Hubei cuisine)", "zh": "Hubei · Bib Gourmand · 琉璃厂东街2号", "lat": 39.89522, "lng": 116.38937, "m": "4.7★ (11 reviews) · Bib Gourmand · tiny · expect ~20 minutes outside on weekends", "d": "A very small Hubei restaurant in the lanes of Liulichang, south-west of the palace. Reviewers recommend the fried pork ribs, chicken gizzard with pickled lotus root, spicy tofu with fish roe and the lotus-root soup, plus the home-made rice wine and osmanthus jelly; one found it a touch salty. Expect to wait outside (about 20 minutes on a Sunday afternoon), where staff bring water. It is not easy to find, so show the address to your driver. Order a few dishes to share.", "g": "https://maps.google.com/?cid=12845223378070244183", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLe7flVonskQ9-cIMdVLYV4aCb9THZaK70J-M0UrTKqM1uxguMc5-6aewih8cZY6R6Arz0r2BYbtwn_qQ43MWJU8cuA-u0UReHj6eSqlAEtBd189nM8yWi7wM6Pl_EsTDEoooNllf16Jvxbe=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLelHCAL11DeYZSgxVED9J098QKGrQFnKJ_VEmwR274HiDS2268IQyY8EtRTmhRqMFnz49_DoSzMTvorU-bCrCkg-YPPTtqZiMudXUOnLcs9AaGs1QBfr2WzlILf4_l5gpy_H_bMQd4z0L9g=s4800-w800-h600"], "a": ["Chanwook Lee", "Lostwithfabio"]}, {"c": "mid", "n": "Siji Minfu (Forbidden City branch)", "zh": "四季民福烤鸭店 · 故宫店 · 南池子大街11号", "lat": 39.9146, "lng": 116.40285, "must": true, "m": "4.4★ · ~¥260 a duck, ~¥160 half (one review) · TAKE A NUMBER ABOUT AN HOUR EARLY · other branches queue worse", "d": "Wood-fired Peking duck carved at the table, a few minutes east of the palace. Reviewers rate the crisp skin and thin pancakes, and the pea shoots and almond tofu come up too. The cost is the queue: take a waiting number about an hour before you want to eat (one visitor at 5:30pm had 160 tables ahead and sat at 8:30), then wander the neighbourhood. Pay ¥25 to have the leftover duck turned into soup. Another reviewer was quoted four hours at the Tiananmen branch.", "g": "https://maps.google.com/?cid=15145813146569934787", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLceqp1EpEChtxpof4Umr9C-WQWqY55YYqHr2lggC_Gol-DArH2xu8qK5V3MTrXS8zV5S4DCeu4wAwyb3C1E7ltfSmaMkfssIq9rn7_9N_G89R75eXpIrFwIwYtUjI80DHwHvY5WtA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLeGTeDTNo5CGkpx-F7bO9caSEbXS07MOfMCLqNnuw_dBB2ZHEXifhH6mvldUhT57qbGToTwW2GnJGSl-k43l3ZBsoSqemrm0hiOCPyRE-zPepmq5TiBmYS1N3YKagwbFo6U153Ok5UM_TET=s4800-w800-h600"], "a": ["imtiaz ahmad", "Kwaihoi Ho"]}, {"c": "mid", "n": "Bianyifang Roast Duck (Xianyukou)", "zh": "便宜坊焖炉烤鸭 · 鲜鱼口65-77号", "lat": 39.896478, "lng": 116.400911, "m": "4.4★ · closed-oven duck · ~¥140 a head (2021 listing) · restaurant is on B1 of a hotel, no street sign", "d": "Claims to be Beijing's oldest duck house, dating to 1416; the date is its own. It roasts in a closed stewing oven rather than over open flame, so the skin is less crisp but the meat juicier. This Xianyukou shop is on the underground level of a hotel with no street sign. Reviews split: one called the duck dry and thickly sliced, another praised skin kept warm over steam and good wok-fried sides. Choose it for the contrast with Siji Minfu's open-oven style, not as your only duck.", "g": "https://maps.google.com/?cid=15372519294332854286", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLdig6DnvamwRtoMehsEbdqj4QNFR6GsOvs1VRNIXUzcMkdfPh2t0iP9J8zVepByRRZgpQ4MDyDBMTW-SfE8MgP2BeEAMEjz75ETM3QncPV28KPQwn462I1xU9sTRs4P7HdVfZpH=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcJwb4cOdD9yLqFdmI_qgO7TSNEk6JHAmOxBVEFcgM5xhpOPkHtjlXnuO65TY-7xPnFSoIe07ufoox0uFlvcWpTgQXtQD1HuNXxlUGjzyARQpS3XG9eRuI1MOuDDWwc4fHm0b1OL4tC6Cnr=s4800-w800-h600"], "a": ["馬克田", "Duc C. Nguyên"]}, {"c": "mid", "n": "Li Qun Roast Duck", "zh": "利群烤鸭店 · 北翔凤胡同11号", "lat": 39.898296, "lng": 116.40639, "m": "4.1★ · full duck ~¥280, NO HALF DUCKS · SOLO DINERS GET A SET MENU · whole party must be present to enter", "d": "A duck restaurant in a courtyard house at the mouth of a Qianmen hutong, known for rough-and-ready hospitality and a wall of celebrity photos; the duck is traditional and fatty. The 4.1 is a real split: one regular has been six times in seven years, others report oily skin and almost unseasoned meat. The rules that bite: everyone in your party must be present before you are let in, a whole duck is about ¥280 with no half portions, and solo diners are limited to a fixed set menu. Go as a group of two or more, or skip it.", "g": "https://maps.google.com/?cid=9114651088517268943", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLeRhSG2AMEzB7egBynXZ6rmRfFKxxDOJYzoT5G_DKv7sH8lEulsFySBeBQ3K57syGJIKCSaZ2f3Tug0zX5-FiT8WfAQmuYqAGXtsorLbOzwITP9yZL2PYEe5UQUrOr1lmJ6Xegrd4lrxGVu=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLc7fH69TUvezlRmlUuMVBE0BldqXOuOnmTW9LKf8AfgPIfX1D16wpesLw-u1naP64-5eSlMj8l9AeoR_l23Nj8lquqvNGAwroyp7nIodIV6WcaeoeL9kV3y-ZNFOioWNy9Z5m5M=s4800-w800-h600"], "a": ["andrea CHR", "Dos T."]}, {"c": "mid", "n": "Guijie (Ghost Street)", "zh": "簋街 · Guǐjiē · late-night strip", "lat": 39.9410689, "lng": 116.4256242, "m": "4.3★ (street) · most restaurants run late · next to Dongzhimen station", "d": "A road of crayfish and hotpot restaurants that stays lit into the small hours; reviewers call it very lively in the evening. It is beside Dongzhimen station but is a row of sit-down restaurants, not a street-food stall strip. I could not verify individual restaurants here, so pick one with a queue of locals and order by the dish rather than the neon. One reviewer flagged peanuts in a fish dish: ask if you are allergic. Good as the last stop of an east-side day.", "g": "https://maps.google.com/?cid=2940948609741935040", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLevoBby8ncFbfry0aqJkB_RwEE_zNTQ6AVcemb4zVzxxNZtwcCx7U7WeH1iHKeNLyzXYbNXPuKAZpN5oWkLNpCU1t_NsVnab_IxdS5d0MXLUCd2Ls6IIdfD9TOdHqzInNluakCpl-nkTA4h=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLedKM0R_L0H6ZUI5b_hC9KTlVHG5yyUltANRwjr9XZrKRb9dMX73o5vblkIf7FBZY-eXCDWtrqTw00DZeaejmqHmm28W43BLMSFoNpJ1z4uHvLmWMFtNYGICJxLfrMhOynKlNWYCg=s4800-w800-h600"], "a": ["George (喬叔叔)", "Ingrid"]}, {"c": "splurge", "n": "Da Dong (Jinbaohui)", "zh": "大董烤鸭店 · 金宝街88号金宝汇5层", "lat": 39.915462, "lng": 116.421249, "m": "4.3★ · ~¥400 a head · 11am–10pm daily · 5th floor of the Jinbaohui mall", "d": "The modern, lighter take on Peking duck: lean duck carved at the table and offered with extras such as caviar, in a polished room with a long menu of modern Chinese dishes. It is the priciest duck on this map, about ¥400 a head per one source, and reviewers note that service can feel rushed and the room loud rather than romantic. Pick it for a splurge dinner. For the classic fatty skin, go to Siji Minfu or Bianyifang.", "g": "https://maps.google.com/?cid=3816686996785249652", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLc7wHVSYtynECOepnFHUXC_VOtvv2iWLk_hTIaGC8FOR65nrfTjg9c2whuImRRn1-odL5cmIlI2LICof3v5JxYUEkpw27u_Phs2Qq3RCHYxQ2e1_KuttprMtVN6jv8Lx_zjwBY9=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLd4SQaejRcZIN1YVtGB1hIcXZtE2EIG2Fgzj8QPPXVZT4_3zfWp21mILRYY8NPXXGHeqUJsof0cIGh8fPLKjf5UmHCKlg-HMiycTJi1T5BRurQAXUNquJv6-RqMOrmPkUap4yzZ=s4800-w800-h600"], "a": ["Jan Maik Baumann", "shigeru s"]}, {"c": "brew", "n": "Great Leap Brewing (the original taproom)", "zh": "大跃啤酒 · 豆角胡同", "lat": 39.937287, "lng": 116.399001, "m": "AFTERNOON HAPPY HOUR (sources say 12–19 or 16–19) · garden · hours not confirmed for this branch", "d": "Beijing's first craft brewery, opened in late 2010, in a hutong courtyard with a garden. The beer is brewed elsewhere now, so this is the original taproom rather than the brewery. Google lists no hours for this exact spot and shows another Great Leap branch with different hours, so check before walking over. House beers include a banana wheat and a chrysanthemum-infused one; a reviewer at the other branch regretted the Sichuan-peppercorn pour. Happy-hour times vary by source, so go before 7pm.", "g": "https://maps.google.com/?cid=3863186948570088353", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfUBrpeN92lv6eyUUgGvAgg6VnuP_cXSvMAyDHacRLfsn9Hdmpo5PZzqeFGFShTy3EzMjLNOt2j8DYWPXi9Zxxmxjxqw-aslClKzJHqtbIORGCD1hM4udwazxKnUoNeVgmwwjGK3_Mdhujt=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLd9f0HJTlZcgvZ1gu4bDA449c6TFFkOB0-qqCdvlLm07ghJJ5HWih9ugm9XrlYzGlK80xrC9sl7yhnHtgurAE6TomRsMD4PwRSTzgR2Fm89yoULrC5jwODDYoUJcOVuluUNW3WJpTNUdYYz=s4800-w800-h600"], "a": ["シン", "シン"]}, {"c": "brew", "n": "Jing-A Brewpub (Xingfucun)", "zh": "京A酿造 · 幸福村中路57号", "lat": 39.9367413, "lng": 116.4449629, "m": "4.3★ · 11am–midnight (to 2am Fri–Sat) · burgers and a long tap list", "d": "The brewery-restaurant of one of Beijing's best-known craft labels, a short walk from Sanlitun: a long tap list of IPAs, sours and strong beers, burgers and finger food, and English-speaking staff. One reviewer's phrase for it is the break you need from Chinese food. It fills with locals and visitors even on a Monday. A local blog also recommends Jing-A's Longfusi taproom, which I could not confirm on Google, so this is the brewpub I could verify.", "g": "https://maps.google.com/?cid=580078908947833968", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfq4LLDWHVw7jjvaFiC-J6LpgKCdhj2gkJNIPjit-Q32vBi-SkLMdeYZhiEqHjl8AoSRnOm6a0O2ATAVGgADMKjzW-l6mKQaXYHlO_XC4N2U7AgLLRRWLROBEypozdJm6vdtjSq=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdoy588fDPGcHhkHJKTjDYjNzpRlerkqKdvewxBShs3AZpZonjTzW_zZ9520xVsCoxFHK9MCvF8OAQVxEh2hYeYKJIySwUHB1xgEBu9Cz1kH0jaZGEX5YSunyMCgfQRQsfmv9dp14Y3iKhI=s4800-w800-h600"], "a": ["sugarcube13", "Miguel Rivas"]}, {"c": "cocktail", "n": "Modernista", "zh": "Baochao Hutong 44 · live music bar", "lat": 39.94454, "lng": 116.39975, "m": "4.5★ · CLOSED MONDAYS (per one blog) · live music from about 9:30pm · table minimums reported", "d": "A vintage-European bar in Baochao Hutong with a black-and-white ballroom floor, Spanish tapas, a deep cocktail list and live music in an up-and-down-stairs room; the front bar can look empty while the music room is full. Reviewers' warnings: the indoor stairs are very steep, one party was asked for a ¥1,000 minimum spend for a table, and opinions on the cocktails run from spot-on to bad. Arrive early for a seat if you want the music.", "g": "https://maps.google.com/?cid=15826111069143213051", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfRT3Ze0SUCWaQQt5OrhtkeuuohE1l_CTPvLQcB6FMjLmbmA3ugzm35z98rlL8x0SQegDlnq-5xbCKEPBpyyVHihZlKv1DdTOCjuRmiU4x3tynlm1x-ShoD2lIZ1R2pq2WFCxY=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLd8P2Jp9cnO5tLaJXD2j0SC2l-VPS2H0lVqxj2Vr0HCzeaukZ33bB8EoZbq-PAYvgaUcbA93gxQP1nYNEpAFy00nuNnx0G3X0g3lbhOntRXw8kKw4Kn7FzfWBhkZfS-sVyPuT12lw=s4800-w800-h600"], "a": ["Christoph Werker", "Adam Jones"]}, {"c": "cocktail", "n": "Caterpillar Bar", "zh": "毛毛虫酒吧 · 交道口南大街140号附近", "lat": 39.934913, "lng": 116.407241, "m": "4.5★ · 5pm–2am (per one blog) · look for a small MMC sign by an iron door", "d": "A tiny hutong cocktail bar known for seasonal fruit cocktails, a big gin list and DIY drinks where you pick a fruit, spices and a base spirit. You will walk straight past it: look for a subtle MMC sign beside an iron door. Reviewers praise the owner, who will make whatever you describe, and the pizza and wings. Hours come from a blog, not Google, so check before you go.", "g": "https://maps.google.com/?cid=2409637590814258461", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLdg9PdpYPs8LyasX1DioHdb1vojPTsHiQYn2x6z-1kJw5zAGNxCf4V6Rfirtk_NbrGAmvc5YNyD-wtnDPQdk3cxb-MU7V3ir1y3_JlledeQpHjs34gR2vORg932PPwfQljDiq1pOd-0xsE=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcZQSkFE4ITZQybMu49adROMcWyMV7AS_v7-ehdjDQ4J0CYsLYoWM-dZGvc_MICwTk4udBE8l3ZYMyD3omdZtYGPb_48MTSVEh5fuqXNEhf-evMUwGgCd8egfGAIkCjnXANnZY=s4800-w800-h600"], "a": ["Jason Chang", "Caterina Bassano"]}, {"c": "stay", "n": "Stay: Gulou & Nanluoguxiang hutongs", "zh": "鼓楼 · 南锣鼓巷", "lat": 39.93709, "lng": 116.40316, "nophoto": "district, not a business", "m": "Quiet lanes · atmosphere · the best bars and noodle shops on the doorstep", "d": "Boutique courtyard hotels in the hutongs north of the Forbidden City. The Drum Tower is ten minutes' walk, Jingshan and Houhai about 20–25, and Fangzhuanchang, Pangmei and most of the bars on this map are within a short stroll. Trade-offs: taxis cannot enter the alleys, so you may drag luggage about 500 m over cobblestones; metro access is limited; budget guesthouses can have shared bathrooms and little heating. Central heating does not switch on until about 15 November, so October nights in a hutong room can be cold. Choose a boutique hotel and use Trip.com's Foreign Guests Allowed filter."}, {"c": "stay", "n": "Stay: Wangfujing & Dongcheng", "zh": "王府井", "lat": 39.910959, "lng": 116.411341, "nophoto": "district, not a business", "m": "Walk to the palace · Subway Line 1 · touristy and pricier", "d": "The easiest base for a first visit: walkable to Tiananmen and the Forbidden City, on Subway Line 1, and the sensible choice if you have early palace slots. Trade-offs: it is touristy and expensive, local blogs say to skip the snack streets here for food, and security checks around Tiananmen are strict. Eat a few blocks off the main strip: Da Dong's Jinbaohui branch and Siji Minfu's Nanchizi branch are both within a short walk."}, {"c": "stay", "n": "Stay: Dongzhimen & Sanlitun", "zh": "东直门 · 三里屯", "lat": 39.941098, "lng": 116.433552, "nophoto": "district, not a business", "m": "Airport Express terminus · bus 916 to the Wall · nightlife · far from the palace", "d": "Dongzhimen has the Airport Express terminus and the bus terminal for Huairou and Mutianyu, and Guijie's late-night restaurants are beside the station; Sanlitun, about 1.3 km east, has the bars and restaurants and Line 17 at Workers' Stadium. Best if you land late, go out late or do the Wall by bus. Trade-offs: it is far from the Forbidden City, loud at night, and taxis at 6pm on a Friday are gridlocked. Not what you want if the palace and hutongs are the point of the week."}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19,
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+(pl.must?' must':'')+'" style="background:'
+         +CATS[pl.c].color+'">'+glyph(pl.c)+(pl.must?'<i class="star-badge"></i>':'')+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true,
+    zIndexOffset: pl.must?1000:0});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galPrev.style.visibility = pics.length>1?'':'hidden';
+  galNext.style.visibility = pics.length>1?'':'hidden';
+  galPrev.disabled=true; galNext.disabled=pics.length<2;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+  const multi=imgs.length>1;
+  galPrev.style.visibility = multi?'':'hidden';
+  galNext.style.visibility = multi?'':'hidden';
+  galPrev.disabled = i<=0;
+  galNext.disabled = i>=imgs.length-1;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+/* arrows, for mice and keyboards; touch users just swipe */
+const galPrev=document.getElementById('galPrev'), galNext=document.getElementById('galNext');
+function galScroll(dir){
+  const w=galTrack.clientWidth||1;
+  const i=Math.round(galTrack.scrollLeft/w)+dir;
+  const n=galTrack.querySelectorAll('img').length;
+  galTrack.scrollTo({left: Math.max(0,Math.min(n-1,i))*w, behavior:'smooth'});
+}
+galPrev.onclick=e=>{e.stopPropagation();galScroll(-1);};
+galNext.onclick=e=>{e.stopPropagation();galScroll(1);};
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://uri.amap.com/marker?position="+pl.lng+","+pl.lat+"&name="+encodeURIComponent(pl.zh||pl.n)+"&src=map&coordinate=gaode";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  panToPlace(pl);
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+/* Wide screens show the card as a left-hand panel, so the gesture axis and the
+   map centring both have to change. Keep this threshold in sync with the CSS. */
+const SIDE_MIN_WIDTH = 720;
+function sideMode(){ return window.innerWidth >= SIDE_MIN_WIDTH; }
+
+function panToPlace(pl){
+  const ll = L.latLng(pl.wlat, pl.wlng);
+  if(!sideMode()){ map.panTo(ll,{animate:true}); return; }
+  // shift the centre left by half the panel so the pin sits in the visible half
+  const panelW = (document.querySelector('.sheet')||{}).offsetWidth || 390;
+  const pt = map.project(ll, map.getZoom()).subtract([panelW/2, 0]);
+  map.panTo(map.unproject(pt, map.getZoom()), {animate:true});
+}
+
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the card down to dismiss ----
+   Touch: drag anywhere in the card, but only when it is scrolled to the top, so
+   reading a long card still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    // In side mode the dismiss axis IS the gallery axis, so the gallery wins
+    // any gesture that starts on a photo.
+    if(sideMode() && e.target.closest && e.target.closest('.gal')) return;
+    // Vertical scroll only conflicts with the bottom sheet.
+    if(!sideMode() && sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'go':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  const side=sideMode();
+  // side panel slides out to the LEFT; bottom sheet slides DOWN
+  const along = side ? -dx : dy;      // movement toward dismissal
+  const across = side ? dy : dx;      // movement that belongs to the gallery
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(along)>Math.abs(across) ? 'go' : 'other';
+    if(drag.axis==='other'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(along<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=along;
+  sheet.classList.add('dragging');
+  sheet.style.transform = side ? 'translateX(-'+along+'px)' : 'translateY('+along+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();   // distance OR flick
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='go' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  const ab=document.getElementById('about');
+  if(ab && ab.classList.contains('open')) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- city overview ---------- */
+const about=document.getElementById('about'), aboutBtn=document.getElementById('aboutBtn');
+function esc(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function rich(x){ // allow **bold** only
+  return esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+}
+function renderAbout(){
+  if(!CITY || !Object.keys(CITY).length){ aboutBtn.style.display='none'; return; }
+  document.getElementById('abTitle').textContent = CITY.name||'';
+  document.getElementById('abTagline').textContent = CITY.tagline||'';
+
+  const st=document.getElementById('abStats');
+  st.innerHTML=(CITY.stats||[]).map(s=>
+    '<div class="stat"><div class="k">'+esc(s[0])+'</div><div class="v">'+esc(s[1])+'</div></div>'
+  ).join('');
+  st.style.display=(CITY.stats||[]).length?'grid':'none';
+
+  document.getElementById('abSections').innerHTML=(CITY.sections||[]).map(s=>
+    '<h3>'+esc(s[0])+'</h3>'+String(s[1]).split('\n\n').map(par=>'<p>'+rich(par)+'</p>').join('')
+  ).join('');
+
+  const musts=CITY.musts||[];
+  document.getElementById('abMusts').innerHTML = musts.length
+    ? '<h3>Must see, do &amp; try</h3><ul class="musts">'
+      + musts.map(m=>'<li>'+rich(m)+'</li>').join('') + '</ul>'
+    : '';
+
+  const near=CITY.nearby||[];
+  document.getElementById('abNearby').innerHTML = near.length
+    ? '<h3>Nearby</h3><ul class="nearby">'
+      + near.map(n=>'<li>'+rich(n)+'</li>').join('') + '</ul>'
+    : '';
+
+  document.getElementById('abFoot').textContent = CITY.foot||'';
+}
+renderAbout();
+function toggleAbout(open){
+  about.classList.toggle('open',open);
+  about.setAttribute('aria-hidden',open?'false':'true');
+  aboutBtn.classList.toggle('active',open);
+  if(open) about.scrollTop=0;
+}
+aboutBtn.onclick=()=>toggleAbout(!about.classList.contains('open'));
+document.getElementById('aboutClose').onclick=()=>toggleAbout(false);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') toggleAbout(false); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+let wasSide=sideMode();
+window.addEventListener('resize',()=>{
+  const now=sideMode();
+  if(now!==wasSide){ wasSide=now; if(selected) panToPlace(selected); }
+});
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>

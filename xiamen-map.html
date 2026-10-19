@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!-- city-guide-maps template v7 capabilities: swipe-dismiss,drag-handlers,click-away,escape-key,gallery,side-panel,must-see,overview,filters,fullscreen,geolocation,osm-basemap -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Xiamen: 3 Days, Where to Go & Eat</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --ink:#151b24; --paper:#fff; --muted:#5b6472; --line:#e3e7ec; --accent:#0b7a5c;
+    --shadow:0 6px 24px rgba(16,24,40,.18);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{overflow:hidden;background:#e8e4dc;color:var(--ink)}
+  #map{position:absolute;inset:0;z-index:1}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:1000;padding:10px 12px;pointer-events:none}
+  .title-chip{pointer-events:auto;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);
+    padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .title-chip h1{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+  .title-chip .count{font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+  .ctrl-stack{position:absolute;right:12px;top:70px;z-index:1000;display:flex;flex-direction:column;gap:10px}
+  .ctrl-btn{width:46px;height:46px;border:none;border-radius:12px;background:var(--paper);
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--ink);transition:transform .12s ease,background .12s ease}
+  .ctrl-btn:active{transform:scale(.93)}
+  .ctrl-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .ctrl-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .ctrl-btn.active{background:var(--accent);color:#fff}
+  .ctrl-btn.locating svg{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion:reduce){.ctrl-btn.locating svg{animation:none;opacity:.6}}
+
+  .panel{position:absolute;left:12px;top:70px;z-index:1000;width:242px;background:var(--paper);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;
+    max-height:calc(100vh - 100px);overflow-y:auto;transform-origin:top left;
+    transition:opacity .18s ease,transform .18s ease}
+  .panel.hidden{opacity:0;transform:scale(.94);pointer-events:none}
+  .panel h3{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .layer{display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;font-size:13.5px;font-weight:600}
+  .layer input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+  .layer .n{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500}
+  .swatch{width:19px;height:19px;border-radius:50%;flex-shrink:0}
+  .note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}
+
+  .pin{position:relative;width:23px;height:23px;border-radius:50%;border:2.5px solid #fff;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+  .pin svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round}
+  .pin.food{border-radius:6px}
+  .pin.drink{border-radius:4px;transform:rotate(45deg)}
+  .pin.drink svg{transform:rotate(-45deg)}
+  .pin.must{border-color:#F2C14E;border-width:3px;
+    box-shadow:0 0 0 1.5px rgba(120,80,0,.55),0 2px 7px rgba(0,0,0,.45)}
+  .star-badge{position:absolute;top:-5px;right:-5px;width:12px;height:12px;
+    background:#F2C14E;border-radius:50%;border:1.5px solid #fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .swatch{display:flex;align-items:center;justify-content:center}
+  .swatch svg{width:11.5px;height:11.5px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .swatch.drink{border-radius:3px;transform:rotate(45deg)}
+  .swatch.drink svg{transform:rotate(-45deg)}
+  .swatch.food{border-radius:5px}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2b7fff;border:3px solid #fff;
+    box-shadow:0 0 0 8px rgba(43,127,255,.22),0 2px 6px rgba(0,0,0,.3)}
+
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:1001;background:var(--paper);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(16,24,40,.28);
+    transform:translateY(110%);transition:transform .28s cubic-bezier(.32,.72,.35,1);
+    max-height:76vh;overflow-y:auto}
+  .sheet.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.sheet{transition:none}}
+
+  /* ---- gallery ---- */
+  .gal{position:relative;background:#eef1f5;border-radius:20px 20px 0 0;overflow:hidden}
+  .gal.none{display:none}
+  .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .gal-track::-webkit-scrollbar{display:none}
+  .gal-track img{width:100%;height:180px;object-fit:cover;flex:0 0 100%;scroll-snap-align:center;display:block}
+  .gal-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+    display:flex;gap:5px;z-index:2}
+  .gal-dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);
+    box-shadow:0 1px 2px rgba(0,0,0,.4);transition:background .2s}
+  .gal-dots i.on{background:#fff}
+  .gal-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+    width:30px;height:30px;border:none;border-radius:50%;cursor:pointer;
+    background:rgba(0,0,0,.42);color:#fff;display:none;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);transition:background .15s ease}
+  .gal-nav:hover{background:rgba(0,0,0,.65)}
+  .gal-nav:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .gal-nav svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.6;
+    stroke-linecap:round;stroke-linejoin:round}
+  .gal-nav.prev{left:8px} .gal-nav.next{right:8px}
+  .gal-nav[disabled]{opacity:.3;cursor:default}
+  /* only for real pointers — touch users swipe */
+  @media (hover:hover) and (pointer:fine){
+    .gal:hover .gal-nav, .gal-nav:focus-visible{display:flex}
+  }
+  .gal-count{position:absolute;bottom:7px;right:10px;z-index:2;font-size:10px;font-weight:700;
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:99px;backdrop-filter:blur(4px)}
+
+  .sheet-body{padding:14px 18px calc(18px + env(safe-area-inset-bottom))}
+  .sheet.dragging{transition:none}
+  .grabber{position:absolute;top:0;left:50%;margin-left:-70px;width:140px;height:24px;z-index:4;
+    display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none}
+  .grabber:active{cursor:grabbing}
+  .grabber::after{content:"";width:38px;height:4px;border-radius:99px;background:rgba(0,0,0,.34);
+    box-shadow:0 0 0 1px rgba(255,255,255,.45)}
+  /* when there is no photo the grabber would sit on the text */
+  .sheet:has(.gal.none) .sheet-body{padding-top:24px}
+  .close-x{position:absolute;top:10px;right:10px;width:32px;height:32px;z-index:3;border:none;
+    border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:15px;cursor:pointer;line-height:1}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#fff;padding:3px 9px;border-radius:99px;margin-bottom:8px}
+  .sheet h2{font-size:19.5px;font-weight:800;margin-bottom:3px;line-height:1.25;letter-spacing:-.01em}
+  .zh{font-size:13.5px;color:var(--muted);margin-bottom:5px}
+  .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+  .desc{font-size:14.5px;color:#374050;line-height:1.5;margin-bottom:8px}
+  .dist{font-size:12.5px;color:var(--accent);font-weight:700;margin-bottom:12px;min-height:15px}
+  .story{margin:10px 0 2px}
+  .story-btn{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:#f6f2ea;border:1px solid #e8e0d2;border-radius:11px;cursor:pointer;
+    font-size:13.5px;font-weight:700;color:#6b5330;text-align:left;font-family:inherit}
+  .story-btn:hover{background:#f1ebe0}
+  .story-btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .story-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .story-btn .chev{margin-left:auto;transition:transform .2s ease}
+  .story.open .story-btn .chev{transform:rotate(180deg)}
+  .story-body{display:none;font-size:14px;line-height:1.55;color:#4a4033;
+    padding:11px 13px 2px;border-left:2px solid #e0d3ba;margin:9px 0 0 4px}
+  .story.open .story-body{display:block}
+  .credit{font-size:10px;color:#95a0ae;margin-top:11px;line-height:1.45}
+  .actions{display:flex;gap:8px}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px 8px;
+    border-radius:12px;border:none;cursor:pointer;font-size:13.5px;font-weight:700;
+    text-decoration:none;transition:transform .1s ease}
+  .btn:active{transform:scale(.97)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .btn.nav{background:var(--ink);color:#fff}
+  .btn.gmap{background:#eef1f5;color:var(--ink)}
+  .btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---- city overview sheet ---- */
+  .about{position:absolute;inset:0;z-index:1400;background:var(--paper);
+    overflow-y:auto;transform:translateY(100%);
+    transition:transform .3s cubic-bezier(.32,.72,.35,1);
+    -webkit-overflow-scrolling:touch}
+  .about.open{transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.about{transition:none}}
+  .about-inner{max-width:640px;margin:0 auto;padding:18px 20px calc(40px + env(safe-area-inset-bottom))}
+  .about h2{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:3px}
+  .about .tagline{font-size:14.5px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+  .about-close{position:sticky;top:0;float:right;width:34px;height:34px;border:none;
+    border-radius:50%;background:#eef1f5;color:#5b6472;font-size:16px;cursor:pointer;
+    line-height:1;z-index:2;margin-left:10px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;
+    margin-bottom:20px}
+  .stat{background:#f6f4ef;border-radius:11px;padding:9px 11px}
+  .stat .k{font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:#8b8577;margin-bottom:2px}
+  .stat .v{font-size:14px;font-weight:700;line-height:1.25}
+  .about h3{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);margin:20px 0 7px}
+  .about p{font-size:14.5px;line-height:1.6;color:#374050;margin-bottom:9px}
+  .musts{list-style:none;margin:2px 0 4px}
+  .musts li{position:relative;padding:7px 0 7px 27px;font-size:14.5px;line-height:1.5;
+    border-bottom:1px solid #f0ece4}
+  .musts li:last-child{border-bottom:none}
+  .musts li::before{content:"";position:absolute;left:5px;top:14px;width:9px;height:9px;
+    border-radius:50%;background:#F2C14E;box-shadow:0 0 0 2px rgba(242,193,78,.28)}
+  .musts b{font-weight:750}
+  .nearby li{padding:7px 0 7px 27px;font-size:14px;line-height:1.5;list-style:none;
+    position:relative;color:#374050}
+  .nearby li::before{content:"";position:absolute;left:6px;top:15px;width:7px;height:7px;
+    border-radius:50%;background:#9E9D24}
+  .about .foot{font-size:11.5px;color:#95a0ae;margin-top:22px;line-height:1.5;
+    border-top:1px solid var(--line);padding-top:13px}
+  /* ---- wide / landscape: the card becomes a left-hand panel ----
+     A full-width bottom sheet letterboxes photos badly once the window is wide. */
+  @media (min-width:720px){
+    .sheet{left:0;right:auto;top:0;bottom:0;width:390px;max-height:none;height:100%;
+      border-radius:0 20px 20px 0;box-shadow:8px 0 30px rgba(16,24,40,.22);
+      transform:translateX(-105%)}
+    .sheet.open{transform:translateX(0)}
+    .gal, .gal-track img{border-radius:0 20px 0 0}
+    .gal-track img{height:auto;aspect-ratio:3/2}
+    .grabber{top:0;bottom:0;left:auto;right:0;margin-left:0;width:24px;height:100%;
+      flex-direction:column}
+    .grabber::after{width:4px;height:38px}
+    .sheet:has(.gal.none) .sheet-body{padding-top:16px}
+    .sheet-body{padding-right:26px}
+    /* keep the filter panel clear of the card */
+    .panel{left:auto;right:70px}
+    .about-inner{padding-left:26px}
+  }
+  @media (min-width:720px) and (max-height:520px){
+    /* phone held sideways: shorter, so trim the photo further */
+    .gal-track img{aspect-ratio:2/1}
+  }
+  .toast{position:absolute;left:50%;bottom:24px;transform:translate(-50%,80px);z-index:1200;
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 16px;border-radius:99px;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;
+    transition:transform .25s ease,opacity .25s ease;max-width:88vw;text-align:center;line-height:1.4}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+  .leaflet-control-attribution{font-size:10px}
+  @media (max-width:420px){ .panel{width:210px} }
+</style>
+</head>
+<body>
+
+<div id="map" role="application" aria-label="Map of places worth visiting"></div>
+
+<div class="topbar">
+  <div class="title-chip">
+    <h1>Xiamen: 3 Days, Where to Go & Eat</h1>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<div class="ctrl-stack">
+  <button class="ctrl-btn" id="layersBtn" title="Filter and key" aria-label="Show filters and colour key">
+    <svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </button>
+  <button class="ctrl-btn" id="aboutBtn" title="About this city" aria-label="About this city">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fsBtn" title="Fullscreen" aria-label="Toggle fullscreen">
+    <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+  </button>
+  <button class="ctrl-btn" id="locBtn" title="My location" aria-label="Show my live location">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+  <button class="ctrl-btn" id="fitBtn" title="Fit all" aria-label="Zoom to show everything">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 12h6M12 9v6"/></svg>
+  </button>
+</div>
+
+<div class="panel hidden" id="panel">
+  <h3>Filter by type</h3>
+  <div id="keyList"></div>
+  <p class="note">Pin shape shows type (circles are sights, food and drink have their own shapes) and colour shows price band for food. A gold ring marks the seven must-sees. Day tags in each card's top line: D1 Gulangyu, D2 south coast, D3 Jimei plus the old town. Hours and tickets are indicative for 2026; the Amap button opens the pin in Amap, so use Chinese names in taxis.</p>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-label="Place details">
+  <div class="grabber" id="grabber" aria-hidden="true"></div>
+  <button class="close-x" id="closeSheet" aria-label="Close">✕</button>
+  <div class="gal" id="gal">
+    <div class="gal-track" id="galTrack"></div>
+    <button class="gal-nav prev" id="galPrev" aria-label="Previous photo">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="gal-nav next" id="galNext" aria-label="Next photo">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <div class="gal-dots" id="galDots"></div>
+    <span class="gal-count" id="galCount"></span>
+  </div>
+  <div class="sheet-body">
+    <span class="tag" id="sTag"></span>
+    <h2 id="sName"></h2>
+    <p class="zh" id="sZh"></p>
+    <p class="meta" id="sMeta"></p>
+    <p class="desc" id="sDesc"></p>
+    <p class="dist" id="sDist"></p>
+    <div class="story" id="sStory">
+      <button class="story-btn" id="storyBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24"><path d="M12 8v-2M12 6a4 4 0 0 1 4 4c0 1.8-1.3 2.7-2 3.5-.5.6-.7 1-.7 1.5h-2.6c0-.5-.2-.9-.7-1.5-.7-.8-2-1.7-2-3.5a4 4 0 0 1 4-4zM10 18h4M11 21h2"/></svg>
+        <span id="storyLabel">The story</span>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="story-body" id="storyBody"></div>
+    </div>
+    <div class="actions">
+      <a class="btn nav" id="navBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M3 11l19-8-8 19-2-8-9-3z"/></svg>Amap
+      </a>
+      <a class="btn gmap" id="gmapBtn" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Place page
+      </a>
+    </div>
+    <p class="credit" id="sCredit"></p>
+  </div>
+</div>
+
+<div class="about" id="about" role="dialog" aria-label="About this city" aria-hidden="true">
+  <div class="about-inner">
+    <button class="about-close" id="aboutClose" aria-label="Close">✕</button>
+    <h2 id="abTitle"></h2>
+    <p class="tagline" id="abTagline"></p>
+    <div class="stats" id="abStats"></div>
+    <div id="abSections"></div>
+    <div id="abMusts"></div>
+    <div id="abNearby"></div>
+    <p class="foot" id="abFoot"></p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CATS = {"sight": {"label": "Sights & viewpoints", "color": "#6D4C41", "icon": "landmark"}, "museum": {"label": "Museums", "color": "#1565C0", "icon": "music"}, "campus": {"label": "Campuses", "color": "#2E7D32", "icon": "university"}, "quarter": {"label": "Streets, markets & quarters", "color": "#7B1FA2", "icon": "store"}, "ferry": {"label": "Ferry to Gulangyu", "color": "#455A64", "icon": "ship"}, "cheap": {"label": "Cheap eats (under ~¥40)", "color": "#00ACC1", "shape": "food", "icon": "utensils"}, "mid": {"label": "Mid-range (~¥60-120 a head)", "color": "#F9A825", "shape": "food", "icon": "utensils"}, "splurge": {"label": "Splurge (Michelin star)", "color": "#C2185B", "shape": "food", "icon": "utensils"}, "cafe": {"label": "Coffee & bakery", "color": "#FF7043", "shape": "drink", "icon": "coffee"}, "bar": {"label": "Bars", "color": "#212121", "shape": "drink", "icon": "beer"}, "stay": {"label": "Where to stay (districts)", "color": "#827717", "icon": "bed"}};
+const ICONS = {"bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "beer": "<path d=\"M17 11h1a3 3 0 0 1 0 6h-1\"/> <path d=\"M9 12v6\"/> <path d=\"M13 12v6\"/> <path d=\"M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 0 1 0-5c.78 0 1.57.5 2.5.5S9.44 2 11 2s2 1.5 3 1.5 1.72-.5 2.5-.5a2.5 2.5 0 0 1 0 5c-.78 0-1.5-.5-2.5-.5Z\"/> <path d=\"M5 8v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8\"/>", "coffee": "<path d=\"M10 2v2\"/> <path d=\"M14 2v2\"/> <path d=\"M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1\"/> <path d=\"M6 2v2\"/>", "landmark": "<path d=\"M10 18v-7\"/> <path d=\"M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z\"/> <path d=\"M14 18v-7\"/> <path d=\"M18 18v-7\"/> <path d=\"M3 22h18\"/> <path d=\"M6 18v-7\"/>", "music": "<path d=\"M9 18V5l12-2v13\"/> <circle cx=\"6\" cy=\"18\" r=\"3\"/> <circle cx=\"18\" cy=\"16\" r=\"3\"/>", "ship": "<path d=\"M12 10.189V14\"/> <path d=\"M12 2v3\"/> <path d=\"M19 13V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6\"/> <path d=\"M19.38 20A11.6 11.6 0 0 0 21 14l-8.188-3.639a2 2 0 0 0-1.624 0L3 14a11.6 11.6 0 0 0 2.81 7.76\"/> <path d=\"M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1s1.2 1 2.5 1c2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1\"/>", "store": "<path d=\"M15 21v-5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v5\"/> <path d=\"M17.774 10.31a1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.451 0 1.12 1.12 0 0 0-1.548 0 2.5 2.5 0 0 1-3.452 0 1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.77-3.248l2.889-4.184A2 2 0 0 1 7 2h10a2 2 0 0 1 1.653.873l2.895 4.192a2.5 2.5 0 0 1-3.774 3.244\"/> <path d=\"M4 10.95V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.05\"/>", "university": "<path d=\"M14 21v-3a2 2 0 0 0-4 0v3\"/> <path d=\"M18 12h.01\"/> <path d=\"M18 16h.01\"/> <path d=\"M22 7a1 1 0 0 0-1-1h-2a2 2 0 0 1-1.143-.359L13.143 2.36a2 2 0 0 0-2.286-.001L6.143 5.64A2 2 0 0 1 5 6H3a1 1 0 0 0-1 1v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2z\"/> <path d=\"M6 12h.01\"/> <path d=\"M6 16h.01\"/> <circle cx=\"12\" cy=\"10\" r=\"2\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>"};
+const CITY  = {"name": "Xiamen", "tagline": "A harbour city on an island facing Taiwan: Koxinga's base, one of China's first treaty ports, and today a food city built on peanut soup, satay noodles and oyster omelette.", "stats": [["Population", "~5.37 million (end of 2025)"], ["Area", "1,700.61 km²"], ["Language", "Mandarin and Hokkien"], ["Kinmen", "under 6 km offshore"], ["Airport XMN", "29.19 million passengers in 2025"], ["Metro", "3 lines"], ["Best months", "Oct-Nov driest; typhoon risk into Nov"], ["Time needed", "3 days: Gulangyu, the south coast, Jimei plus the old town"], ["Budget a day", "~¥250-400 food and tickets (own estimate)"], ["Gulangyu ferry", "¥35 return, book ahead, bring passport"]], "sections": [["The three days", "**Day 1: Gulangyu.** Take an early ferry. Climb Sunlight Rock first, then Shuzhuang Garden and the Piano Museum (230 m apart), lunch on Long Tou Lu, Haoyue Garden for Koxinga, and the Organ Museum only if time allows. Be back on the mainland before the last boat; spend the evening on Zhongshan Road.\n\n**Day 2: the south coast.** Nanputuo Temple at opening, the vegetarian lunch inside it, Xiamen University on a reserved slot, a taxi to Hulishan fort, then along the sea to Zengcuo'an, and sunset and dinner at Shapowei. Reserve Nanputuo and the university the day before.\n\n**Day 3: Jimei, then the old-town food crawl.** Tan Kah Kee's Memorial Hall and the School Village in the morning, then back to the old town for Bayi Market, the Xia He Lu noodle and omelette shops, peanut soup and tu sun dong, and Dream Bar to finish. Hokklo is the one splurge if you want a Michelin dinner instead."], ["History in five minutes", "Xiamen matters because of its position: a deep, sheltered harbour facing Taiwan. That made it Zheng Chenggong's (Koxinga's) base from 1650 to 1660 and the point he sailed from on 21 April 1661 to take Taiwan from the Dutch. After the Treaty of Nanjing in 1842 it became a treaty port, and foreign traders and consuls moved onto tiny Gulangyu, which became an International Settlement under Land Regulations of May 1902 signed by 13 countries (Japan occupied it from 1942 to 1945). The villas, churches and 200+ pianos you see there are what was left behind.\n\nMoney flowed the other way too. Fujianese emigrated to Southeast Asia, and Tan Kah Kee, born in Jimei in 1874, went to Singapore in 1890, made a rubber and shipping fortune and spent it on schools in Jimei and on Xiamen University. In 1980 Xiamen became a special economic zone, and the island became the modern city of about 5.4 million that it is now."], ["Culture and society", "Hokkien (Minnan) is the home language, shared with Taiwan and the Hokkien communities of Singapore and Malaysia. Gulangyu is UNESCO-listed (8 July 2017), with about 12,509 residents in 2023, no cars and a reputation as the piano island. A China News report puts the city at over 2,000 cafés."], ["Economy, then and now", "Xiamen went from Koxinga's naval base to a treaty port, then to one of the first special economic zones in 1980. Today it runs on trade and tourism: its airport handled 29.19 million passengers in 2025 and the city has three metro lines. For visitors the practical effect is that tourist-zone prices and touts follow the crowds, notably around the ferry."], ["Iconic food and drink", "**Sha cha mian** is noodles in a savoury, peanut-and-spice satay broth: Wu Tang, Wu Lan and Yue Hua on this map are all Bib-listed. **Hai li jian** is the oyster omelette. **Tu sun dong** is cold sea-worm jelly. **Peanut soup** is served sweet, with egg. **Shao rou zong** is the pork zongzi, and **bian shi** are wontons. The Michelin Guide Fujian 2026 lists at least 21 Bib Gourmand restaurants in Xiamen, and three one-star restaurants including Hokklo. For tea, the Tieguanyin country of Anxi is a day trip; no tea house is pinned because I could not verify one."], ["Unique to Xiamen", "A car-free island with a piano museum, a university paid for by one man's fortune that sits by the sea beside a working temple, and a coast within 6 km of Kinmen. A temple, a campus, a fort and a seaside village within a few kilometres of each other is what Day 2 is for."], ["Where to stay", "**Zhongshan Road / Siming West:** the first-timer base. Walk to the old-town food and the ferry piers, metro close, rooms about ¥360-1,040. Noise is mixed. **Xiamen University / Shapowei / Huandao Road:** quieter, near the sea, rooms about ¥460-1,530, but you need buses or taxis. **Siming East:** the international chains, farther from everything here.\n\n**Think twice about sleeping on Gulangyu.** Both sources advise at most one night: it goes dark and quiet by 7-8 pm, is hilly, many hotels sit in lanes that shuttles cannot reach, and prices are higher (guesthouses ¥180-270, villas ¥690-1,415)."]], "musts": ["**Sunlight Rock, Gulangyu:** ~¥60 (sources say ¥50-60). The island's high point and view.", "**Gulangyu Piano Museum in Shuzhuang Garden:** garden ¥30, or ~¥50 with the museum.", "**Nanputuo Temple:** free, reserve a QR slot. Pair with the vegetarian lunch.", "**Xiamen University:** free, WeChat reservation required; passport acceptance unconfirmed.", "**Hulishan Cannon Fort:** ¥25. The surviving Krupp 280 mm cannon.", "**Shapowei Art West Zone:** free. The café quarter for sunset.", "**Yue Hua Sha Cha Mian:** a Bib-listed satay noodle shop; comparable bowls on this map cost ~¥20-24."], "nearby": ["**Fujian Tulou (Yongding and Nanjing counties):** the earthen roundhouses are UNESCO-listed. I did not verify journey times from Xiamen, so plan it as a separate day and check train and bus times.", "**Anxi:** the home of Tieguanyin tea, as a day trip if tea is the point. Journey time not verified."], "foot": "Prices indicative for October 2026 and in RMB (¥); hours and tickets change, so re-check. Photos are traveller submissions on Google Maps, credited per image; I could not view them, so treat them as unverified. Sources: Wikipedia (Xiamen, Gulangyu, Tan Kah Kee), Wikivoyage (Gulangyu), Michelin Guide Fujian 2026, SCMP, China Highlights, ChinaVigators, AmoyMagic, Xiamen Gulangyu official site, China News, Ctrip and Bendibao."};
+const PLACES = [{"c": "ferry", "n": "Xiamen International Cruise Center (Gulangyu ferry)", "zh": "厦门国际邮轮中心", "lat": 24.4815987, "lng": 118.0758267, "m": "D1 start · 4.1★ · ¥35 return to Sanqiutian, ~15 min · BOOK AHEAD, PASSPORT REQUIRED", "d": "Where the tourist ferries to Gulangyu leave, about 3 km north of Zhongshan Road, so take a taxi. Book on xmferry.com or its WeChat page up to 15 days ahead; the original passport must match the ticket name, and the return is valid 20 days. Regular fare is ¥35 return to Sanqiutian or ¥50 to Neicuoao. Ignore touts near the Lujiang Dao terminal who say foreigners cannot buy tickets and sell ¥138 packages. Winter timetable: first boat about 07:10 and last outbound boat about 17:30, so confirm your return time when you book. Typhoon season (Sep-Nov) can restrict sailings, so book a morning slot a day or two ahead and check the day before.", "g": "https://maps.google.com/?cid=5502252002553255546", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcFYiHECeJOMskhvSl3R-USE3YMxiICZmkYzT3R9AHKonQVfffsi8RthZp-iSgZlr88oxFtKOzfDWEY9j3y-u10vjga4xkH-2uhCSWM0GuIFz9YEmOxbCIjvMBESSZs72mkhD1e=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLc7uYZxT03-ukYTBuMc1vatF_CuyJxwv1Qh9bnyFaMwx67matmWKj4Ga4JKGFZRTcPKmeVL7m7kZaR10ea9fRkIqwisKAYNfZBAqMi30OK86ixLX3RxDe0cxCXAoXwgSJxKoUzSjA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLctQCUr_MmPL-yLVUO5uaHFjcEVHaHbWAGEVq0zdo1CMDAh8pW9xow6H6myZvXPuB7OozepKEhUKJ7ZqszFuSLe_mcPg7JX_p5iIhlDoONJ_8q0ftBNVucpxfCmFC9nw0ClSTyF1Q=s4800-w800-h600"], "a": ["陳彥俊", "ChuenFui (琿哥)", "HsinHung Chen"]}, {"c": "sight", "n": "Sunlight Rock", "zh": "日光岩", "lat": 24.441631, "lng": 118.068521, "must": true, "m": "D1 · 4.4★ · ~¥60 (sources say ¥50-60) · short stone-step climb", "d": "Gulangyu's highest point, a granite outcrop climbed by stone steps and gaps between boulders. From the top you see the island's red roofs, the sea and Xiamen across the water. Koxinga is said to have drilled his troops here before sailing for Taiwan in 1661. Do it first, while you are fresh and before the later boats land. The ticket price differs between sources, so carry ¥60.", "g": "https://maps.google.com/?cid=12237982250879596379", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfhiCSYp3YGLFUg4TkdPrFtU8uvCGVsk7C0g8dyQtrLl5rgnhniou3g49cZuyZ4wX1IDdvQzX1aSCRvnYgRzZC7W6Jl9g3jnTaiQjm_ZHlRc3KDANa4lKzwTsz2Kq3XcUQyvttH=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLf9LnF71jL_QplxFMRrYcV_oiWrGlYLMeUcUJDeFlDJK1o4CaRFEHLMRYQLFFCDRzrOwlY9TuSFecTq0hwoV-yePY1l_0ivElmiwmty_SkjjUE6MS2ULu5a9OqoQ_wbjPi9jJ5W=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcA77Bdd1F-StoZ_xSi7ZGRH_ZHvq6EzrkoDCQ_oEBZEKuse27CeNt2XBbQ2YbN3H7gk2Fe7uRkbwJkAsqJ36cd4ELAFIFvI56PTQ_8xzLXPjt0dq7es5E8Y-TUhf2QhvMXpRd8=s4800-w800-h600"], "a": ["Tsunami C", "Taiwan Chao", "成天樂《 10級在地嚮導 》"]}, {"c": "museum", "n": "Gulangyu Piano Museum (Shuzhuang Garden)", "zh": "鼓浪屿钢琴博物馆", "lat": 24.439535, "lng": 118.06903, "must": true, "m": "D1 · 4.3★ · garden ¥30, or ~¥50 with the museum (sources differ)", "d": "The museum sits inside Shuzhuang Garden on the seafront, 230 m from Sunlight Rock, so the two pair easily. The official site counts about 40 pianos; a blog says 100+, so do not expect a warehouse. Come for the story of how the island got its pianos, and for the sea view from the garden. Check at the gate whether ¥30 or ¥50 gets you into the museum.", "s": "Hu Youyi was born on Gulangyu, emigrated to Australia and donated the collection that fills the museum. It opened in January 2000, with an Australian pianist playing at the opening. The island already had its nickname: 200+ pianos, no cars and a past as a foreign enclave.", "sl": "Who gave the island its pianos?", "g": "https://maps.google.com/?cid=250088342941166587", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcNJ_K2FGrR1i0k_wgAOO_c94BUXkvHb7gYksMJSWsG7K02BQwINfO1h8wYDfxqx7LLAcnY-MnlbRZKsZ8mRxkBHx2h4brvoE1pXa0cDC67rOANqPaurONtcJ31bhO79tgXhG6hfA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfwhdgYkCT40G-_PboKT02U4ieBOdL6LX1hdL-n2sK-xRge9bNvnmMniSDSaZpx7O0mG5IbTtHgp_jZVi9GAyY1Xde8FwG9FUAuE_kWh-i_BRnqqCJrLh0Norw1YL29lKYe6lV4jamDiHE=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfpoP-PUPZI0bnyb5pQNA95DVYdrGfAZ8hMrGpSPj5CkE_WcEKdaaRJUDfaERIfzK8jH33_N0Novp3kjCgGCWgV2j7Ybu-vh7BehRWkc_gl9cxw1ocCB8PbSEVCCxouGW5y6byZr0tQQVJ4=s4800-w800-h600"], "a": ["Jack Wu", "Xiaoming", "Mark Hayes"]}, {"c": "sight", "n": "Haoyue Garden (Koxinga statue)", "zh": "皓月园", "lat": 24.4418852, "lng": 118.075622, "m": "D1 · 4.2★ · entry price and hours not confirmed", "d": "A seafront garden on Gulangyu's east side, built around a 15.7 m statue of Zheng Chenggong (Koxinga), assembled from 625 granite blocks. Come for the scale and for the history that explains why Xiamen matters at all. I could not confirm the entry price or opening hours, so check at the gate. Sunlight Rock is a 10-minute walk west if you are linking them.", "s": "On 21 April 1661 Koxinga sailed for Taiwan from this coast with about 25,000 men. He timed the crossing for the end of the north monsoon, so no ship could carry a warning to the Dutch base at Batavia in time. His troops are said to have trained on Sunlight Rock first. The Dutch lost Taiwan the following year.", "sl": "The 1661 crossing", "g": "https://maps.google.com/?cid=14578863910613746688", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLeoGHd5PfN1cOSo0W3QrE8gEpEWYWUnykNWWHai948IocqqoZ4hUuM2JBx6Z54OuosW17GiIqqpxNqJUpCr4KBuY7V3a825aUQwUxtALLNqG-CBtM3JMjMeb6rl2_acFzaqsxZxXw=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfy_K907QW--dsXmBFrnnw87We8TQjPpS87lBzSHj_AkQf4hLClBU4QMWEpdjN4ZPn_oFtFcJ2MFJnTLrf0i7YOT3a_-cN8N33KBaMWRPrmDb5jxNpDKehR2_l5SNc-CsoS21S8=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdWwnlY6hJlllA0s5lgKHEjMRI18ESNOzZdcaFhldPSgA2s8XNvhHg1YWl9qIIBdSkCZl4UHshDbU-zHHPKzuWuUWJCnBosDiRcdHz_B5Rfh-LpkpG4ZDpaMR44tb1EN1V2gP8=s4800-w800-h600"], "a": ["아셋아빠", "chnchin lee", "Khidir Khudzairi"]}, {"c": "museum", "n": "Gulangyu Organ Museum", "zh": "鼓浪屿管风琴博物馆", "lat": 24.4469648, "lng": 118.0684921, "m": "D1 · 4.2★ · price reports range FREE to ¥30 · check at the door", "d": "On Gu Xin Lu, roughly 800 m north of the Piano Museum, so it needs a separate walk. Price reports range from free to ¥30 and I could not confirm which is right, so treat ¥30 as the ceiling. The Piano Museum has the better story; add this one only if you have time before the last boat.", "g": "https://maps.google.com/?cid=4564503244799330836", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcbZvIjgxDaOsR0xA_aYWaJ_fEygPK-hZ1ZD-3H5wFbLA8WOApuy_nkrj33di1gih88jSC2mPbzFdm55I_s9A27AYFZUr8V_GuXVScT3ER9Spt7ceqaNi6bjYJ-J7eWzGmfU_JAeTVHz0OG=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLf6hEcVyneX8q1tsst3wK42qfZdmtZ0Dg9IHxfVp8YRRci5FwH9li9fPKSyzOUwdklpJuZBdbEVCdwlxvRdLPlhM2k2a1KzM89GozqycVz-bPT5ZbgVXaa0QH_JZg2wSOVDeMOZ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfBoEKAdXws0-xKuhQ4UWchxLurzMGnlQR7EQRx6Z7EOKe-ibgCvYfGhe_zJjYOnG4YuwWi9XFSQIsWbBtNK_B5wqsBA3BHGJ-zTx7IXvVp76_0lYNKosKUJHK2XumzgOPjpn1BDQ=s4800-w800-h600"], "a": ["Ying Ting Huang", "吳俊賢", "George Ren"]}, {"c": "cheap", "n": "Yuanxiangkou fish balls", "lat": 24.4453678, "lng": 118.0721655, "m": "D1 · 3.3★ (4 ratings) · ¥6-8 · 10:00-22:00", "d": "Fish-ball shop on Long Tou Lu, the island's main food street. Wikivoyage recommends it at ¥6-8, but a local blog and four Google ratings call it a tourist trap, and 3.3★ is the lowest score on this map. Treat it as a cheap taster you can walk away from. Better snacks are further along the street, and at the old-town addresses on Day 3.", "g": "https://maps.google.com/?cid=11383410469218856024", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfzXkiiCBIDQLLLZGYgFm3r6wvLBWxsRKvd2k2x_-3-GbpcFebqSal1rUrk11swLKZpor0ypGoYeOGuu8c8ifomlWqocNbYwLLiJks0xQpKP5Ha9-kR_NJ0WkPp9P1zx73VyQTi_HaWl4g=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLf7NrBt0kfx9ZFn8oQhY0374OPDjwS1nd8qb57ePRGt7PnUG5qQ5lBfFYsm0qk5zaek2eL5rMshe2CoXPQuIdhtmxnqAHQL7yX9BhveEBnsMA3qk3hypXDzIviu92xa6EkZXjyksjrjG7D5=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdPU8jNTY_Gax4VW6I86uftdAsEOXMGGSqGtpa-N_MGKGf9gWiCwZobOTEAy-Hdmul1M5LHtVCY3SdZ2Nl78_uEIfZ0LZftvRwpholtxb1-H7_pHOheXJzv3FBZBVjH9qG9qOlQIpJaa_Cv=s4800-w800-h600"], "a": ["wawa Wa", "Hellseeker", "wawa Wa"]}, {"c": "cheap", "n": "Egg-filled seafood snack (蛋满灌)", "zh": "海鲜蛋满灌", "lat": 24.44412, "lng": 118.071373, "m": "D1 · 4.5★ (8 ratings) · ~¥19 · hours not published", "d": "A stall at 91 Long Tou Lu selling an egg-filled seafood snack (蛋满灌) for about ¥19 as listed. Only eight ratings, so read 4.5★ as a hint rather than a verdict. Eat it standing in the lane, then keep walking.", "g": "https://maps.google.com/?cid=11127921378075317889", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLezpvNoQ65I0UuFTJWsZrrMomWg6jeRcXNzbJzyF8ceUjhE9T9odjsF0PSxzZJqBLWsEW6wPL3-AGkpUHS81p4w1Vnm3PwF1t67ellUB7Rli2x67mhKTcBOVIN36QCWZ3NDw9DAPQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLeUj_7ixQyNZYR7kcKMYTDuOnCb236PIueZ9qw2JMF53NYsaPdHQFBQW5DjIs-DdHx2PGGiFdpHRbEvjOvk4Ohj_6MOeaXHyhwdPjAQw0Z_NnK5B1d-XeWjuYL4jOH3JhjJfcjWgQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdGZ2lT4c2VQmGp9vYblY2kPUfvQYhFLy28gy8SU4Sxn2JjYtmIXvCv2xnajLojGhZUJSVFUWMBMYVrcBSjYuXioMwbY1niW25SdaxfU_HrHs1vuQRRQu4kMALbi1JU2NYnD-8-0A=s4800-w800-h600"], "a": ["孟家榮", "Y J", "Xiaoyi Peng"]}, {"c": "cafe", "n": "Chu Family Garden Coffee", "zh": "褚家园咖啡馆", "lat": 24.443079, "lng": 118.0700819, "m": "D1 · 4.4★ (9 ratings) · 09:00-22:00", "d": "A café at 15 Zhong Hua Lu, about midway between Sunlight Rock and the Long Tou Lu food street, so it fits a sit-down in the middle of the day. Open until 22:00, but the last ferries run earlier, so do not linger past your return boat. Nine ratings only.", "g": "https://maps.google.com/?cid=12367427968295133348", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLc4vf8MjnNQ2LOh70STPShqrPvrCOwcHAce62Pyclsr6jWrOJ0fmS93rXnfwTmj16xKbEER2O3jgkylRiw0ywrE2NCcYEKDQPLsyz_ytGDTIYNtAUm8I-QPlDpMvMQctjQcz3Xy=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfsvVj0ziFqyOhrtl4ofjavyNT5gCYC1bAkYhQWeeaSoI-i_2Nv_v7hpFj_S5WBRUwsU7akM_qfWYmNebkfCKEL6cyzPAL9UnADY8OyJi3PjjZKItPycoyiZzDKQO3V8NsH-N-Uwg=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdTvhr49ibe7Zj3AUg8REKCvhkQ3Tps9AZZRlYLlUoLLYh6euImudGXmuvKjlUC-8c5pWRY9PtZwC7MlWbC14rlexkJlbG8GxWK_rwvn37yj938sQDPTjkru5lOllebeMSax_xG=s4800-w800-h600"], "a": ["YC Khong", "Ajo Hou", "YC Khong"]}, {"c": "sight", "n": "Nanputuo Temple", "zh": "南普陀寺", "lat": 24.440773, "lng": 118.096804, "must": true, "m": "D2 · 4.5★ (635) · FREE but RESERVE (QR) · about 08:00-18:00", "d": "A working Buddhist temple beside Xiamen University's gate. Entry is free but needs a QR or mini-program reservation, so book the day before. Hours are about 08:00-18:00; confirm when you book. Start here at opening, eat at the vegetarian restaurant inside the grounds, then walk the 400 m to the university.", "g": "https://maps.google.com/?cid=13415983186146580739", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcESoVASmqfQQb03jXBOqj1Xq32V__R-kQmiurnfr04TIj8NKqVUUkkEmWDyBI88x93SZWilK4oZJmCs78HrXvaxjtIuSyxrlbaktvKzMZCg4Sact3BhhZXQ9EmVWLkGyYxRhl7=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfVhmEq5gosJfjW_VCT6A0cVpOPiEF4iLhd3m75_Fs2mBkTRmRhCfPwZ6S68VyGEGPTE7bLs2MLOQ833RNYJu74t7rP3V8FTTriFSJNX2lZdAb-htPDjg23N38ztYjHBJLsQjlPHpBuUyU=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLc-74u30fgEsfgIsgMqZ6VGo32DzsxE7JuLKDGrYfEpiZ1EIy1dHmVk4AiIB3BDg7eyDhivT5wCZBRW4oSLg6WvXkwoNhefElo5DWIP16o3cNwTIX-U6JNKLreT-LhGCbX_riwY7wvistZo=s4800-w800-h600"], "a": ["黃子桐", "Peter A. Knipp", "G"]}, {"c": "mid", "n": "Nanputuo vegetarian restaurant", "zh": "南普陀素菜馆", "lat": 24.439523, "lng": 118.097108, "m": "D2 · 4.4★ (21) · buffet ¥68-118 reported · 11:00-14:00 and 17:00-21:00", "d": "Vegetarian restaurant inside the temple grounds (Puzhao Lou). Reports put the buffet at ¥68-118 a head, so ask which set you are ordering before you sit. Open for lunch and dinner only, with a gap from 14:00 to 17:00. Convenient and meat-free, rather than a destination meal.", "g": "https://maps.google.com/?cid=14535629215549666492", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLdLEzDMKQsWvg8McaXvbLxO8e17R_kZTvHCvXLZZV2IfHQa9ugdHXS_Xob-c6dvHxPTt98zz6ooCCkcHHJLMg60-inepxjGhZl0D-y0_CKpCB7jgKjLRqGtPoppL8SI_vqWQJWG=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLe9s_vOtPATiBbPi9q0agCFj5dMJuAVIUy9RdWU--ykQXLMvXAzhJ3fA5XUwl4ZJ6mTN5o4ni3ikx80Vycko6gFx6wh5Ery_DDuivUmexsw8-g3e2jyP5xEkszsaItXNVmwzNdfQg=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfM9Faw0wD7lPi-AmYWOqkV6TWSlXlSEqJLKknzUe8t6VAWM81gGSrhcGZkeTuBQvCRpXW4_2m_V4_uGJ2jBX96lwbPjcaOgqw6OC6r76qxjmEt1oHd_PUY60DSh690JQZskOQlj-f74HI=s4800-w800-h600"], "a": ["Tommy Shih", "洪秋敏", "多芭安小姐"]}, {"c": "campus", "n": "Xiamen University", "zh": "厦门大学", "lat": 24.4373484, "lng": 118.097855, "must": true, "m": "D2 · 4.5★ (316) · FREE but RESERVE via WeChat mini-program · quotas reported 2,000 weekdays, 8,000 weekends", "d": "Founded in 1921 by Tan Kah Kee, on a seafront campus. Visitors must reserve through a WeChat mini-program, and one source puts the daily quota at 2,000 on weekdays and 8,000 at weekends. I could not confirm whether a passport works as ID, so try booking a day ahead and keep a fallback. Nanputuo and Shapowei are both within walking distance if the reservation fails.", "g": "https://maps.google.com/?cid=2061092658488727313", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLeoafUVwk9J92Y4KcISgxaN9Bq19ynZ5jiS6rgQo-c4UfUbd8owQdycS2eiDZO20ZrpwgjUi_mRRxFWSwrYcrY8AEsBeYRtmRrVERxF_RyGdMm8_aCDQ5ux1SmO-npJZ1gRuk6JKQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdJ5lOvIPnoFfIfQJaVWWOfvcD8lmYpdM3y4eUJOSYO-OQqb9GkbzKMSxEkRZq1Lp_zv1YksKv328UFprfWDxKRS4Db8_E3Dh00cx-mcduPU5pEx6jcictjeoCa2B4oTrXs3-6a=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLe7jIueZT6P004ZDZnZnhJ2jCEgX3HMTKH2k_kB529IHt4fTqC_T3VRDUXjRMu2X4WbNLSWTeWn5DxBMPfpjQ4g9Wbi5VaF57HpGsBdmPs2f4ul3YFU0_Tgp9ikmhV8VvA0vst26DKvuLc=s4800-w800-h600"], "a": ["Eugene", "Savoir Aimer (Admin)", "Kb Lin"]}, {"c": "sight", "n": "Hulishan Cannon Fort", "zh": "胡里山炮台", "lat": 24.429128, "lng": 118.107431, "must": true, "m": "D2 · 4.3★ (132) · ¥25 · 07:30-18:00 (17:30 in winter)", "d": "A coastal fort whose centrepiece is a Krupp 280 mm cannon, one of the largest of its kind to survive. It is a compact site, so an hour covers it. Take a taxi from the university, since it is about 1.3 km along the coast road. It closes at 17:30 in winter.", "s": "Two Krupp cannons were bought for the fort, and only one remains. A source reports that Guinness listed it in 2000 as the oldest and largest surviving 19th-century coastal artillery piece.", "sl": "The one cannon that survived", "g": "https://maps.google.com/?cid=4476127218819729474", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLetmmsovWms44k6FY_qvzaqzKdQSt1oZPEJT4UPI0OAiERHreCKJ0EtM3r8tjXQ-dZQBjJi0N9u4xAwazku0hvd5xU_ahXB47Ws9UUg8V1oHwor1KTJpKBTHmhel-Nqft6r_8JN=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdrGEUwBkCoE25uRBHsJvLf-Nv5jRpfFrue8-im-MqHpMog6HQ4XV9rntGM2RqePrRk4qSBIdVihaOIROTfCeG9Y_CLddfZ66JdGqGFQ7u_TxSQu0KpDOZNXRsLcx8K7AkRG1UlIsZXmLU=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcwAzi_oSZ64BLhqQiuKduirHmjVSXKVx0YrIU_jcaVm2aeplXutqmvQjofNkgj9OuuH_nABEyRjVd4bhPAus2gtZpeS1UyQkwDkiO0CZmCcqKZCFOFqURec57Y-VGn7V7LZJix=s4800-w800-h600"], "a": ["Henry Qu", "Tsung Ming Huang", "Hoon Kim"]}, {"c": "quarter", "n": "Zengcuo'an fishing village", "zh": "曾厝垵", "lat": 24.42672, "lng": 118.12566, "m": "D2 · 4.3★ (57) · FREE · commercialised", "d": "A former fishing village turned into seaside lanes of snack stalls and guesthouses, and it is well commercialised. Go for a late-afternoon walk by the sea, not for the best food. The one meal worth stopping for is the Bib-listed sha cha noodle shop at No. 289, on the next card.", "g": "https://maps.google.com/?cid=11666235861982424400", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLf_ZCJWQQWvdDqy_ruDqB_-vl3xKDX6vvQ4NU93rCgjVhJmrVQ45HuWaK8jDAWHpvc0wdde8mG0Gihll30rIdDxFkRWc2xZufYXC_NBidzZCgtTRg-FRZL9P08I5Nydmd8CcoQ6VeWQw_Yq=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdo8VdNzoUVUhmmT-aThfM7jcsg_GDwYA6Bi3PLwSSDnvkHGLfRhPJJhEKn-3IRwYpxQBwmT1H-a31nvftArIqG8mJf3oNdNNW4aQc9yBYsyhQZmk-FRi3tq5Hxib795dsAGRrvnNx6whhQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLd9taWB0eI0dmDgJhoilgG0izBPJu_fXniyMxAsPVGvHeBondm3kdm118tZfLdvEpWnQ5g790JEmtKAnphGgBuelrju3Rw78-B-Ag3NHjFqm_l0WbkgurdQUwFGSusrxLr0SPRDhBiexo1s=s4800-w800-h600"], "a": ["黃主恩", "沁憲李", "陳哲逸"]}, {"c": "cheap", "n": "Wu Lan Sha Cha Mian", "zh": "五兰沙茶面", "lat": 24.427454, "lng": 118.12548, "m": "D2 · 5.0★ (2 ratings) · Michelin Bib Gourmand list · price and hours not published", "d": "Satay-style noodle shop at 289 Zengcuo'an, listed in the Michelin Bib Gourmand. Google shows only two ratings, so the 5.0★ means nothing; the Bib listing is the reason it is here. Hours are not published, so check on Amap before you walk over.", "g": "https://maps.google.com/?cid=2608061728840899847", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLewDea0ZkiFSppktBCQEW-BgP1nzyl3RHzkjn-LOvKMMbyeKgSWu2H0c-Uh2vyi-R4Aa8hIm8Y8yR4qqiBPaxHZhxPj1EAm0YzwsLY9qvXxagfDJVI638WGNd4d0ok-KQCpAWFYQKBepApH=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfsX2xd-zdFcGMkOMwKGQfsZ06TUxrCA46TUFb0f6BNwEbKSPZ8bw8dEtgh_u_mX7T0zp9fPtSG0gs8cy3-u6rfYSmM-pCX5g1pti8WHHP7NGYWOwF4Zu3WPFqupRMhenyuSt5cXoC9dnQ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcKlwWWAQb7L3r_0lzjJ_MDxER0pvXrm-aHkU4iDges4yNVP7z8gQj8l09zZ9gVCUbiTpkjk1kzB4cPceccoT23_KKenWAuP711asHiyFvWD9JBmRR-CuwjvKKEfvxOKCkQGkA623v8EGFP=s4800-w800-h600"], "a": ["Eugene C (C)", "Kai. N. Fei", "Eugene C (C)"]}, {"c": "quarter", "n": "Shapowei Art West Zone", "zh": "沙坡尾艺术西区", "lat": 24.43768, "lng": 118.08806, "must": true, "m": "D2 · 4.3★ (39) · FREE · cafés and bars into the evening", "d": "An old fishing port turned into a quarter of murals, indie cafés, small bars and waterfront lanes. Reviewers value it for wandering and for sunset, not for any single sight. It is about 1 km from Xiamen University, so end Day 2 here and eat nearby. One reviewer calls it Zhongshan Road's artsier cousin.", "g": "https://maps.google.com/?cid=4889709830218033402", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLdRkNMWluCFE2RMYGB9tOB26XfGJ4u0j_7ZfGdiq6tGRv9nT7JwfkcWiIizmoKzoQE_4DEItFDR-Hj5nC8fUETDIxFqe8UQO7NI1WhEtYiJn0419LNeg-vLPr6LUTLsZFfOrfTHONQVB54=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcaUfHpSVLNjpNbZPx0D0HYABqkGlPzZIfrPOommjnI-M9YfcDIg0lo1hgOTV3SJBbXiar0rKWI9kwrACdEZsUVl6pACq4VS-Hh_3wOPfV3TgqpaVoous8VAIGWYX5UKhABTujH=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdsSrQvjiWE_V978Q6qay5ZEkRu06S_d6i4MIaggfABke9nKwQ9CPjghXNNMyf8XoAlGLBRKU_4hM2un-CjIdDZSzTg7jcyrySiBUSq2HNTF10N5ntRrlBDTiQkaDMv26L2KmAgu-ETbcik=s4800-w800-h600"], "a": ["松月樵隱", "yuenling ho", "美食筆記"]}, {"c": "cheap", "n": "Wu Tang Sha Cha Mian", "zh": "五堂沙茶面", "lat": 24.443777, "lng": 118.084291, "m": "D2 · 4.1★ (48) · ~¥24 a bowl · 10:00-22:00 · Bib list", "d": "Long-established sha cha mian shop at 58 Min Zu Lu, on the Bib list. Reviewers rate the broth highly but say the ¥24 bowl comes with only three prawns and two fish balls, so it is pricey for noodles. One review recommends a taxi because it is awkward to reach on foot.", "g": "https://maps.google.com/?cid=16455920696871012752", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfN3mQ3aQC4a_uNwRpzSDYofSa_IEmCwE3vmiwIhSZ3UVyEthqAG2SRzZAeoz4q6994gDzVEUaP3rMKpXWPSeAHj8GBszxyy9n35PVB-DqWeh2-25hJ5PestkZ0OkZ_8sfN39WE=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLeqiFIfM2VDI0SzKlYcLwhAQ6S7BQMga1UqIWbOnU62_1TTw8MOCPc6nkQzWzYdpvjx4K7HGjGb1CC8IIORPu7tMFrKoj8rBqzg69aVMVNk85zPn5_2Ot11OF7GoUH878TybadZ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfyWTaEY54VRuEslgyi-r9i3kQU2RbtYU-Qfnr_xI_XSvOufw5MOIZrg2BwhjXygdx-4L-aBMhZBEOeFzqXEYyxyclj_TtsF9iG4Bzr_iNld1B5nQUFJfQS6QVWk_GzRGegDRB3xJUQXm6_=s4800-w800-h600"], "a": ["GUT Sun", "陳玠廷（Jeffrey）", "王永秦"]}, {"c": "quarter", "n": "Zhongshan Road pedestrian street", "zh": "中山路步行街", "lat": 24.456033, "lng": 118.085333, "m": "D1 evening · 4.5★ (69) · FREE · best after dark", "d": "Xiamen's main pedestrian street, lined with shophouses and food stalls. Reviewers call it touristy but pleasant at night, quieter by day, and note impatient vendors at the busiest eateries. Walk it for the lights and eat in the lanes off it instead. The oyster omelette alley and Xia He Lu noodle shops on this map are within about 1 km.", "g": "https://maps.google.com/?cid=14665656720209363281", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLebW47f90oFE9Mrbi1UxG7BoIDesuvEo4vsZ2f28tEkSTYJMU6tUr_oCOHeZ9oVod7PivmSKkr1ebquawlU5FuyLYdT2A9k-w2fbuFv-4B2bNcM3fhXDLH8qNbvLx7DkMRgfpmXSg=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdu2-0pZUxpVoW0lU1GifxBceaQ4iUhTerOdzHpAkQfrEUFZ-T-1TQ12i7-xuWRCaXcO0KoWFF84q85xGbfTSxEK4LEJu8fsW7ZGvFUNwSm9FyUkxweyp1CHzJyK_GL65dY8qkMAEnm20dI=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfzpZAwnFnazr6RFZ0VHGFDF3I-eGiU5am8nbwNFNGJ7dttCSY9Kfu5O0yKv8Xy5xUlaw-vYxD9wvfJvq1e26lAwlKckEJTCKaBWTzaRHpVyU4c9w3By8srazqOI3igWbuI0dg=s4800-w800-h600"], "a": ["Wesley Chiwai Tang", "Nomad YC", "Janet Hsieh"]}, {"c": "mid", "n": "Bayi Market", "zh": "八市", "lat": 24.4585376, "lng": 118.0743837, "m": "D3 · 4.3★ (210) · SEAFOOD SOLD BY WEIGHT: agree the price first", "d": "A wet-and-dry market with live seafood stalls, where you pick the fish and have it cooked. One reviewer's group paid under ¥1,000 for a large seafood spread, so costs add up. Fix the weight and the price before anything is cooked. Reviewers describe it as lively in both the morning and the evening.", "g": "https://maps.google.com/?cid=2809617453507981869", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLeO0m3_A1ogsbsykFJzRPbfZkCuXCMm3nxR6FPYXjK07t9VB08DlnKSZlevaHWVQ7qqmxeGSCAhB5jqpluoI-IS94Qs0RwxU9XeqNLvSE25Uy1Dk4Tg2lKh1596hkWRkB5wRy3DzA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdl6v-dngPBjfFSfZ7xUUIY_9Wp-b9u7Y8LlZbS-P_B599HOg5ZJKY5fNjbJBnwVhGPUh-wp6Hi4MqoeZrA40gGWDZ3q5vJeDPlKco-CV83wO42EYtcewHEY-ZnHRatHQ2qv0hgft_gNk42=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcA_zTCHT2DirmNLD4nAAPaHtMx5W7pL92DVePnJ7IABPZOvfvYojpbtAX1NpCd-8Dwc2Cxijxf2zQx-9eq-0OSnaIRK8zGei7pjc0TYI2QFZUQ3M5YTXorYR8xdtunriOGbo730A=s4800-w800-h600"], "a": ["travel with Mi", "Dennis Lo", "tcchenting Chen"]}, {"c": "cheap", "n": "Lao Song Bian Shi", "zh": "老宋扁食", "lat": 24.459569, "lng": 118.076857, "m": "D3 · 4.2★ (6 ratings) · ~¥20 · 09:30-22:00 · Bib 2026", "d": "Wontons (bian shi) with peanut noodles for about ¥20, in the 2026 Bib Gourmand list. Only six Google ratings, so Michelin vouches for it more than Google does. A second Bib shop, A Xi Xia Mian (prawn noodles, 11 Dayuan Rd), is close by but I could not place it on the map; look it up on Amap.", "g": "https://maps.google.com/?cid=10606530693005599445", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLePTrSaemWk8E8HfO0NqpEIUTYH0DDJqEkEHNEBCUSOVpO4FBMyWDKVGFzgsQ3yLA1WJywmIQDXoC_zBNLiy1y7sqrR9hvB-WWhpeHtVgcm130dNGAPVcBW79f3J0oQmVubWFzHp1zhQzkX=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdGjVx5pydm4IhTW2yRg_ex466rDwC65XjBSuRYHbgivwvwdLt3WfEqzs7jWHEXRyaBBz4yydCOa54HvZnZtZ0K5T31WdfHOsPuRrkprDUvzSQgDl-wtwvByYKeYx8SY7bKLOhxfg=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfJlEU5fQhRxg_AN0sy5FCX6RsO1ODKCARYN3rsojC-m28fjr48Ah19UQl7azqxV0hrakABF8QLGj5K7jWxY7d8LFonh7TeapYUXgUHT0hZFxq7eLRqWFX1pRHAa_KHPbmTEnKEQrGZ1nFv=s4800-w800-h600"], "a": ["chen wing chi", "Tsunami C", "wawa Wa"]}, {"c": "cheap", "n": "Mingyue prawn noodles", "zh": "明月虾面", "lat": 24.459683, "lng": 118.076215, "m": "D3 · 4.5★ (24) · 10:00-22:00 · Bib status unconfirmed", "d": "Prawn-noodle shop at 180 Xia He Lu, next door to Zhen Zhen (No. 178). Several reviewers say it is Michelin-listed, but I could not confirm that against Michelin's own list. No price sourced. Go if you want to compare it with the Bib-listed noodle shops nearby.", "g": "https://maps.google.com/?cid=18207729832400986976", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLdrb2smrBAj9532OudIfRPoGGbL1nYphlDAharEIiJKFpbG-LDxwcUQb8R9a1VzgFzNvqwD-a__TWI6evJE5PZzrKR1m0W5GeZQxQPSftISoNFFmua9gq_jHkqiWAcFGDAicYNVyw=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdujE6LmjHOIpdpR0bMbF7AwpSvSv_5l03sv75DS0gxNENkZw0pPZvmAUqVAjXGMY6J6izmrwBZAX2kmGQ7uBh_sydM1mQgEWmqFM5ZNodSPEOZoMj8qlW2RtGVHGEoEkJRLM4p=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcRjk_nL4Tzsv1oSNIg5W5P2gGmpL71LDnzCASaSaEQqmh7x_pyq7VqRw3n9qm2dOdGkIL36Mt02IxiT7xudGRDttohT3xgKXsez8VtIfn9tDj2cAFGcZ3UdjJbR3ySLYOq6CpR5kXfNQXQ=s4800-w800-h600"], "a": ["jason. TSao", "孟家榮", "王怡敦"]}, {"c": "cheap", "n": "Zhen Zhen Hai Li Jian", "zh": "珍珍海蛎煎", "lat": 24.459761, "lng": 118.076333, "nophoto": "no photos or rating on Google", "m": "D3 · no Google rating · Bib list · hours and price not published", "d": "Oyster omelette (hai li jian) at 178 Xia He Lu, on the Michelin Bib list but with no Google rating, photos or opening hours. Confirm that it is open before you detour. The dish is oysters in a starchy batter fried crisp at the edges; the Lianhuan card has the legend.", "g": "https://maps.google.com/?cid=7432864794875469230", "p": [], "a": []}, {"c": "cheap", "n": "Yue Hua Sha Cha Mian", "zh": "月华沙茶面", "lat": 24.45641, "lng": 118.0758, "must": true, "m": "D3 · 4.0★ (82) · Bib list · price not sourced", "d": "Satay noodles at 78 Zhen Bang Lu, on the Bib list. You order at the counter, then carry the bowl to an air-conditioned room next door. Verdicts split: one reviewer calls it essential, another found the soup diluted and heavy on MSG, and the 4.0★ is honest. Try it for the dish itself, since sha cha mian is Xiamen's signature noodle.", "g": "https://maps.google.com/?cid=12437576579063835744", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLeBfl440rAoTSQQEonzsRhzW298FMRqd1_vunXHjzQhvquktMCDvROT6OHO5z1gBOp7tBrE8EV3l2DE4Euel18Ktuw1vA983OoWR0df485GRLRsa0mm1rIJL6ZZjHX9bCMKVrPw=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLc95Sizc0NUR7-b0UfDa6-4z-NCyeSChuRotHO_Ey7B6__DGK2TKw5MAgvvmpgeuP7p6a10JPXjYur9O09nioku8md1FbNfOsNIDsNY-nOp56c4l_lDN0Ls1-U4g08baxv-3Ds=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcsBO9ORPfpraTGeVRBR7JHmieQ8fGdA24E_MtzXP5S3wyYFTkUe3UTC07hJJbkq4jHvNzEnh-vKyt7wmAQK5fdI8h61KCnqPoKa0h_fRhD3SIvxUNVQ8fZaVcYjoTgQl7ZVkGNUQ=s4800-w800-h600"], "a": ["莊宏祥", "Stefan Reckling", "Ying-Te Lien"]}, {"c": "cafe", "n": "A Ji Zai", "zh": "阿吉仔", "lat": 24.457067, "lng": 118.076187, "m": "D3 · 4.6★ (10) · retro five-storey building with rooftop", "d": "A bakery-café at 37 Dayuan Rd spread over five floors of wooden furniture and retro tiles, with a rooftop. Reviewers rate the atmosphere above the food: the signature coconut pastry tastes like an egg tart with coconut jam, and the tea is overpriced, though the upstairs coffee is better. Go for the building and a rest, not for the pastry.", "g": "https://maps.google.com/?cid=5711457434862384611", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfD79VINUtkdqBW_jCW5oFvZFDnWY-th6NzZmUdHIH2JpjHcVGH9q9euOYK1H4_AHQ7bsjC7yW6V4BxWI04EuyKIngjEURTkJzjJdXYudhVVNf7ovaQ-QBeDWWV01Z8f-Qr_FvBSA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcIlQQlyPTZxbUvmbO_tDn6KB3QnEL0TMjVpXd7CiiYwmd1wOI3eG5hmnjMTSDEIH-3ynaPmrA9qv2udFFXXjfnIBhRht6PKmmtj3lze4jIKdrnLkw-czL-J488IBSEXOqolAcJ=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLe2Facy3Ul-qmj-50SHHrV4KKq-bgyvB-vVjxtACXEf88Z0yZoGMG2Ky8QR82cMC1LCvT0vVpUGbGGQxITr4-AUXC_RJaWC9rhHjkjeummcxFrnXBfp_2caOWKXpOLq5nuPSO69=s4800-w800-h600"], "a": ["Luke Brown", "Sam Liew", "Ptricia"]}, {"c": "cheap", "n": "Huang Zehe Peanut Soup", "zh": "黄则和花生汤", "lat": 24.45334, "lng": 118.076122, "m": "D1 evening or D3 · 3.9★ (141) · ¥ · 10:00-22:00 · open-air, no toilet", "d": "A decades-old peanut-soup shop on the Zhongshan Road pedestrian street, famous in China. Order the peanut soup with egg. Reviewers are split between 'trusted brand' and 'seriously overrated', and one found the fried dessert cold and oily. Eat one bowl as a landmark, not a meal.", "g": "https://maps.google.com/?cid=5898645412931436580", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcW25S2zQtEM2z7MFmvwOrVPy1ey8OFJQ0k63a60b98I8xdJgV22jrej9jaQ74rcoRAV9ZQZwJ98YVSe2GZRL5YVOjM5d1NlCRx8_e1XD2VnDmySz6zLD1heNyanAZrj5gTMqg=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdUsokOzBUPGGB-64yDOtvIW1EfAhPPaQZDr7-W9U5LjVqtcYv9j0DoDK23EGnUQCHtXbNkkfa9G3JtgWwFJXikV0xoKx7VfDKKes2xbK28yjI7h78XAySE7pmwypkhRAkNi86fAsB0SPrA=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLd-2s5MbUp5fVOI52FaAyj1nQh7_OO5aUsg8f76TFbNcGNydAFodQpC_wXEpxszoCZ-InvTHoSW_ck-QrSTkTVxp9d6wi3af2EjXHlL5fqFJRbPGKwf_GHnuAr8hn3tQU_jzbRtjpI5mUXN=s4800-w800-h600"], "a": ["Thomas Yuan", "Richard A Francisco", "wawa Wa"]}, {"c": "cheap", "n": "Ximen Tusundong", "zh": "西门土笋冻", "lat": 24.4606175, "lng": 118.0878179, "m": "D3 · 4.6★ (10) · 08:00-22:00", "d": "Tu sun dong is a cold jelly set from sea worms. It looks strange, but reviewers say it tastes fine with the dipping sauces, and this shop at 33 Dou Xi Lu is known for it. Skip the fried oyster cake at the front, which one reviewer called just ok. Order one bowl and share.", "g": "https://maps.google.com/?cid=10844427513896333237", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLcYh1e7Qp_FYTn0_gbbCNQ_MwjC2Ihx4asJRM3rW7tbQK_nbYcJjhhfxQlIXyIY11XkpvQuq_VmC3SETfyUUZUD2mVNATw6YtY5w4vPmD7NuDNxlCmKMOKmcbRJkMHZnxiu67Rp_Q=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfbKyH61U3LyzkkWkc9cd_RT4ujRj0R3bzP4juodz77IJXQmj_dC7bOPxDEtTYGlK1JaQiyzHSpGlPNwfRFQcA7q0l1R0AI6vf6-eLlaXDNxCIbSWgZNHKcGU1QZIPNDur4f-XTFg=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdd_ss8f7iJvcMJfQx7wCJKKGzlncLh6mK0Tmh6dGW9G5nd4WgE-vlPjCvyzsAspD-diA6QxEDQt_NGGnJiXnkVzJ0PDY6Qby9IbeUNwmFsE3wM5GS8yAJMaYpaf_e0DBfjsTe1=s4800-w800-h600"], "a": ["KC Lu", "Ricky C", "Jen chieh Chang"]}, {"c": "cheap", "n": "Lianhuan oyster omelette", "zh": "莲欢海蛎煎小吃店", "lat": 24.454969, "lng": 118.080587, "m": "D1 evening or D3 · 4.3★ (23) · ~¥30 a plate · 10:00-22:00", "d": "Oyster omelette in an alley off Zhongshan Road (Jukou Heng Xiang no. 4), about ¥30 a plate. Reviews split between 'starchy and small' and 'great', so order one plate and share. The alley is easy to walk past, so follow the map pin.", "s": "Xiamen's oyster omelette is said to date from 1661 and to have been invented by Zheng Chenggong himself, the Koxinga whose statue stands on Gulangyu. The claim was cited by a chef at Hokklo, the Michelin-starred restaurant on this map, in the South China Morning Post. Treat it as legend, but it explains why nearly every old-town shop sells one.", "sl": "Koxinga's omelette", "g": "https://maps.google.com/?cid=12669637640224177941", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLepFSLVI3P4Hrt_JJVruflQ2P9Yjy5efnQbM681ntSa06yp23Re3mngCAhTx0EMK_CGLPA4HIohjD4tVIHtkp-heyt0vMloO5xwWTYdcGAVje9RRv12zxGpw3mwoICbJMOHoQ-dQgYQIaDo=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcio9esPPdtxZVFe312ySJRepN_d4rv1i7Itvd8Oi4obNLq0Yl2IfkdSd6QH_AsUWRXFSf-OvGUyVd1ffefNrqh2tLAcWHuMgenakKhz3XkRZOSTnNgUN8UmSW1jr0WepYtdwYk=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfXAH4R122804cOKrDhhMsGM_K8ngyisrUW5Xz_55-xQ4qEYAUMjcv13AGomtYYYykQItpfKjOYABgEkxizyCuwp-f7XA2TVtY_UkfhAgGHOaTFYp8t_KYqMZhY3g2bge4Szali1JE4sG66=s4800-w800-h600"], "a": ["葉靜怡", "A MIT", "葉靜怡"]}, {"c": "cheap", "n": "1980 Roast Pork Zongzi", "zh": "1980烧肉粽", "lat": 24.455442, "lng": 118.084791, "m": "D1 evening or D3 · 4.0★ (33) · 11:00-22:00", "d": "Shao rou zong, a sticky-rice dumpling with roast pork, at 353 Zhongshan Road. Pork zongzi is the Xiamen way. One reviewer found the zongzi at Huang Zehe average, so compare the two if you like. Opens at 11:00, so it is a lunch or evening stop.", "g": "https://maps.google.com/?cid=13169354928381839797", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLdm-I9-Hy46rUzczFamFsUJvyec0CqCypMYqDxPX23ZCobI5jYp18gHx97EpCkVjKzfrcwWn1pXNmSHPzImN08Q3DrVmB3NtGl_1hC_QvQMj3CWEsjbUuPi7aieBUcwDY2hP_qP0tVeMWYC=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfzgJVM2UnDQEFihYprFQn2fQjRTFKd8B4LyCh5t-eSZVDwwpoMDp3XgQuObMc-9cT6ftIKF14N2HoTy6J_oOegfw0kZFzynPBxAZPf6vwQ9l4kOhaSOvhYsxqpiw6HCaYdhJYxahCYXoI=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLeAIkjMGh3IW0zPjDcGUhiLGIQCiMjXAsOBZ8BuEnTij_xlyTTtkBQYZBwwK7T_4OgnMRaztFlxmv-TxBc2dnkzQhDqwRMw5oZVVVCocs8cQnVX1-1N_z1C_VZPkxgni42oyKrF4A0QhDQ=s4800-w800-h600"], "a": ["Crumpled Nomad", "YY Aaron", "Crumpled Nomad"]}, {"c": "bar", "n": "Dream Bar", "lat": 24.455235, "lng": 118.079173, "m": "D1 or D3 night · 5.0★ (42) · cocktails ~¥80-150 · hours not published", "d": "A small bar at 40 Si Ming Xi Lu, just off Zhongshan Road, run by its owner-mixologist. Reviewers praise the unique cocktails and a list of local and imported beers, and report a friendly host and a live singer on one visit. Drinks cost ¥80-150, on a par with UK prices. I could not verify a craft-beer scene anywhere else in Xiamen.", "g": "https://maps.google.com/?cid=18158228674264414652", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfLB1eFzmM73FAkVvJcVKFixZzJPBrBfXm6mr1709Ebjnq-stzF91suE3HO35yPQXYOtLpudQRoCfkw4CnWaI_MjHfQ3094i6hcYd4AzRRu6bRvXS2ysXMu-Cq5MzFwovqd537wvjk0tVcr=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLfmHR0pOFR_GRuvPFitT8Mp3Kjch3XrcdhH15NTr9FbwxCJw4JNsqGO9TM06G42Dh8dAzwPuMsEAql-GoEzJaL4PTZc9xO6IpfjqOSNmAY0lYnfbOrTs5CmQWziJ1ZWdRkkZFXb0FROHwL6=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcJcuTGuZL_8sLVHYOfLFd_bf4hdsdZxVMcgz9ZQxRmxgOplee8GGUch4WGePLmhK4lI1ZmdYqr_v5ag1AowdIlEXKX9Triw-Ev2TmOyoktU7TklmLQkshGuGVpRHzJopQKPjV4Xl2-fw3B=s4800-w800-h600"], "a": ["蘆洲彭于晏", "Lim Ben", "so E"]}, {"c": "sight", "n": "Chen Jiageng (Tan Kah Kee) Memorial Hall", "zh": "陈嘉庚纪念馆", "lat": 24.568672, "lng": 118.106885, "m": "D3 · 4.3★ (30) · price and hours not confirmed", "d": "A memorial hall in Jimei by the sea, built in Minnan red brick with Nanyang-style detail, telling the story of Tan Kah Kee and the schools he built. A reviewer notes you can walk down steps to the beach. I could not confirm entry rules, so check on the day. Do this first, then walk to the School Village, about 1.5 km away.", "s": "Tan Kah Kee was born in Jimei in 1874 and went to Singapore at 16. He built a rubber and shipping empire there, then spent it: Jimei's schools in 1918, Xiamen University in 1921, paid for by giving away most of his assets. He died in Beijing in 1961. Much of the sea-edge land he built on was barren beach.", "sl": "The man who gave it all away", "g": "https://maps.google.com/?cid=10322751780613052943", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLfGOoSrmAKfA8QIJGLDXvVa82aQTfJwJhzn2qhpdleY51_forsl1j_jgYyF5c3a2hTC2mCq5ofIusOM7GMzJg6s4B8AG8qm504K4ZJVoGLxPE7YbagFLJ5qEuYHXJui2OoN2AtbmfcDaC1r=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLds-SWG6C1OoiWk4SbC1FM-NNTIqIR9mCqL3a3RThGK-q4iPca3bWrIoboQlmYUH3wk00IrQUntIrJaFZQ6Tsn9gcPwaOljxUK-nsIVQxxIHc0wTmZnbHzVWcgKM5N5qTRgJjaS1sGYdgw=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdiooTAKoOZmeeZD3v6S4C3u5npElsJd4kudDYtmso6x7JBZ-gF4faOihnpWqT_Azdd0YZbqks7aonMALl67XVWiSKrej_vqyDoP6tNBnC2YfFTQolFwD3CDY1DoP8itwD5HK7opxr96sMm=s4800-w800-h600"], "a": ["zhoutw", "多芭安小姐", "鍾道明"]}, {"c": "campus", "n": "Jimei School Village", "zh": "集美学村", "lat": 24.577778, "lng": 118.096104, "m": "D3 · 4.5★ (90) · open district; access rules not confirmed", "d": "The cluster of schools that Tan Kah Kee began in 1918, still working campuses, so this is a walk and not a ticketed sight. Reviewers call it safe and walkable, with good local food, and one says their grandfather studied here before settling in Malaysia. Jimei is on the mainland north of the island; I did not verify journey times, so allow time and use Amap.", "g": "https://maps.google.com/?cid=14557887364835220693", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLck-JRoX4SLEL6uCd0zUBkeRDRJHDTbcFuTrmMRB1yU9KRSGoxPR_GbhrNBmjn45SZYicMWy7IdLFqfB9T9wXf0JcwgWGHYO_Ov1nPeKfdHtmtoOEnsP0NFt0F17fQkaBQHEnw=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLf5Uiwgbf8cOd2EdDLKa5XQ1CpOp96C4siOHDO763yn7UUVmUkEnRL4WExSTOijaChiUkh1iWYRLlHoYsw-x6l3s6VNMIfEZqis5uGZF6LsQSsxHq57C5FoOampAuzo1roKlAsV=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLdNWERbPw1JYiDjJabEZaa7XT7LqzO1xt0n2tyCPx8HTzz_SnIQkd9tB6c6cgnwAllHmQoe_-ImzVJxi80o-uaUrrqXBplsWIfIHCV3YTQOEw_kJv1onpyTbbCvkxmlV2qvAjXung=s4800-w800-h600"], "a": ["Tin Pin", "Kevin Ko", "Moonshine Lin (Moonshine)"]}, {"c": "mid", "n": "Azhong Restaurant", "lat": 24.4719166, "lng": 118.1094464, "m": "D3 · 4.6★ (8) · ~¥60 a dish · 10:00-22:00 · ~30 min wait reported", "d": "A local restaurant at Jin Bang Lu 111-1, between the old town and Jimei. One reviewer's seven dishes for four came to about ¥485 after a 30-minute wait, and the same reviewer says it is in the Michelin guide; I could not confirm the tier. Eight ratings only, so go early.", "g": "https://maps.google.com/?cid=5771637442061025537", "p": ["https://lh3.googleusercontent.com/grass-cs/AABkmLc07SmnpvUnuGRdLxAb6WjILEwh5cVoBLoHk-pM963ZijgdHrAsw5bLPNMiDeR3RaJF5A13QYpfwbGzofpQVTlS6ctRNAT4qx2_9Yay5AmySb9IV_HyZNQuIHY3oaH4JYbWVTM2-LrCqYlp=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcvlXes2ZvVJ9n9wPf2KNcnp2KomMZSlu_8vdnwobNnWBK3JXWoySgeguuiXc_eDravgsk185U6Xr3dtLd3uOMdhloIWrQAA5J1pbWmme8j_unvwUNeRCt5cMPtnuvHpmcNRZ_EKxr74Cpz=s4800-w800-h600", "https://lh3.googleusercontent.com/grass-cs/AABkmLcBnMZ7whNio2spxXKfey4ssspP85ueBP6e342B6Yeia1nghiWoix9PcDsxUfIKnLKVOT_J5L7FZ65x2Sh4qGJ43MPDfo-NRrRBewxxorbz4YUdmgpsOGwalMYrZpn8ssMNZqmv=s4800-w800-h600"], "a": ["Shuan Hu", "Jessie Ong", "Lin Jason"]}, {"g": "https://maps.google.com/?cid=16383733864386084867", "c": "splurge", "n": "Hokklo (Michelin 1 star)", "lat": 24.4844786, "lng": 118.127731, "nophoto": "Google only has hotel photos for this pin", "m": "D3 · 1 Michelin star · inside Waldorf Astoria Xiamen · price not sourced", "d": "A one-star Michelin restaurant inside the Waldorf Astoria, 1 Lian Hua Bei Lu, the dressy end of Fujian cooking. I have no menu prices, so check and book before you commit. The 4.7★ (56) rating and the map link belong to the hotel, not the restaurant."}, {"c": "stay", "n": "Stay: Zhongshan Road / Siming West", "zh": "中山路 · 思明西路", "lat": 24.4548, "lng": 118.0815, "nophoto": "district, not a business", "m": "Rooms ~¥360-1,040 a night · central base · noise mixed", "d": "The first-timer base: 5-15 minutes' walk to Zhongshan Road, close to the Gulangyu ferry piers and the metro, with the Day 1 evening and Day 3 old-town food crawl on your doorstep. Rooms run about ¥360-1,040. Noise is mixed, so ask for a room away from the street. Chain hotels further east in Siming East are international but farther from the food."}, {"c": "stay", "n": "Stay: Xiamen University / Shapowei / Huandao Rd", "zh": "厦门大学 · 沙坡尾 · 环岛路", "lat": 24.434, "lng": 118.101, "nophoto": "district, not a business", "m": "Rooms ~¥460-1,530 a night · quieter, sea side · needs bus or taxi", "d": "Quieter and nearer the sea, good for couples and for Day 2 (Nanputuo, the university, Hulishan, Shapowei all within a few kilometres). Rooms run about ¥460-1,530. The cost is that you need a bus or taxi to reach the old town and the ferry. Gulangyu is a day trip, not a base: sources advise at most one night."}];
+const ON = {}; Object.keys(CATS).forEach(k=>ON[k]=true);
+
+/* ---------- GCJ-02 -> WGS-84 (no-op outside mainland China) ----------
+   Google returns GCJ-02 ("Mars") coordinates inside mainland China, offset
+   several hundred metres from true WGS-84. Convert for the OSM basemap;
+   keep the raw values for Amap, which expects GCJ-02. */
+const EE = 0.00669342162296594323, A = 6378245.0;
+function outOfChina(lat,lng){ return (lng<72.004||lng>137.8347)||(lat<0.8293||lat>55.8271); }
+function tLat(x,y){
+  let r = -100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;
+  r += (160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;
+  return r;
+}
+function tLng(x,y){
+  let r = 300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r += (20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;
+  r += (20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;
+  r += (150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;
+  return r;
+}
+function gcj2wgs(lat,lng){
+  if(outOfChina(lat,lng)) return [lat,lng];
+  let dLat=tLat(lng-105,lat-35), dLng=tLng(lng-105,lat-35);
+  const rad=lat/180*Math.PI;
+  let magic=Math.sin(rad); magic=1-EE*magic*magic;
+  const sqm=Math.sqrt(magic);
+  dLat=(dLat*180)/((A*(1-EE))/(magic*sqm)*Math.PI);
+  dLng=(dLng*180)/(A/sqm*Math.cos(rad)*Math.PI);
+  return [lat*2-(lat+dLat), lng*2-(lng+dLng)];
+}
+PLACES.forEach(p=>{ const w=gcj2wgs(p.lat,p.lng); p.wlat=w[0]; p.wlng=w[1]; });
+
+/* ---------- glyphs ---------- */
+function glyph(catKey){
+  const name = (CATS[catKey]||{}).icon;
+  const path = name && ICONS[name];
+  return path ? '<svg viewBox="0 0 24 24">'+path+'</svg>' : '';
+}
+
+/* ---------- map ---------- */
+const map = L.map('map',{zoomControl:false});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19,
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Places &amp; photos © Google'
+}).addTo(map);
+
+const groups = {};
+Object.keys(CATS).forEach(k => groups[k] = L.layerGroup());
+PLACES.forEach(pl => {
+  const icon = L.divIcon({className:'',
+    html:'<div class="pin '+(CATS[pl.c].shape||'')+(pl.must?' must':'')+'" style="background:'
+         +CATS[pl.c].color+'">'+glyph(pl.c)+(pl.must?'<i class="star-badge"></i>':'')+'</div>',
+    iconSize:[23,23], iconAnchor:[11,11]});
+  const mk = L.marker([pl.wlat,pl.wlng],{icon, title:pl.n, riseOnHover:true,
+    zIndexOffset: pl.must?1000:0});
+  mk.on('click',()=>openSheet(pl));
+  mk.addTo(groups[pl.c]);
+});
+Object.keys(CATS).forEach(k => { if(PLACES.some(p=>p.c===k)) groups[k].addTo(map); });
+
+function activeBounds(){
+  const pts = PLACES.filter(p=>ON[p.c]).map(p=>[p.wlat,p.wlng]);
+  return pts.length ? L.latLngBounds(pts) : L.latLngBounds(PLACES.map(p=>[p.wlat,p.wlng]));
+}
+function fitAll(){ map.fitBounds(activeBounds(),{padding:[55,55]}); }
+fitAll();
+
+/* ---------- panel ---------- */
+const keyList = document.getElementById('keyList');
+Object.keys(CATS).forEach(k=>{
+  const n = PLACES.filter(p=>p.c===k).length;
+  if(!n) return;
+  const row = document.createElement('label');
+  row.className='layer';
+  row.innerHTML = '<input type="checkbox" checked>'
+    + '<span class="swatch '+(CATS[k].shape||'')+'" style="background:'+CATS[k].color+'">'+glyph(k)+'</span>'
+    + '<span>'+CATS[k].label+'</span><span class="n">'+n+'</span>';
+  row.querySelector('input').onchange = e=>{
+    ON[k]=e.target.checked;
+    e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+    updateCount();
+  };
+  keyList.appendChild(row);
+});
+function updateCount(){
+  const n = PLACES.filter(p=>ON[p.c]).length;
+  document.getElementById('count').textContent = n + (n===1?" place":" places");
+}
+updateCount();
+
+const panel=document.getElementById('panel'), layersBtn=document.getElementById('layersBtn');
+layersBtn.onclick=()=>{
+  panel.classList.toggle('hidden');
+  layersBtn.classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+/* ---------- sheet + gallery ---------- */
+const sheet=document.getElementById('sheet'),
+      gal=document.getElementById('gal'), galTrack=document.getElementById('galTrack'),
+      galDots=document.getElementById('galDots'), galCount=document.getElementById('galCount'),
+      sTag=document.getElementById('sTag'), sName=document.getElementById('sName'),
+      sZh=document.getElementById('sZh'), sMeta=document.getElementById('sMeta'),
+      sDesc=document.getElementById('sDesc'), sDist=document.getElementById('sDist'),
+      sCredit=document.getElementById('sCredit'), navBtn=document.getElementById('navBtn'),
+      gmapBtn=document.getElementById('gmapBtn'),
+      sStory=document.getElementById('sStory'), storyBtn=document.getElementById('storyBtn'),
+      storyBody=document.getElementById('storyBody'), storyLabel=document.getElementById('storyLabel');
+let selected=null;
+
+function buildGallery(pl){
+  galTrack.innerHTML=''; galDots.innerHTML='';
+  const pics = pl.p || [];
+  if(!pics.length){ gal.classList.add('none'); return; }
+  gal.classList.remove('none');
+  pics.forEach((src,i)=>{
+    const img=document.createElement('img');
+    img.src=src; img.alt=pl.n+' — photo '+(i+1)+' of '+pics.length; img.loading='lazy';
+    img.onerror=()=>{ img.remove(); syncDots(); };
+    galTrack.appendChild(img);
+    const dot=document.createElement('i'); if(i===0) dot.className='on';
+    galDots.appendChild(dot);
+  });
+  galCount.textContent='1/'+pics.length;
+  galPrev.style.visibility = pics.length>1?'':'hidden';
+  galNext.style.visibility = pics.length>1?'':'hidden';
+  galPrev.disabled=true; galNext.disabled=pics.length<2;
+  galDots.style.display = pics.length>1 ? 'flex' : 'none';
+  galCount.style.display = pics.length>1 ? 'block' : 'none';
+  galTrack.scrollLeft=0;
+}
+function syncDots(){
+  const imgs=galTrack.querySelectorAll('img');
+  if(!imgs.length){ gal.classList.add('none'); return; }
+  const i=Math.round(galTrack.scrollLeft/galTrack.clientWidth);
+  galDots.querySelectorAll('i').forEach((d,j)=>d.classList.toggle('on',j===i));
+  galCount.textContent=(i+1)+'/'+imgs.length;
+  const multi=imgs.length>1;
+  galPrev.style.visibility = multi?'':'hidden';
+  galNext.style.visibility = multi?'':'hidden';
+  galPrev.disabled = i<=0;
+  galNext.disabled = i>=imgs.length-1;
+}
+galTrack.addEventListener('scroll',()=>{ window.requestAnimationFrame(syncDots); });
+
+/* arrows, for mice and keyboards; touch users just swipe */
+const galPrev=document.getElementById('galPrev'), galNext=document.getElementById('galNext');
+function galScroll(dir){
+  const w=galTrack.clientWidth||1;
+  const i=Math.round(galTrack.scrollLeft/w)+dir;
+  const n=galTrack.querySelectorAll('img').length;
+  galTrack.scrollTo({left: Math.max(0,Math.min(n-1,i))*w, behavior:'smooth'});
+}
+galPrev.onclick=e=>{e.stopPropagation();galScroll(-1);};
+galNext.onclick=e=>{e.stopPropagation();galScroll(1);};
+
+function openSheet(pl){
+  selected=pl;
+  const cat=CATS[pl.c];
+  buildGallery(pl);
+  sTag.textContent=cat.label; sTag.style.background=cat.color;
+  sName.textContent=pl.n;
+  sZh.textContent=pl.zh||""; sZh.style.display = pl.zh ? 'block':'none';
+  sMeta.textContent=pl.m||"";
+  sDesc.textContent=pl.d;
+  if(pl.s){
+    storyBody.textContent=pl.s;
+    storyLabel.textContent=pl.sl||"The story";
+    sStory.style.display='block';
+    sStory.classList.remove('open');
+    storyBtn.setAttribute('aria-expanded','false');
+  } else { sStory.style.display='none'; }
+  const credits=(pl.a&&pl.a.length) ? "Photos: "+[...new Set(pl.a)].join(", ")+" — via Google Maps. Traveller submissions, not curated." : "Place data © Google";
+  sCredit.textContent=credits;
+  navBtn.href="https://uri.amap.com/marker?position="+pl.lng+","+pl.lat+"&name="+encodeURIComponent(pl.zh||pl.n)+"&src=map&coordinate=gaode";
+  gmapBtn.href=pl.g;
+  updateDist();
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.scrollTop=0;
+  sheet.classList.add('open');
+  panToPlace(pl);
+}
+storyBtn.onclick=()=>{
+  const open=sStory.classList.toggle('open');
+  storyBtn.setAttribute('aria-expanded', open?'true':'false');
+};
+/* Wide screens show the card as a left-hand panel, so the gesture axis and the
+   map centring both have to change. Keep this threshold in sync with the CSS. */
+const SIDE_MIN_WIDTH = 720;
+function sideMode(){ return window.innerWidth >= SIDE_MIN_WIDTH; }
+
+function panToPlace(pl){
+  const ll = L.latLng(pl.wlat, pl.wlng);
+  if(!sideMode()){ map.panTo(ll,{animate:true}); return; }
+  // shift the centre left by half the panel so the pin sits in the visible half
+  const panelW = (document.querySelector('.sheet')||{}).offsetWidth || 390;
+  const pt = map.project(ll, map.getZoom()).subtract([panelW/2, 0]);
+  map.panTo(map.unproject(pt, map.getZoom()), {animate:true});
+}
+
+function dismissSheet(){
+  if(!sheet.classList.contains('open')) return;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  sheet.classList.remove('open');
+  selected=null;
+}
+document.getElementById('closeSheet').onclick=dismissSheet;
+
+/* ---- swipe the card down to dismiss ----
+   Touch: drag anywhere in the card, but only when it is scrolled to the top, so
+   reading a long card still scrolls normally and the gallery still swipes sideways.
+   Mouse: drag the grab handle. */
+let drag=null;
+sheet.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(e.pointerType==='mouse' && e.button!==0) return;
+  const onHandle = !!(e.target.closest && e.target.closest('.grabber'));
+  if(!onHandle){
+    if(e.pointerType==='mouse') return;
+    if(e.target.closest && e.target.closest('a,button,input')) return;
+    // In side mode the dismiss axis IS the gallery axis, so the gallery wins
+    // any gesture that starts on a photo.
+    if(sideMode() && e.target.closest && e.target.closest('.gal')) return;
+    // Vertical scroll only conflicts with the bottom sheet.
+    if(!sideMode() && sheet.scrollTop>0) return;
+  }
+  drag={y0:e.clientY, x0:e.clientX, axis: onHandle?'go':null, dy:0, t0:Date.now()};
+});
+function dragMove(e){
+  if(!drag) return;
+  const dy=e.clientY-drag.y0, dx=e.clientX-drag.x0;
+  const side=sideMode();
+  // side panel slides out to the LEFT; bottom sheet slides DOWN
+  const along = side ? -dx : dy;      // movement toward dismissal
+  const across = side ? dy : dx;      // movement that belongs to the gallery
+  if(!drag.axis){
+    if(Math.abs(dx)<6 && Math.abs(dy)<6) return;
+    drag.axis = Math.abs(along)>Math.abs(across) ? 'go' : 'other';
+    if(drag.axis==='other'){ drag=null; return; }   // let the gallery scroll
+  }
+  if(along<=0){ drag.dy=0; sheet.classList.remove('dragging'); sheet.style.transform=''; return; }
+  drag.dy=along;
+  sheet.classList.add('dragging');
+  sheet.style.transform = side ? 'translateX(-'+along+'px)' : 'translateY('+along+'px)';
+}
+function dragEnd(){
+  if(!drag) return;
+  const dy=drag.dy, dt=Math.max(1, Date.now()-drag.t0);
+  drag=null;
+  sheet.classList.remove('dragging');
+  sheet.style.transform='';
+  if(dy>90 || (dy>28 && dy/dt>0.5)) dismissSheet();   // distance OR flick
+}
+window.addEventListener('pointermove', dragMove);
+window.addEventListener('pointerup', dragEnd);
+window.addEventListener('pointercancel', dragEnd);
+/* cancel the browser's own scroll only once we have committed to a downward drag */
+sheet.addEventListener('touchmove', e=>{
+  if(drag && drag.axis==='go' && drag.dy>0) e.preventDefault();
+}, {passive:false});
+
+/* ---- tap outside to dismiss ----
+   A map click fires only on a genuine tap, never after a pan, so dragging the map
+   leaves the card open. Marker clicks stop propagation, so they swap cards instead. */
+map.on('click', dismissSheet);
+document.addEventListener('pointerdown', e=>{
+  if(!sheet.classList.contains('open')) return;
+  if(sheet.contains(e.target)) return;
+  const ab=document.getElementById('about');
+  if(ab && ab.classList.contains('open')) return;
+  if(e.target.closest && e.target.closest('.leaflet-container')) return;
+  dismissSheet();
+}, true);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') dismissSheet(); });
+
+/* ---------- city overview ---------- */
+const about=document.getElementById('about'), aboutBtn=document.getElementById('aboutBtn');
+function esc(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function rich(x){ // allow **bold** only
+  return esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+}
+function renderAbout(){
+  if(!CITY || !Object.keys(CITY).length){ aboutBtn.style.display='none'; return; }
+  document.getElementById('abTitle').textContent = CITY.name||'';
+  document.getElementById('abTagline').textContent = CITY.tagline||'';
+
+  const st=document.getElementById('abStats');
+  st.innerHTML=(CITY.stats||[]).map(s=>
+    '<div class="stat"><div class="k">'+esc(s[0])+'</div><div class="v">'+esc(s[1])+'</div></div>'
+  ).join('');
+  st.style.display=(CITY.stats||[]).length?'grid':'none';
+
+  document.getElementById('abSections').innerHTML=(CITY.sections||[]).map(s=>
+    '<h3>'+esc(s[0])+'</h3>'+String(s[1]).split('\n\n').map(par=>'<p>'+rich(par)+'</p>').join('')
+  ).join('');
+
+  const musts=CITY.musts||[];
+  document.getElementById('abMusts').innerHTML = musts.length
+    ? '<h3>Must see, do &amp; try</h3><ul class="musts">'
+      + musts.map(m=>'<li>'+rich(m)+'</li>').join('') + '</ul>'
+    : '';
+
+  const near=CITY.nearby||[];
+  document.getElementById('abNearby').innerHTML = near.length
+    ? '<h3>Nearby</h3><ul class="nearby">'
+      + near.map(n=>'<li>'+rich(n)+'</li>').join('') + '</ul>'
+    : '';
+
+  document.getElementById('abFoot').textContent = CITY.foot||'';
+}
+renderAbout();
+function toggleAbout(open){
+  about.classList.toggle('open',open);
+  about.setAttribute('aria-hidden',open?'false':'true');
+  aboutBtn.classList.toggle('active',open);
+  if(open) about.scrollTop=0;
+}
+aboutBtn.onclick=()=>toggleAbout(!about.classList.contains('open'));
+document.getElementById('aboutClose').onclick=()=>toggleAbout(false);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') toggleAbout(false); });
+
+/* ---------- fullscreen ---------- */
+const fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+    const req=el.requestFullscreen||el.webkitRequestFullscreen;
+    req ? req.call(el) : toast("Fullscreen isn't available here — open the file in your browser.");
+  } else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+};
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.classList.toggle('active',!!document.fullscreenElement);
+  setTimeout(()=>map.invalidateSize(),250);
+});
+
+/* ---------- live location ---------- */
+const locBtn=document.getElementById('locBtn');
+let watchId=null, meMarker=null, accCircle=null, myPos=null, firstFix=true;
+const inFrame=(window.self!==window.top);
+
+locBtn.onclick=()=>{
+  if(watchId!==null){stopWatch();return;}
+  if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}
+  if(!window.isSecureContext){
+    toast("Location needs a secure page. Serve this file over https:// or localhost — file:// is blocked by the browser.");
+    return;
+  }
+  locBtn.classList.add('locating'); firstFix=true;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    locBtn.classList.remove('locating'); locBtn.classList.add('active');
+    myPos=[pos.coords.latitude,pos.coords.longitude];
+    const acc=pos.coords.accuracy;
+    if(!meMarker){
+      meMarker=L.marker(myPos,{icon:L.divIcon({className:'',html:'<div class="me-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]}),title:"You are here"}).addTo(map);
+      accCircle=L.circle(myPos,{radius:acc,color:'#2b7fff',weight:1,fillColor:'#2b7fff',fillOpacity:.08}).addTo(map);
+    } else { meMarker.setLatLng(myPos); accCircle.setLatLng(myPos).setRadius(acc); }
+    if(firstFix){map.setView(myPos,14);firstFix=false;}
+    updateDist();
+  },err=>{
+    locBtn.classList.remove('locating'); stopWatch();
+    let msg;
+    if(err.code===1) msg = inFrame ? "This preview blocks location. Download the file and open it over https:// for live tracking."
+                                   : "Location permission denied — enable it for this site in your browser settings.";
+    else if(err.code===2) msg = "Position unavailable — no GPS or network fix right now.";
+    else msg = "Timed out getting your location. Try again outdoors.";
+    toast(msg);
+  },{enableHighAccuracy:true,maximumAge:5000,timeout:15000});
+};
+function stopWatch(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  locBtn.classList.remove('active','locating');
+  if(meMarker){map.removeLayer(meMarker);meMarker=null;}
+  if(accCircle){map.removeLayer(accCircle);accCircle=null;}
+  myPos=null; updateDist();
+}
+function updateDist(){
+  if(!selected) return;
+  if(myPos){
+    const d=map.distance(myPos,[selected.wlat,selected.wlng]);
+    sDist.textContent = d<1000 ? "📍 "+Math.round(d)+" m away · ~"+Math.max(1,Math.round(d/80))+" min walk"
+                               : "📍 "+(d/1000).toFixed(1)+" km away";
+  } else sDist.textContent="";
+}
+
+let wasSide=sideMode();
+window.addEventListener('resize',()=>{
+  const now=sideMode();
+  if(now!==wasSide){ wasSide=now; if(selected) panToPlace(selected); }
+});
+
+document.getElementById('fitBtn').onclick=fitAll;
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),4500);
+}
+</script>
+</body>
+</html>
